@@ -1,6 +1,6 @@
 
 /*
-   $Id: dbdimp.c,v 1.31 1999/09/29 20:30:23 mergl Exp $
+   $Id: dbdimp.c,v 1.33 2000/07/07 10:43:34 mergl Exp $
 
    Copyright (c) 1997,1998,1999 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -167,6 +167,7 @@ pg_db_login (dbh, imp_dbh, dbname, uid, pwd)
     /* check to see that the backend connection was successfully made */
     if (PQstatus(imp_dbh->conn) != CONNECTION_OK) {
         pg_error(dbh, PQstatus(imp_dbh->conn), PQerrorMessage(imp_dbh->conn));
+        PQfinish(imp_dbh->conn);
         return 0;
     }
 
@@ -535,6 +536,36 @@ pg_db_lo_export (dbh, lobjId, filename)
 }
 
 
+int
+pg_db_putline (dbh, buffer)
+    SV *dbh;
+    char *buffer;
+{
+    D_imp_dbh(dbh);
+    return PQputline(imp_dbh->conn, buffer);
+}
+
+
+int
+pg_db_getline (dbh, buffer, length)
+    SV *dbh;
+    char *buffer;
+    int length;
+{
+    D_imp_dbh(dbh);
+    return PQgetline(imp_dbh->conn, buffer, length);
+}
+
+
+int
+pg_db_endcopy (dbh)
+    SV *dbh;
+{
+    D_imp_dbh(dbh);
+    return PQendcopy(imp_dbh->conn);
+}
+
+
 /* ================================================================== */
 
 
@@ -577,7 +608,7 @@ dbd_preparse (imp_sth, statement)
 
     /* allocate room for copy of statement with spare capacity	*/
     /* for editing '?' or ':1' into ':p1'.			*/
-    imp_sth->statement = (char*)safemalloc(strlen(statement) * 3);
+    imp_sth->statement = (char*)safemalloc(strlen(statement) * 3 + 1);
 
     /* initialise phs ready to be cloned per placeholder	*/
     memset(&phs_tpl, 0, sizeof(phs_tpl));
@@ -788,7 +819,7 @@ dbd_rebind_ph (sth, imp_sth, phs)
 
     phs->alen = value_len + phs->alen_incnull;
 
-    imp_sth->all_params_len += phs->alen;
+    imp_sth->all_params_len += SvOK(phs->sv) ? phs->alen : 4; /* NULL */
 
     if (dbis->debug >= 3) {
 	fprintf(DBILOGFP, "       bind %s <== '%.*s' (size %ld/%ld, otype %d, indp %d)\n",
@@ -967,7 +998,9 @@ dbd_st_execute (sth, imp_sth)   /* <= -2:error, >=0:ok row count, (-1=unknown co
     /* do we have input parameters ? */
     if ((int)DBIc_NUM_PARAMS(imp_sth) > 0) {
         /* we have to allocate some additional memory for possible escaping quotes and backslashes */
-        statement = (char*)safemalloc(strlen(imp_sth->statement) + 2 * imp_sth->all_params_len);
+        /* Worst case is all character must be escaped and must be quoted */
+        int max_len = imp_sth->all_params_len * 2 + DBIc_NUM_PARAMS(imp_sth) * 2 + 1;
+        statement = (char*)safemalloc(strlen(imp_sth->statement) + max_len );
         dest = statement;
         src  = imp_sth->statement;
         /* scan statement for ':p1' style placeholders */
@@ -1029,8 +1062,13 @@ dbd_st_execute (sth, imp_sth)   /* <= -2:error, >=0:ok row count, (-1=unknown co
             i = 0;
             namebuf[i++] = *src++; /* ':' */
             namebuf[i++] = *src++; /* 'p' */
-            while (isDIGIT(*src)) {
+
+            while (isDIGIT(*src) && i < (sizeof(namebuf)-1) ) {
                 namebuf[i++] = *src++;
+            }
+            if ( i == (sizeof(namebuf) - 1)) {
+                pg_error(sth, -1, "namebuf buffer overrun\n");
+                return -2;
             }
             namebuf[i] = '\0';
             svp = hv_fetch(imp_sth->all_params_hv, namebuf, i, 0);
@@ -1058,7 +1096,7 @@ dbd_st_execute (sth, imp_sth)   /* <= -2:error, >=0:ok row count, (-1=unknown co
                         *dest++ = '\'';
                     }
 	            /* escape backslash except for octal presentation */
-                    if (*val == '\\' && !isdigit(*(val+1)) && !isdigit(*(val+2)) && !isdigit(*(val+3)) ) {
+                    if (*val == '\\' && !(isdigit(*(val+1)) && isdigit(*(val+2)) && isdigit(*(val+3))) ) {
                         *dest++ = '\\';
                     }
                 }
@@ -1099,7 +1137,6 @@ dbd_st_execute (sth, imp_sth)   /* <= -2:error, >=0:ok row count, (-1=unknown co
         imp_sth->cur_tuple = 0;
         DBIc_NUM_FIELDS(imp_sth) = num_fields;
         DBIc_ACTIVE_on(imp_sth);
-
         ret = PQntuples(imp_sth->result);
     } else if (PGRES_COMMAND_OK == status) {
         /* non-select statement */
@@ -1108,6 +1145,9 @@ dbd_st_execute (sth, imp_sth)   /* <= -2:error, >=0:ok row count, (-1=unknown co
         } else {
             ret = -1;
         }
+    } else if (PGRES_COPY_OUT == status || PGRES_COPY_IN == status) {
+      /* Copy Out/In data transfer in progress */
+        ret = -1;
     } else {
         pg_error(sth, status, PQerrorMessage(imp_dbh->conn));
         ret = -2;
@@ -1189,6 +1229,7 @@ dbd_st_blob_read (sth, imp_sth, lobjId, offset, len, destrv, destoffset)
     PGresult* result;
     ExecStatusType status;
     SV *bufsv;
+    char *tmp;
 
     if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_st_blob_read\n"); }
     /* safety check */
@@ -1248,8 +1289,10 @@ dbd_st_blob_read (sth, imp_sth, lobjId, offset, len, destrv, destoffset)
     /* read from large object */
     nread = 0;
     SvGROW(bufsv, destoffset + nread + BUFSIZ + 1);
-    while ((nbytes = lo_read(imp_dbh->conn, lobj_fd, ((unsigned char *)SvPVX(bufsv) )+ destoffset + nread, BUFSIZ)) > 0) {
+    tmp = (SvPVX(bufsv)) + destoffset + nread;
+    while ((nbytes = lo_read(imp_dbh->conn, lobj_fd, tmp, BUFSIZ)) > 0) {
         nread += nbytes;
+        tmp = (SvPVX(bufsv)) + destoffset + nread;
         /* break if user wants only a specified chunk */
         if (len > 0 && nread > len) {
             nread = len;

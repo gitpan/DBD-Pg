@@ -1,5 +1,18 @@
 Revision history for Perl extension DBD-Pg.
 
+0.94 Jul 07, 2000
+	- applied patch from Rudy Lippan <almighty@randomc.com>
+	  which fixes a memory-leak with failed connections.
+	- applied patch from Hein Roehrig <hein@acm.org>
+	  which fixes a bug with escaping a backslash except for 
+	  octal presentation
+        - applied patch from Francis J. Lacoste <francis.lacoste@iNsu.COM
+          which fixes a segmentation fault when all binded parameters are NULL
+        - adapt test.pl to avoid warnings with postgresql-7.0
+        - added support for 'COPY FROM STDIN' and 'COPY TO STDOUT'
+        - added patch from Mark Stosberg <mark@summersault.com>
+          to enhance the table_attributes subroutine
+
 0.93 Sep 29, 1999
 	- it is required now to set the environment variables POSTGRES_INCLUDE
 	  and POSTGRES_LIB for compiling the module.
@@ -10,7 +23,7 @@ Revision history for Perl extension DBD-Pg.
 	  mschout@gkg.net
 	- replaced the method attributes by the method table_attributes,
 	  from Scott Williams <scott@james.com>.
-	- fix type defintions for type_info_all().
+	- fix type definitions for type_info_all().
 	  bug spotted by "carlos" <emarcet@intramed.net.ar>.
 	- now the Pg-specific quote() method also evaluates the 
 	  data-type paramater. 

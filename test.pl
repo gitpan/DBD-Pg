@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl,v 1.24 1999/09/29 20:30:23 mergl Exp $
+# $Id: test.pl,v 1.25 2000/06/12 15:12:17 mergl Exp $
 
 # Before `make install' is performed this script should be runnable with
 # `make test'. After `make install' it should work as `perl test.pl'
@@ -35,13 +35,15 @@ print "OS: $os\n";
 my $dbmain = "template1";
 my $dbtest = "pgperltest";
 
-# optionally add ";host=$remotehost port=remoteport"
+# optionally add ";host=$remotehost;port=$remoteport"
+# or set the environment variable PGHOST
 my $dsn_main = "dbi:Pg:dbname=$dbmain";
 my $dsn_test = "dbi:Pg:dbname=$dbtest";
 
 my ($dbh0, $dbh, $sth);
 
 #DBI->trace(3); # make your choice
+
 
 ######################### drop, create and connect to test database
 
@@ -54,7 +56,7 @@ if ($os eq "MSWin32") {
         or  print "DBI->data_sources .......... not ok: $data_sources\n";
 }
 
-( $dbh0 = DBI->connect("$dsn_main", "", "") )
+( $dbh0 = DBI->connect("$dsn_main", "", "", { AutoCommit => 1 }) )
     and print "DBI->connect ............... ok\n"
     or  die   "DBI->connect ............... not ok: ", $DBI::errstr;
 
@@ -74,7 +76,10 @@ $dbh0->do("DROP DATABASE $dbtest");
     and print "\$dbh->do ................... ok\n"
     or  die   "\$dbh->do ................... not ok: ", $DBI::errstr;
 
-$dbh = DBI->connect("$dsn_test", "", "") or die $DBI::errstr;
+$dbh = DBI->connect("$dsn_test", "", "", { AutoCommit => 1 }) or die $DBI::errstr;
+
+$dbh->do("Set DateStyle = 'ISO'");
+
 
 ######################### create table
 
@@ -107,11 +112,17 @@ my @names = $dbh->tables;
     or  print "\$dbh->tables ............... not ok: ", join(" ", @names), "\n";
 
 my $attrs = $dbh->func('builtin', 'table_attributes');
-(  $$attrs[0]{NAME} eq q{bool_} ) 
+( $$attrs[0]{NAME} eq q{varchar12_} ) 
     and print "\$dbh->pg_table_attributes .. ok\n"
     or  print "\$dbh->pg_table_attributes .. not ok: ", $$attrs[0]{NAME}, "\n";
 #for (my $i=0; $i<=$#$attrs; $i++) {
-#   print $$attrs[$i]{NAME}, "\t", $$attrs[$i]{TYPE}, "\t", $$attrs[$i]{SIZE}, "\t", $$attrs[$i]{NOTNULL}, "\n", $sth->finish;
+#   print $$attrs[$i]{NAME},        "\t",
+#         $$attrs[$i]{TYPE},        "\t",
+#         $$attrs[$i]{SIZE},        "\t",
+#         $$attrs[$i]{NOTNULL},     "\t",
+#         $$attrs[$i]{DEFAULT},     "\t",
+#         $$attrs[$i]{CONSTRAINT},  "\t",
+#         $$attrs[$i]{PRIMARY_KEY}, "\n";
 #}
 
 ######################### test various insert methods
@@ -125,7 +136,7 @@ $dbh->do("INSERT INTO builtin VALUES(
   'quote \\\\ \'\' this',
   'Edmund Mergl',
   'Edmund Mergl',
-  '08-03-1997',
+  '1997-03-08',
   1234,
   '{1,2,3}',
   1.234,
@@ -150,7 +161,7 @@ $dbh->do("INSERT INTO builtin VALUES(
   'but  not  \164\150\151\163',
   'Halli  Hallo',
   'Halli  Hallo',
-  '06-01-1995',
+  '1995-01-06',
   5678,
   '{5,6,7}',
   5.678,
@@ -168,7 +179,7 @@ $sth->execute (
   'Potz   Blitz',
   'Potz   Blitz',
   'Potz   Blitz',
-  '05-10-1957',
+  '1957-10-05',
   1357,
   '{1,3,5}',
   1.357,
@@ -188,7 +199,7 @@ $dbh->do( "INSERT INTO builtin
    'Ene Mene  Mu',
    'Ene Mene  Mu',
    'Ene Mene  Mu',
-   '14-10-1957',
+   '1957-10-14',
    5432,
    '{6,7,8}',
    6.789,
@@ -225,18 +236,21 @@ $sth->bind_param(2, '6000', DBI::SQL_INTEGER);
 $sth->execute or die $DBI::errstr;
 
 my @row_ary = $sth->fetchrow_array;
-( join(" ", @row_ary) eq q{1 a Edmund Mergl quote \ ' this   Edmund Mergl Edmund Mergl 08-03-1997 1234 {1,2,3} 1.234 (1,2) [(1,2),(3,4)] (3,4),(1,2)} ) 
+( join(" ", @row_ary) eq q{1 a Edmund Mergl quote \ ' this   Edmund Mergl Edmund Mergl 1997-03-08 1234 {1,2,3} 1.234 (1,2) [(1,2),(3,4)] (3,4),(1,2)} ) 
     and print "\$sth->fetchrow_array ....... ok\n"
     or  print "\$sth->fetchrow_array ....... not ok: ", join(" ", @row_ary), "\n";
 
 my $ary_ref = $sth->fetchrow_arrayref;
-( join(" ", @$ary_ref) eq q{0 b Halli  Hallo but  not  this   Halli  Hallo Halli  Hallo 06-01-1995 5678 {5,6,7} 5.678 (4,5) [(4,5),(6,7)] (6,7),(4,5)} )
+( join(" ", @$ary_ref) eq q{0 b Halli  Hallo but  not  this   Halli  Hallo Halli  Hallo 1995-01-06 5678 {5,6,7} 5.678 (4,5) [(4,5),(6,7)] (6,7),(4,5)} )
     and print "\$sth->fetchrow_arrayref .... ok\n"
     or  print "\$sth->fetchrow_arrayref .... not ok: ", join(" ", @$ary_ref), "\n";
 
 my ($key, $val);
 my $hash_ref = $sth->fetchrow_hashref;
-( join(" ", (($key,$val) = each %$hash_ref)) eq q{char12_ Potz   Blitz} )
+foreach $key (sort (keys %$hash_ref)) {
+    $val .= " $$hash_ref{$key}";
+}
+($val eq q{ 0 (8,7),(2,3) Potz   Blitz Potz   Blitz     c 1957-10-05 1.357 1357 {1,3,5} [(2,7),(8,3)] (2,7) Potz   Blitz Potz   Blitz} )
     and print "\$sth->fetchrow_hashref ..... ok\n"
     or  print "\$sth->fetchrow_hashref ..... not ok:  key = $key, val = $val\n";
 
@@ -273,7 +287,7 @@ my ($bool, $char, $char12, $char16, $vchar12, $text, $date, $int4, $int4a, $floa
 
 $sth->fetch or die $DBI::errstr;
 ( "$bool, $char, $char12, $char16, $vchar12, $text, $date, $int4, $int4a, $float8, $point, $lseg, $box" eq 
-  q{1, a, Edmund Mergl, quote \ ' this  , Edmund Mergl, Edmund Mergl, 08-03-1997, 1234, {1,2,3}, 1.234, (1,2), [(1,2),(3,4)], (3,4),(1,2)} )
+  q{1, a, Edmund Mergl, quote \ ' this  , Edmund Mergl, Edmund Mergl, 1997-03-08, 1234, {1,2,3}, 1.234, (1,2), [(1,2),(3,4)], (3,4),(1,2)} )
     and print "\$sth->fetch ................ ok\n"
     or  print "\$sth->fetch ................ not ok:  $bool, $char, $char12, $char16, $vchar12, $text, $date, $int4, $int4a, $float8, $point, $lseg, $box\n";
 
@@ -302,7 +316,7 @@ $sth->execute or die $DBI::errstr;
 
 $sth->{ChopBlanks} = 1;
 @row_ary = $sth->fetchrow_array;
-( join(" ", @row_ary) eq q{1 a Edmund Mergl quote \ ' this Edmund Mergl Edmund Mergl 08-03-1997 1234 {1,2,3} 1.234 (1,2) [(1,2),(3,4)] (3,4),(1,2)} ) 
+( join(" ", @row_ary) eq q{1 a Edmund Mergl quote \ ' this Edmund Mergl Edmund Mergl 1997-03-08 1234 {1,2,3} 1.234 (1,2) [(1,2),(3,4)] (3,4),(1,2)} ) 
     and print "\$sth->{ChopBlanks} ......... ok\n"
     or  print "\$sth->{ChopBlanks} .......... not ok: ", join(" ", @row_ary), "\n";
 
@@ -312,6 +326,39 @@ my $rows = $sth->rows;
     or  print "\$sth->rows ................. not ok: $rows\n";
 
 $sth->finish or die $DBI::errstr;
+
+######################### test copy to/from stdout/stdin
+
+$dbh->do( "DELETE FROM builtin" ) or die $DBI::errstr;
+
+$dbh->do( "COPY builtin FROM STDIN" ) or die $DBI::errstr;
+
+my $ret;
+for (1..3) {
+    # watch the tabs and do not forget the newlines
+    $ret = $dbh->func("t	a	Edmund Mergl	Edmund Mergl	Edmund Mergl	Edmund Mergl	1997-03-08	1234	{1,2,3}	1.234	(1.0,2.0)	((1.0,2.0),(3.0,4.0))	((1.0,2.0),(3.0,4.0))\n", 'putline');
+}
+$dbh->func("\\.\n", 'putline');
+$dbh->func('endcopy');
+
+( 1 == $ret )
+    and print "\$dbh->func(putline) ........ ok\n"
+    or  print "\$dbh->func(putline) ........ not ok: ", $ret, "\n";
+
+$dbh->do( "COPY builtin TO STDOUT" ) or die $DBI::errstr;
+my $buf = '';
+$ret = 0;
+$rows = 0;
+while ($dbh->func($buf, 256, 'getline')) {
+    #print "$buf\n";
+    $rows++;
+}
+$dbh->func('endcopy');
+
+( 3 == $rows )
+    and print "\$dbh->func(getline) ........ ok\n"
+    or  print "\$dbh->func(getline) ........ not ok: ", $rows, "\n";
+
 
 ######################### test large objects
 
@@ -373,7 +420,7 @@ my $lobj_fd; # may be 0
     and print "\$dbh->func(lo_lseek) ....... ok\n"
     or  print "\$dbh->func(lo_lseek) ....... not ok\n";
 
-my $buf = '';
+$buf = '';
 ( 256 == $dbh->func($lobj_fd, $buf, 256, 'lo_read') )
     and print "\$dbh->func(lo_read) ........ ok\n"
     or  print "\$dbh->func(lo_read) ........ not ok\n";
@@ -386,13 +433,12 @@ my $buf = '';
     and print "\$dbh->func(lo_close) ....... ok\n"
     or  print "\$dbh->func(lo_close) ....... not ok\n";
 
-( $dbh->func($lobjId, 'lo_unlink') )
-    and print "\$dbh->func(lo_unlink) ...... ok\n"
-    or  print "\$dbh->func(lo_unlink) ...... not ok\n";
-
 # end transaction
 $dbh->{AutoCommit} = 1;
 
+( $dbh->func($lobjId, 'lo_unlink') )
+    and print "\$dbh->func(lo_unlink) ...... ok\n"
+    or  print "\$dbh->func(lo_unlink) ...... not ok\n";
 
 # compare large objects
 

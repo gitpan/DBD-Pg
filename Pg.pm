@@ -1,5 +1,5 @@
 
-#  $Id: Pg.pm,v 1.35 1999/09/29 20:30:23 mergl Exp $
+#  $Id: Pg.pm,v 1.37 2000/07/07 10:43:34 mergl Exp $
 #
 #  Copyright (c) 1997,1998,1999 Edmund Mergl
 #  Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -10,7 +10,7 @@
 
 require 5.003;
 
-$DBD::Pg::VERSION = '0.93';
+$DBD::Pg::VERSION = '0.94';
 
 {
     package DBD::Pg;
@@ -81,6 +81,9 @@ $DBD::Pg::VERSION = '0.93';
 
         $user = '' unless defined($user);
         $auth = '' unless defined($auth);
+
+        $user = $ENV{DBI_USER} unless defined($user);
+        $auth = $ENV{DBI_PASS} unless defined($auth);
 
         my($dbh) = DBI::_new_dbh($drh, {
             'Name' => $Name,
@@ -156,12 +159,12 @@ $DBD::Pg::VERSION = '0.93';
         my($dbh) = @_;
 
         my $sth = $dbh->prepare("
-            SELECT relname 
-            FROM pg_class 
-            WHERE relkind = 'r' 
-            AND   relname !~ '^pg_' 
-            AND   relname !~ '^xin[vx][0-9]+' 
-            ORDER BY relname 
+            select relname 
+            from   pg_class 
+            where  relkind = 'r' 
+            and    relname !~ '^pg_' 
+            and    relname !~ '^xin[vx][0-9]+' 
+            order by 1 
         ") or return undef;
         $sth->execute or return undef;
         my (@tables, @relname);
@@ -178,7 +181,7 @@ $DBD::Pg::VERSION = '0.93';
         my ($dbh, $table) = @_;
         my $result = [];    
         my $attrs  = $dbh->selectall_arrayref(
-             "select a.attname, t.typname, a.attlen, a.atttypmod, a.attnotnull
+             "select a.attname, t.typname, a.attlen, a.atttypmod, a.attnotnull, a.atthasdef, a.attnum
               from pg_attribute a,
                    pg_class     c,
                    pg_type      t
@@ -186,31 +189,58 @@ $DBD::Pg::VERSION = '0.93';
                 and a.attrelid = c.oid
                 and a.attnum  >= 0
                 and t.oid      = a.atttypid
+                order by 1 
              ");
     
         return $result unless scalar(@$attrs);
 
+        # Get the primary key
+        my ($pri_key) = $dbh->selectrow_array("SELECT pg_attribute.attname
+                                               FROM   pg_class, pg_attribute, pg_index
+                                               WHERE  pg_class.oid          = pg_attribute.attrelid 
+                                               AND    pg_class.oid          = pg_index.indrelid 
+                                               AND    pg_index.indkey[0]    = pg_attribute.attnum
+                                               AND    pg_index.indisprimary = 't'
+                                               AND    pg_class.relname      = '$table'");
+        $pri_key = '' unless $pri_key;
+
         foreach my $attr (reverse @$attrs) {
-            my ($col_name, $col_type, $size, $mod, $notnull) = @$attr;
-            my $col_size =
-                do { if ($size > 0) {
-                         $size;
-                     } elsif ($mod > 0xffff) {
-                         my $prec = ($mod & 0xffff) - 4;
-                         $mod >>= 16;
-                         my $dig = $mod;
-                         $dig;
-                     } elsif ($mod >= 4) {
-                       $mod - 4;
-                     } else {
-                       $mod;
-                     }
-                   };
+            my ($col_name, $col_type, $size, $mod, $notnull, $hasdef, $attnum) = @$attr;
+            my $col_size = do { 
+                if ($size > 0) {
+                    $size;
+                } elsif ($mod > 0xffff) {
+                    my $prec = ($mod & 0xffff) - 4;
+                    $mod >>= 16;
+                    my $dig = $mod;
+                    $dig;
+                } elsif ($mod >= 4) {
+                    $mod - 4;
+                } else {
+                    $mod;
+                }
+            };
+
+            # Get the default value, if any
+            my ($default) = $dbh->selectrow_array("SELECT adsrc FROM pg_attrdef WHERE  adnum = $attnum") if -1 == $attnum;
+            $default = '' unless $default;
+
+            # Test for any constraints
+            my ($constraint) = $dbh->selectrow_array("select rcsrc from pg_relcheck where rcname = '${table}_$col_name'");
+            $constraint = '' unless $constraint;
+
+            # Check to see if this is the primary key
+            my $is_primary_key;
+            ($pri_key eq $col_name) ? $is_primary_key = 1 : $is_primary_key = 0;
+
             push @$result,
-                { NAME     => $col_name,
-                  TYPE     => $col_type,
-                  SIZE     => $col_size,
-                  NOTNULL  => $notnull,
+                { NAME        => $col_name,
+                  TYPE        => $col_type,
+                  SIZE        => $col_size,
+                  NOTNULL     => $notnull,
+                  DEFAULT     => $default,
+                  CONSTRAINT  => $constraint,
+                  PRIMARY_KEY => $is_primary_key,
                 };
         }
 
@@ -504,10 +534,13 @@ accessible via the func interface:
 This method returns for the given table a reference to an 
 array of hashes:
 
-  NAME       attribute name
-  TYPE       attribute type
-  SIZE       attribute size (-1 for variable size)
-  NULLABLE   flag nullable
+  NAME        attribute name
+  TYPE        attribute type
+  SIZE        attribute size (-1 for variable size)
+  NULLABLE    flag nullable
+  DEFAULT     default value 
+  CONSTRAINT  constraint
+  PRIMARY_KEY flag is_primary_key
 
   $lobjId = $dbh->func($mode, 'lo_creat');
 
@@ -562,6 +595,22 @@ id of the new object or undef upon failure.
 
 Exports a large object into a Unix file.  Returns false upon
 failure, true otherwise.
+
+  $ret = $dbh->func($line, 'putline');
+
+Used together with the SQL-command 'COPY table FROM STDIN' to 
+copy large amount of data into a table avoiding the overhead 
+of using single insert-comands. The application must explicitly 
+send the two characters "\." to indicate to the backend that 
+it has finished sending its data. See test.pl for an example 
+on how to use this function. 
+
+  $ret = $dbh->func($buffer, length, 'getline');
+
+Used together with the SQL-command 'COPY table TO STDOUT' to 
+dump a complete table. See test.pl for an example on how to use 
+this function. 
+
 
 =back
 
@@ -1047,7 +1096,7 @@ transaction. A disconnect will issue a 'rollback' statement.
 
 The driver supports all large-objects related functions provided by 
 libpq via the func-interface. Please note, that starting with 
-PoostgreSQL-65. any access to a large object - even read-onlyy - 
+PoostgreSQL-65. any access to a large object - even read-only - 
 has to be put into a transaction ! 
 
 

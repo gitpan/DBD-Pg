@@ -1,5 +1,5 @@
 /*
-   $Id: Pg.xs,v 1.20 1999/09/29 20:30:23 mergl Exp $
+   $Id: Pg.xs,v 1.21 2000/06/12 15:12:17 mergl Exp $
 
    Copyright (c) 1997,1998,1999 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -301,6 +301,40 @@ lo_export(dbh, lobjId, filename)
     char *	filename
     CODE:
         ST(0) = (-1 != pg_db_lo_export(dbh, lobjId, filename)) ? &sv_yes : &sv_no;
+
+
+void
+putline(dbh, buf)
+    SV *	dbh
+    char *	buf
+    CODE:
+        int ret = pg_db_putline(dbh, buf);
+        ST(0) = (-1 != ret) ? &sv_yes : &sv_no;
+
+
+void
+getline(dbh, buf, len)
+    PREINIT:
+        SV *bufsv = SvROK(ST(1)) ? SvRV(ST(1)) : ST(1);
+    INPUT:
+        SV *	dbh
+        int	len
+        char *	buf = sv_grow(bufsv, len);
+    CODE:
+        int ret = pg_db_getline(dbh, buf, len);
+        if (*buf == '\\' && *(buf+1) == '.') {
+            ret = -1;
+        }
+	sv_setpv((SV*)ST(1), buf);
+	SvSETMAGIC(ST(1));
+        ST(0) = (-1 != ret) ? &sv_yes : &sv_no;
+
+
+void
+endcopy(dbh)
+    SV *	dbh
+    CODE:
+        ST(0) = (-1 != pg_db_endcopy(dbh)) ? &sv_yes : &sv_no;
 
 
 # -- end of DBD::Pg::db
