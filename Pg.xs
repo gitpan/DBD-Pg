@@ -1,6 +1,6 @@
 /*---------------------------------------------------------
  *
- * $Id: Pg.xs,v 1.14 1998/02/19 20:28:53 mergl Exp $
+ * $Id: Pg.xs,v 1.15 1998/02/21 16:34:20 mergl Exp $
  *
  * Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
  * Portions Copyright (c) 1997,1998           Edmund Mergl
@@ -143,11 +143,6 @@ disconnect(dbh)
     D_imp_dbh(dbh);
     if ( !DBIc_ACTIVE(imp_dbh) ) {
 	XSRETURN_YES;
-    }
-    /* pre-disconnect checks and tidy-ups */
-    if (DBIc_CACHED_KIDS(imp_dbh)) {
-        SvREFCNT_dec(DBIc_CACHED_KIDS(imp_dbh));
-        DBIc_CACHED_KIDS(imp_dbh) = Nullhv;
     }
     /* Check for disconnect() being called whilst refs to cursors	*/
     /* still exists. This possibly needs some more thought.			*/

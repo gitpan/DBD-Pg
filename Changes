@@ -1,5 +1,9 @@
 Revision history for Perl extension DBD-Pg.
 
+0.67  February 21, 1998
+	- remove part of Driver.xst due to compile
+	  error on some systems.
+
 0.66  February 19, 1998
 	- remove defines in Pg.h so that
 	  it compiles also with postgresql-6.2.1

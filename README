@@ -1,6 +1,6 @@
 #---------------------------------------------------------
 #
-# $Id: README,v 1.14 1998/02/19 20:28:53 mergl Exp $
+# $Id: README,v 1.15 1998/02/21 16:34:20 mergl Exp $
 #
 # Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 # Portions Copyright (c) 1997,1998           Edmund Mergl
@@ -12,7 +12,7 @@
 DESCRIPTION:
 ------------
 
-This is version 0.66 of DBD-Pg.
+This is version 0.67 of DBD-Pg.
 DBD-Pg is a PostgreSQL interface for Perl 5 using DBI.
 
 For further information about DBI look at:
@@ -44,7 +44,7 @@ REQUIREMENTS:
 -------------
 
   - build, test and install Perl 5         (at least 5.002)
-  - build, test and install the DBI module (at least 0.89)
+  - build, test and install the DBI module (at least 0.91)
   - build, test and install PostgreSQL     (at least 6.2)
 
 
@@ -110,6 +110,6 @@ HP users: if you get error messages like:
 
 ---------------------------------------------------------------------------
 
-   Edmund Mergl <E.Mergl@bawue.de>                       February 19, 1998
+   Edmund Mergl <E.Mergl@bawue.de>                       February 21, 1998
 
 ---------------------------------------------------------------------------

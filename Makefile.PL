@@ -1,6 +1,6 @@
 #---------------------------------------------------------
 #
-# $Id: Makefile.PL,v 1.7 1998/02/19 20:28:52 mergl Exp $
+# $Id: Makefile.PL,v 1.8 1998/02/21 16:34:19 mergl Exp $
 #
 # Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 # Portions Copyright (c) 1997,1998           Edmund Mergl
@@ -20,7 +20,7 @@ die "\nYou didn't read the README file !\n" unless ($] >= 5.002);
 
 if (! $ENV{POSTGRES_HOME}) {
     print "\$POSTGRES_HOME not defined. Searching for PostgreSQL...\n";
-    foreach(qw(/usr/local/pgsql /usr/pgsql /home/pgsql /opt/pgsql /usr/local/postgres /usr/postgres /home/postgres /opt/postgres)) {
+    foreach(qw(/usr/local/pgsql /usr/lib/pgsql /usr/pgsql /home/pgsql /opt/pgsql /usr/local/postgres /usr/lib/postgres /usr/postgres /home/postgres /opt/postgres /usr/local/postgresql /usr/lib/postgresql /usr/postgresql /home/postgresql /opt/postgresql)) {
         if (-d "$_/lib") {
             $ENV{POSTGRES_HOME} = $_;
             last;
