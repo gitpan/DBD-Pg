@@ -1,7 +1,7 @@
 
 DBD::Pg  --  a PostgreSQL interface for Perl 5.
 
-   $Id: README,v 1.30 1998/11/05 22:35:05 mergl Exp $
+   $Id: README,v 1.32 1999/01/16 05:57:43 mergl Exp $
 
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
    Portions Copyright (c) 1997,1998           Edmund Mergl
@@ -15,7 +15,7 @@ DBD::Pg  --  a PostgreSQL interface for Perl 5.
 DESCRIPTION:
 ------------
 
-This is version 0.89 of DBD-Pg.
+This is version 0.90 of DBD-Pg.
 DBD-Pg is a PostgreSQL interface for Perl5 using DBI.
 
 For further information about DBI look at:
@@ -25,51 +25,10 @@ For further information about DBI look at:
 
 RECENT CHANGES:
 ---------------
-- adapted to postgresql-6.4:
-  the backend protocol has changed, which needs an adapted
-  ping method. A ping-test has been added to the test-script.
-  Also some type identifiers have changed. 
-- Pg.xs adapted to Driver.xst from DBI-1.0
-- major rewrite of module documentation 
-- major rewrite of the test script
-- use built-in DBI method for $dbh->do 
-- add macro dHTR in order to avoid compile errors 
-  with threaded perl5.005
-- renamed attribute AutoEscape to pg_auto_escape
-- renamed attribute SIZE to pg_size
-- new attribute pg_type
-- added support for DBI->data_sources($driver)
-- added support for $dbh->table_info
-- blob_read documented and added to test.pl 
-- added support for attr parameter in bind_param()
-- added /usr/lib/ to search path for libpq.
-- added ChopBlanks, patch from 
-  Victor Krasinsky <victor@rdovira.lviv.ua>
-- non-printable characters in parameters will not be 
-  converted to '.'. They are passed unchanged to the 
-  database. 
-- introduce new database handle attribute AutoEscape, which 
-  controls escaping of quotes and backslashes in parameters. 
-  When set to on, all quotes except at the beginning and 
-  at the end of a line will be escaped and all backslashes 
-  except when used to indicate an octal presentation (\xxx) 
-  will be escaped. Default of AutoEscape is on. 
-- bug-fix from Max Cohan <mcohan@adnc.net>:
-  check for \xxx presentation before escaping backslash
-  in parameters. 
-- bug-fix from Max Cohan <mcohan@adnc.net>:
-  using traces together with undef in place-holders dumped 
-  core. 
-- bug-fix from Matthew Lenz <matthew@nocturnal.org>:
-  corrected include path in Makefile.PL .
-- bug-fix from Rolf Grossmann <grossman@securitas.net>:
-  undefined parameters in an execute statement will be 
-  translated from 'undef' to 'NULL'. Also every parameter 
-  for bind_param() will be quoted by default (escape quote 
-  and backslash). Appropriate tests have been added to test.pl. 
-- bug-fix from Jan Iven <j.iven@rz.uni-sb.de>:
-  fix problem with quoting Null in bind variables.
 
+ - discard parameter authtype from connect string
+ - remove work-around for bug in the large object 
+   interface of postgresql 
 
 
 COPYRIGHT:
@@ -108,7 +67,7 @@ REQUIREMENTS:
 
   - build, test and install Perl 5         (at least 5.003)
   - build, test and install the DBI module (at least 1.00)
-  - build, test and install PostgreSQL     (at least 6.4)
+  - build, test and install PostgreSQL     (at least 6.4.2)
 
 
 PLATFORMS:
@@ -185,6 +144,6 @@ Sun Users: if you get compile errors like:
 
 ---------------------------------------------------------------------------
 
-   Edmund Mergl <E.Mergl@bawue.de>                       November 05, 1998
+   Edmund Mergl <E.Mergl@bawue.de>                       January 15, 1999
 
 ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 
-#  $Id: Pg.pm,v 1.31 1998/10/27 19:56:35 mergl Exp $
+#  $Id: Pg.pm,v 1.32 1999/01/16 05:56:32 mergl Exp $
 #
 #  Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 #  Portions Copyright (c) 1997,1998           Edmund Mergl
@@ -12,7 +12,7 @@
 
 require 5.003;
 
-$DBD::Pg::VERSION = '0.89';
+$DBD::Pg::VERSION = '0.90';
 
 {
     package DBD::Pg;

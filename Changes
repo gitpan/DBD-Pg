@@ -1,5 +1,10 @@
 Revision history for Perl extension DBD-Pg.
 
+0.90 Jan 15, 1998
+	- discard parameter authtype from connect string
+	- remove work-around for bug in the large object 
+	  interface of postgresql 
+
 0.89 Nov 05, 1998
 	- bug-fix from Jan Iven <j.iven@rz.uni-sb.de>:
 	  fix problem with quoting Null in bind variables.

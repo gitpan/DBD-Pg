@@ -1,5 +1,5 @@
 /*
-   $Id: dbdimp.c,v 1.27 1998/10/27 19:56:35 mergl Exp $
+   $Id: dbdimp.c,v 1.28 1999/01/16 05:56:32 mergl Exp $
 
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
    Portions Copyright (c) 1997,1998           Edmund Mergl
@@ -138,9 +138,9 @@ dbd_db_login(dbh, imp_dbh, dbname, uid, pwd)
 
     /* build connect string */
     /* DBD-Pg syntax: 'dbname=dbname;host=host;port=port' */
-    /* pgsql  syntax: 'dbname=dbname host=host port=port user=uid authtype=password password=pwd' */
+    /* pgsql  syntax: 'dbname=dbname host=host port=port user=uid password=pwd' */
 
-    conn_str = (char *)malloc(strlen(dbname) + strlen(uid) + strlen(pwd) + 34 + 1);
+    conn_str = (char *)malloc(strlen(dbname) + strlen(uid) + strlen(pwd) + 16 + 1);
     if (! conn_str) {
         return 0;
     }
@@ -162,7 +162,7 @@ dbd_db_login(dbh, imp_dbh, dbname, uid, pwd)
         strcat(conn_str, uid);
     }
     if (strlen(uid) && strlen(pwd)) {
-        strcat(conn_str, " authtype=password password=");
+        strcat(conn_str, " password=");
         strcat(conn_str, pwd);
     }
 
@@ -996,9 +996,6 @@ dbd_st_blob_read (sth, imp_sth, lobjId, offset, len, destrv, destoffset)
     if (! destoffset) {
         sv_setpvn(bufsv, "", 0);
     }
-
-    /* Hmmm, this is a TPF, don't know what happens here without reset */
-    PQreset(imp_dbh->conn);
 
 #ifdef NEVER
     /* execute begin */

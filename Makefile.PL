@@ -1,5 +1,5 @@
 
-# $Id: Makefile.PL,v 1.18 1998/10/27 19:56:35 mergl Exp $
+# $Id: Makefile.PL,v 1.19 1999/01/16 05:56:31 mergl Exp $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -9,6 +9,7 @@ use DBI::DBD;
 
 print "\nConfiguring Pg\n";
 print "Remember to actually read the README file !\n";
+print "For postgresql-v6.4 you need to apply a patch !\n";
 die "\nYou didn't read the README file !\n" unless ($] >= 5.002);
 
 if (! $ENV{POSTGRES_HOME}) {
@@ -24,7 +25,7 @@ if (! $ENV{POSTGRES_HOME}) {
 if (-d "$ENV{POSTGRES_HOME}/lib") {
     print "Found PostgreSQL in $ENV{POSTGRES_HOME}\n";
 } else {
-    die "Unable to find PostgreSQL\n";
+    die "Unable to find PostgreSQL\nplease set environment variable POSTGRES_HOME\n";
 }
 
 
