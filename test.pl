@@ -2,7 +2,7 @@
 
 #---------------------------------------------------------
 #
-# $Id: test.pl,v 1.2 1997/08/09 16:01:16 mergl Exp $
+# $Id: test.pl,v 1.3 1997/08/12 02:43:40 mergl Exp $
 #
 # Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 # Portions Copyright (c) 1997                Edmund Mergl
@@ -132,12 +132,12 @@ $dbpass = '';
     and print "ok 13\n"
     or exit;
 
-$oid_status = $sth->{'OID_STATUS'};
+$oid_status = $sth->{'pg_oid_status'};
 ( $oid_status ne '' )
     and print "ok 14\n"
     or print "not ok 14\n";
 
-$cmd_status = $sth->{'CMD_STATUS'};
+$cmd_status = $sth->{'pg_cmd_status'};
 ( $cmd_status =~ /^INSERT/ )
     and print "ok 15\n"
     or print "not ok 15\n";

@@ -1,6 +1,6 @@
 /*---------------------------------------------------------
  *
- * $Id: dbdimp.c,v 1.2 1997/08/09 16:01:14 mergl Exp $
+ * $Id: dbdimp.c,v 1.3 1997/08/12 02:43:39 mergl Exp $
  *
  * Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
  * Portions Copyright (c) 1997                Edmund Mergl
@@ -573,9 +573,9 @@ dbd_st_FETCH(sth, keysv)
 	for (i = 0; i < DBIc_NUM_FIELDS(imp_sth); i++) {
 	    av_store(av, i, newSViv(PQfsize(imp_sth->result, i)));
         }
-    } else if (kl==10 && strEQ(key, "OID_STATUS")) {
+    } else if (kl==13 && strEQ(key, "pg_oid_status")) {
         retsv = newSVpv((char *)PQoidStatus(imp_sth->result), 0);
-    } else if (kl==10 && strEQ(key, "CMD_STATUS")) {
+    } else if (kl==13 && strEQ(key, "pg_cmd_status")) {
         retsv = newSVpv((char *)PQcmdStatus(imp_sth->result), 0);
     } else {
 	return Nullsv;

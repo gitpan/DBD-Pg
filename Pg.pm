@@ -1,6 +1,6 @@
 #---------------------------------------------------------
 #
-# $Id: Pg.pm,v 1.2 1997/08/09 16:01:12 mergl Exp $
+# $Id: Pg.pm,v 1.3 1997/08/12 02:43:38 mergl Exp $
 #
 #  Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 #  Portions Copyright (c) 1997                Edmund Mergl
@@ -250,8 +250,8 @@ discover what the returned column names, types, sizes are:
 
 There is also support for two PostgreSQL-specific attributes: 
 
-	$oid_status = $sth->{'OID_STATUS'};	# oid of last insert
-	$cmd_status = $sth->{'CMD_STATUS'};	# type of last command
+	$oid_status = $sth->{'pg_oid_status'};	# oid of last insert
+	$cmd_status = $sth->{'pg_cmd_status'};	# type of last command
 
 
 =head1 TRANSACTIONS
