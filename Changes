@@ -1,10 +1,25 @@
 Revision history for Perl extension DBD-Pg.
 
-0.1   Feb 15, 1997
-	- creation, ( totally pre-alpha ! )
+0.5   August 05, 1997
+	- support for user authentication
+	- support for bind_columns
+	- added $dbh->tables
+
+0.4   Jun 24, 1997
+        - adapted to DBI-0.84:
+          o new syntax for DBI->connect !
+          o execute returns 0E0 -> n for     SELECT stmt
+                                  -1 for non SELECT stmt
+                                  -2 on error
+        - new attribute $sth->{'OID_STATUS'}
+        - new attribute $sth->{'CMD_STATUS'}
+
+0.3   Apr 24, 1997
+        - bug fix release, ( still alpha ! )
 
 0.2   Mar 13, 1997
 	- complete rewrite, ( still alpha ! )
 
-0.3   Apr 24, 1997
-        - bug fix release, ( still alpha ! )
+0.1   Feb 15, 1997
+	- creation, ( totally pre-alpha ! )
+

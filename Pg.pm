@@ -1,14 +1,13 @@
-#-------------------------------------------------------
+#---------------------------------------------------------
 #
-# $Id: Pg.pm,v 1.5 1997/04/24 20:26:54 mergl Exp $
+# $Id: Pg.pm,v 1.2 1997/08/09 16:01:12 mergl Exp $
 #
-#   Portions Copyright (c) 1994,1995,1996  Tim Bunce
-#   Portions Copyright (c) 1997            Edmund Mergl
+#  Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
+#  Portions Copyright (c) 1997                Edmund Mergl
 #
-#-------------------------------------------------------
+#---------------------------------------------------------
 
-require 5.003;
-
+require 5.002;
 
 {
     package DBD::Pg;
@@ -17,15 +16,15 @@ require 5.003;
     use DynaLoader ();
     @ISA = qw(DynaLoader);
 
-    $VERSION = '0.2';
+    $VERSION = '0.50';
 
-    require_version DBI 0.78;
+    require_version DBI 0.85;
 
     bootstrap DBD::Pg $VERSION;
 
-    $drh = undef;	# holds driver handle once initialised
     $err = 0;		# holds error code   for DBI::err
-    $errstr = "";	# holds error string for DBI::errstr
+    $errstr = "";	# holds error string for DBI::errst
+    $drh = undef;	# holds driver handle once initialised
 
     sub driver{
 	return $drh if $drh;
@@ -41,7 +40,8 @@ require 5.003;
 	    'Err'    => \$DBD::Pg::err,
 	    'Errstr' => \$DBD::Pg::errstr,
 	    'Attribution' => 'PostgreSQL DBD by Edmund Mergl',
-	    });
+	});
+
 	$drh;
     }
 
@@ -50,11 +50,10 @@ require 5.003;
 
 
 {   package DBD::Pg::dr; # ====== DRIVER ======
-    $imp_data_size = 0;
     use strict;
 
     sub errstr {
-	DBD::Pg::errstr(@_);
+	return $DBD::Pg::errstr;
     }
 
     sub connect {
@@ -64,9 +63,8 @@ require 5.003;
 
 	my $this = DBI::_new_dbh($drh, {
 	    'Name' => $dbname,
-	    'USER' => $user, 'CURRENT_USER' => $user,
-	    });
-
+	    'User' => $user,
+	});
 
         # Connect to the database..
 	DBD::Pg::db::_login($this, $dbname, $user, $auth)
@@ -79,48 +77,58 @@ require 5.003;
 
 
 {   package DBD::Pg::db; # ====== DATABASE ======
-    $imp_data_size = 0;
     use strict;
 
     sub errstr {
-	DBD::Pg::errstr(@_);
+	return $DBD::Pg::errstr;
     }
 
     sub do {
-        my($dbh, $statement, $attribs, @params) = @_;
+        my($dbh, $statement, @attribs) = @_;
 
-        Carp::carp "\$dbh->do() attribs unused\n" if $attribs;
-	Carp::carp "\$dbh->do() params unused\n" if @params;
-
-        DBD::Pg::db::_do($dbh, $statement);
+        DBD::Pg::db::_do($dbh, $statement, @attribs);
     }
 
     sub prepare {
-	my($dbh, $statement, $attribs)= @_;
-
-        Carp::carp "\$sth->prepare() attribs unused\n" if $attribs;
+	my($dbh, $statement, @attribs)= @_;
 
 	# create a 'blank' sth
 
 	my $sth = DBI::_new_sth($dbh, {
 	    'Statement' => $statement,
-	    });
+	});
 
-	DBD::Pg::st::_prepare($sth, $statement)
+	DBD::Pg::st::_prepare($sth, $statement, @attribs)
 	    or return undef;
 
 	$sth;
     }
+
+    sub tables {
+	my($dbh) = @_;
+	my $sth = $dbh->prepare("
+            select usename, relname, relkind, relhasrules 
+	    from pg_class, pg_user 
+	    where ( relkind = 'r' or relkind = 'i' or relkind = 'S' ) 
+	    and relname !~ '^pg_' 
+	    and relname !~ '^xin[vx][0-9]+' 
+	    and usesysid = relowner 
+	    ORDER BY relname 
+        ");
+	$sth->execute or return undef;
+	$sth;
+    }
+
 }
 
 
 {   package DBD::Pg::st; # ====== STATEMENT ======
-    $imp_data_size = 0;
     use strict;
 
     sub errstr {
-	DBD::Pg::errstr(@_);
+	return $DBD::Pg::errstr;
     }
+
 }
 
 1;
@@ -130,42 +138,37 @@ __END__
 
 =head1 NAME
 
-DBD-Pg - Access to PostgreSQL Databases
+DBD::Pg - PostgreSQL database driver for the DBI module
 
 
 =head1 SYNOPSIS
 
-  use DBD::Pg;
+  use DBI;
+
+  $dbh = DBI->connect("dbi:Pg:$dbname", $user, $passwd);
+
+  # See the DBI module documentation for full details
 
 
 =head1 DESCRIPTION
 
-DBD::Pg is an extension to Perl which allows access to PostgreSQL
-databases. It is built on top of the standard DBI extension and 
-implements some of the methods that DBI defines.
+DBD::Pg is a Perl module which works with the DBI module to provide
+access to PostgreSQL databases.
 
 
-=head2 LOADING THE MODULE
+=head1 CONNECTING TO POSTGRESQL
 
-As for any DBI driver you need to load the DBI module:
+To connect to a database you can say:
 
-	use DBI;
+	$dbh = DBI->connect('dbi:Pg:DB', 'username', 'password');
 
-
-=head2 CONNECTING TO A DATABASE
-
-To connect to a database, you can specify:
-
-	$dbh = $drh->connect($database, '', '', 'Pg');
-
-The first parameter specifies the database. The second 
-and third parameter (username and password) are not 
-supported by PostgreSQL. The last parameter specifies 
-the driver to be used. This returns a database handle 
-which can be used for subsequent database interactions.
+The first parameter specifies the driver and the database. 
+The second and third parameter specify the username and 
+password. This returns a database handle which can be used 
+for subsequent database interactions.
 
 
-=head2 SIMPLE STATEMENTS
+=head1 SIMPLE STATEMENTS
 
 Given a database connection, you can execute an arbitrary 
 statement using: 
@@ -175,7 +178,7 @@ statement using:
 The statement must not be a SELECT statement (except SELECT...INTO TABLE).
 
 
-=head2 PREPARING AND EXECUTING STATEMENTS
+=head1 PREPARING AND EXECUTING STATEMENTS
 
 You can prepare a statement for multiple uses, and you can do this for
 SELECT statements which return data as well as for statements which return 
@@ -188,17 +191,19 @@ Once the statement is prepared, you can execute it:
 	$numrows = $sth->execute;
 
 For statements which return data, $numrows is the number 
-of selected rows. You can also discover what the returned 
-column names, types, sizes are:
-
-	@name = @{$sth->{'NAME'}};	# Column names
-	@type = @{$sth->{'TYPE'}};	# Data types
-	@size = @{$sth->{'SIZE'}};	# Numeric size
-
-If the statement returns data, you can retrieve the values in the 
+of selected rows. You can retrieve the values in the 
 following way:
 
-	while (@row = $sth->fetchrow) {
+	while ($ary_ref = $sth->fetch) {
+
+	}
+
+Another possibility is to bind the fields of a select statement to 
+perl variables. Whenever a row is fetched from the database the 
+corresponding perl variables will be automatically updated: 
+
+	$sth->bind_columns(undef, @list_of_refs_to_vars_to_bind);
+	while ($sth->fetch) {
 
 	}
 
@@ -213,8 +218,7 @@ This is done when you destroy (undef) the statement handle:
 	undef $sth;
 
 
-
-=head2 DISCONNECTING FROM A DATABASE
+=head1 DISCONNECTING FROM A DATABASE
 
 You can disconnect from the database:
 
@@ -224,7 +228,33 @@ Note that this does not destroy the database handle. You
 need to do an explicit 'undef $dbh' to destroy the handle. 
 
 
-=head2 TRANSACTIONS
+=head1 DYNAMIC ATTRIBUTES
+
+The following attributes are supported:
+
+	$DBI::err	# error status
+
+	$DBI::errstr	# error message
+
+	$DBI::rows	# row count
+
+
+=head1 STATEMENT HANDLE ATTRIBUTES
+
+For statement handles of a select statement you can 
+discover what the returned column names, types, sizes are:
+
+	@name = @{$sth->{'NAME'}};	# Column names
+	@type = @{$sth->{'TYPE'}};	# Data types
+	@size = @{$sth->{'SIZE'}};	# Numeric size
+
+There is also support for two PostgreSQL-specific attributes: 
+
+	$oid_status = $sth->{'OID_STATUS'};	# oid of last insert
+	$cmd_status = $sth->{'CMD_STATUS'};	# type of last command
+
+
+=head1 TRANSACTIONS
 
 PostgreSQL supports simple transactions. They can not be named 
 and they can not be nested ! You start a transaction with: 
@@ -242,40 +272,52 @@ Note that the following functions can also be used:
 	$dbh->commit;
 
 
-=head2 CURSORS
+=head1 BLOBS
 
-Although PostgreSQL has a cursor concept, it has not 
-been used in the current implementation. Cursors in 
-PostgreSQL can only be used inside a transaction block. 
-Because transactions in PostgreSQL can not be nested, 
-this would have implied the restriction, not to use 
-any nested SELECT statements. 
-
-
-=head2 DYANMIC ATTRIBUTES
-
-The following attributes are supported:
-
-	$DBI::err	# error message
-
-	$DBI::errstr	# error code
-
-	$DBI::rows	# row count
+Blobs are not fully supported. The only way is 
+to use the two registered built-in functions 
+lo_import() and lo_export(). See the large_objects 
+man page for further information. 
 
 
 =head1 KNOWN RESTRICTIONS
 
 =item *
-disconnect_all is not supported.
+PostgreSQL does not has the concept of preparing 
+a statement. Here the prepare method just stores 
+the statement. 
 
 =item *
-$DBI::state is not supported
+Currently PostgreSQL does not return the number of 
+affected rows for non-select statements. 
 
 =item *
-Some driver attributes cannot be queried.
+Transactions can not be named and not be nested. 
 
 =item *
-Blobs are not supported.
+Although PostgreSQL has a cursor concept, it has not 
+been used in the current implementation. Cursors in 
+PostgreSQL can only be used inside a transaction block. 
+Because transactions in PostgreSQL can not be nested, 
+this would have implied the restriction, not to use 
+any nested SELECT statements. Hence the execute method 
+fetches all data at once into data structures located 
+in the frontend application. This has to be considered 
+when selecting large amounts of data ! 
+
+=item *
+$DBI::state is not supported.
+
+=item *
+$sth->bind_param() is not supported.
+
+=item *
+Some statement handle attributes are not supported.
+
+
+=head1 SEE ALSO
+
+L<DBI>
 
 
 =head1 AUTHORS
@@ -289,8 +331,14 @@ DBD-Pg by Edmund Mergl (E.Mergl@bawue.de)
  Major parts of this package have been copied from DBD-Oracle.
 
 
-=head1 SEE ALSO
+=head1 COPYRIGHT
 
-DBI(1).
+The DBD::Pg module is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
+
+=head1 ACKNOWLEDGEMENTS
+
+See also L<DBI/ACKNOWLEDGEMENTS>.
 
 =cut

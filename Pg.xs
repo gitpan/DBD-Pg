@@ -1,11 +1,11 @@
-/*-------------------------------------------------------
+/*---------------------------------------------------------
  *
- * $Id: Pg.xs,v 1.4 1997/04/24 20:26:54 mergl Exp $
+ * $Id: Pg.xs,v 1.2 1997/08/09 16:01:13 mergl Exp $
  *
- *  Portions Copyright (c) 1994,1995,1996  Tim Bunce
- *  Portions Copyright (c) 1997            Edmund Mergl
+ * Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
+ * Portions Copyright (c) 1997                Edmund Mergl
  *
- *-------------------------------------------------------
+ *---------------------------------------------------------
  */
 
 
@@ -14,32 +14,26 @@
 
 /* --- Variables --- */
 
+
 DBISTATE_DECLARE;
 
 
 MODULE = DBD::Pg    PACKAGE = DBD::Pg
 
+REQUIRE:    1.929
 PROTOTYPES: DISABLE
 
 BOOT:
     items = 0;	/* avoid 'unused variable' warning */
     DBISTATE_INIT;
+    /* XXX this interface will change: */
+    DBI_IMP_SIZE("DBD::Pg::dr::imp_data_size", sizeof(imp_drh_t));
+    DBI_IMP_SIZE("DBD::Pg::db::imp_data_size", sizeof(imp_dbh_t));
+    DBI_IMP_SIZE("DBD::Pg::st::imp_data_size", sizeof(imp_sth_t));
     dbd_init(DBIS);
 
 
-void
-errstr(h)
-    SV *	h
-    CODE:
-    /* called from DBI::var TIESCALAR code for $DBI::errstr     */
-    D_imp_xxh(h);
-    ST(0) = sv_mortalcopy(DBIc_ERRSTR(imp_xxh));
-
-
 MODULE = DBD::Pg    PACKAGE = DBD::Pg::dr
-
-PROTOTYPES: DISABLE
-
 
 void
 disconnect_all(drh)
@@ -63,8 +57,6 @@ disconnect_all(drh)
 
 MODULE = DBD::Pg    PACKAGE = DBD::Pg::db
 
-PROTOTYPES: DISABLE
-
 void
 _login(dbh, dbname, uid, pwd)
     SV *	dbh
@@ -76,13 +68,12 @@ _login(dbh, dbname, uid, pwd)
 
 
 int
-_do(dbh, statement, attribs="", params=Nullsv)
+_do(dbh, statement, attribs=Nullsv)
     SV *        dbh
     char *      statement
-    char *      attribs
-    SV *        params
+    SV *	attribs
     CODE:
-        RETVAL = dbd_db_do(dbh, statement, attribs, params);
+        RETVAL = dbd_db_do(dbh, statement, attribs);
     OUTPUT:
         RETVAL
 
@@ -108,8 +99,9 @@ STORE(dbh, keysv, valuesv)
     CODE:
     ST(0) = &sv_yes;
     if (!dbd_db_STORE(dbh, keysv, valuesv))
-	if (!DBIS->set_attr(dbh, keysv, valuesv))
-	    ST(0) = &sv_no;
+        if (!DBIS->set_attr(dbh, keysv, valuesv))
+            ST(0) = &sv_no;
+
 
 void
 FETCH(dbh, keysv)
@@ -118,8 +110,8 @@ FETCH(dbh, keysv)
     CODE:
     SV *valuesv = dbd_db_FETCH(dbh, keysv);
     if (!valuesv)
-	valuesv = DBIS->get_attr(dbh, keysv);
-    ST(0) = valuesv;	/* dbd_db_FETCH did sv_2mortal	*/
+        valuesv = DBIS->get_attr(dbh, keysv);
+    ST(0) = valuesv;    /* dbd_db_FETCH did sv_2mortal   */
 
 
 void
@@ -131,7 +123,7 @@ disconnect(dbh)
 	XSRETURN_YES;
     }
     /* Check for disconnect() being called whilst refs to cursors	*/
-    /* still exists. This needs some more thought.			*/
+    /* still exists. This possibly needs some more thought.		*/
     if (DBIc_ACTIVE_KIDS(imp_dbh) && DBIc_WARN(imp_dbh) && !dirty) {
 	warn("disconnect(%s) invalidates %d active cursor(s)",
 	    SvPV(dbh,na), (int)DBIc_ACTIVE_KIDS(imp_dbh));
@@ -152,8 +144,24 @@ DESTROY(dbh)
     }
     else {
 	if (DBIc_ACTIVE(imp_dbh)) {
-	    if (DBIc_WARN(imp_dbh) && !dirty)
+	    static int auto_rollback = -1;
+	    if (DBIc_WARN(imp_dbh) && (!dirty || dbis->debug >= 3))
 		 warn("Database handle destroyed without explicit disconnect");
+	    /* The application has not explicitly disconnected. That's bad.	*/
+	    /* To ensure integrity we *must* issue a rollback. This will be	*/
+	    /* harmless	if the application has issued a commit. If it hasn't	*/
+	    /* then it'll ensure integrity. Consider a Ctrl-C killing perl	*/
+	    /* between two statements that must be executed as a transaction.	*/
+	    /* Perl will call DESTROY on the dbh and, if we don't rollback,	*/
+	    /* the server will automatically commit! Bham! Corrupt database!	*/ 
+	    if (auto_rollback == -1) {		/* need to determine behaviour	*/
+		/* DBD_ORACLE_AUTO_ROLLBACK is offered as a _temporary_ sop to	*/
+		/* those who can't fix their code in a short timescale.		*/
+		char *p = getenv("DBD_ORACLE_AUTO_ROLLBACK");
+		auto_rollback = (p) ? atoi(p) : 1;
+	    }
+	    if (auto_rollback)
+		dbd_db_rollback(dbh);	/* ROLLBACK! */
 	    dbd_db_disconnect(dbh);
 	}
 	dbd_db_destroy(dbh);
@@ -161,8 +169,6 @@ DESTROY(dbh)
 
 
 MODULE = DBD::Pg    PACKAGE = DBD::Pg::st
-
-PROTOTYPES: DISABLE
 
 void
 _prepare(sth, statement, attribs=Nullsv)
@@ -188,11 +194,8 @@ bind_param(sth, param, value, attribs=Nullsv)
     SV *	value
     SV *	attribs
     CODE:
-    croak("DBD::Pg::bind_param is not implemented\n");
-    /*
     DBD_ATTRIBS_CHECK("bind_param", sth, attribs);
     ST(0) = dbd_bind_ph(sth, param, value, attribs, FALSE, 0) ? &sv_yes : &sv_no;
-    */
 
 
 void
@@ -203,32 +206,48 @@ bind_param_inout(sth, param, value_ref, maxlen, attribs=Nullsv)
     IV 		maxlen
     SV *	attribs
     CODE:
-    croak("DBD::Pg::bind_param is not implemented\n");
-    /*
     DBD_ATTRIBS_CHECK("bind_param_inout", sth, attribs);
-	if (!SvROK(value_ref))
-		croak("bind_param_inout needs a reference to the value");
+    if (!SvROK(value_ref) || SvTYPE(SvRV(value_ref)) > SVt_PVMG)
+	croak("bind_param_inout needs a reference to a scalar value");
+    if (SvREADONLY(SvRV(value_ref)))
+	croak(no_modify);
     ST(0) = dbd_bind_ph(sth, param, SvRV(value_ref), attribs, TRUE, maxlen) ? &sv_yes : &sv_no;
-    */
 
 
 void
-execute(sth)
+execute(sth, ...)
     SV *	sth
     CODE:
     D_imp_sth(sth);
     int retval;
-    SV** svp;
-    char* statement;
-    svp = hv_fetch((HV *)SvRV(sth), "Statement", 9, FALSE);
-    statement = SvPV(*svp, na);
-    retval = dbd_st_execute(sth, statement);
-    if (retval < 0)
-	XST_mUNDEF(0);		/* error        		*/
-    else if (retval == 0)
-	XST_mPV(0, "0E0");	/* true but zero		*/
+
+    if (items > 1) {
+	/* Handle binding supplied values to placeholders	*/
+	int i, error = 0;
+        SV *idx;
+	if (items-1 != DBIc_NUM_PARAMS(imp_sth)) {
+	    croak("execute called with %ld bind variables, %d needed",
+		    items-1, DBIc_NUM_PARAMS(imp_sth));
+	    XSRETURN_UNDEF;
+	}
+        idx = sv_2mortal(newSViv(0));
+	for(i=1; i < items ; ++i) {
+	    sv_setiv(idx, i);
+	    if (!dbd_bind_ph(sth, idx, ST(i), Nullsv, FALSE, 0))
+		++error;
+	}
+	if (error) {
+	    XSRETURN_UNDEF;	/* dbd_bind_ph already registered error	*/
+	}
+    }
+    retval = dbd_st_execute(sth);
+    /* remember that dbd_st_execute must return <= -2 for error	*/
+    if (retval == 0)		/* ok with no rows affected	*/
+	XST_mPV(0, "0E0");	/* (true but zero)		*/
+    else if (retval < -1)	/* -1 == unknown number of rows	*/
+	XST_mUNDEF(0);		/* <= -2 means error   		*/
     else
-	XST_mIV(0, retval);	/* typically 1 or rowcount	*/
+	XST_mIV(0, retval);	/* typically 1, rowcount or -1	*/
 
 
 void

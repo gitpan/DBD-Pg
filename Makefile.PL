@@ -1,40 +1,39 @@
-#-------------------------------------------------------
+#---------------------------------------------------------
 #
-# $Id: Makefile.PL,v 1.3 1997/04/06 08:41:15 mergl Exp $
+# $Id: Makefile.PL,v 1.2 1997/08/09 16:01:11 mergl Exp $
 #
-#  Portions Copyright (c) 1994,1995,1996  Tim Bunce
-#  Portions Copyright (c) 1997            Edmund Mergl
+# Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
+# Portions Copyright (c) 1997                Edmund Mergl
 #
-#-------------------------------------------------------
+#---------------------------------------------------------
 
 use ExtUtils::MakeMaker;
 use Config;
+use strict;
 
-print "\nConfiguring DBD-Pg\n";
-print "Remember to actually read the README file !\n";
-die "\nYou didn't read the README file !\n" unless ($] >= 5.003);
 
-if (! $ENV{POSTGRESHOME}) {
-    warn "\$POSTGRESHOME not defined. Searching for Postgres...\n";
-    foreach(qw(/usr/pgsql /usr/local/pgsql /usr/pgsql-6.0 /usr/local/pgsql-6.0)) {
+if (! $ENV{POSTGRES_HOME}) {
+    print "\$POSTGRES_HOME not defined. Searching for Postgres...\n";
+    foreach(qw(/usr/local/pgsql /usr/pgsql /home/pgsql /opt/pgsql /usr/local/postgres /usr/postgres /home/postgres /opt/postgres)) {
         if (-d "$_/lib") {
-            $ENV{POSTGRESHOME} = $_;
+            $ENV{POSTGRES_HOME} = $_;
             last;
         }
     }
 }
 
-if ($ENV{POSTGRESHOME}) {
-    print "\nFound Postgres in $ENV{POSTGRESHOME}\n";
+if (-d "$ENV{POSTGRES_HOME}/lib") {
+    print "Found Postgres in $ENV{POSTGRES_HOME}\n";
 } else {
-    die "Unable to determine \$POSTGRESHOME !\n";
+    die "Unable to find Postgres !\n";
 }
 
-WriteMakefile(
+
+WriteMakefile (
     'NAME'         => 'DBD::Pg',
     'VERSION_FROM' => 'Pg.pm',
-    'LIBS'	   => ["-L$ENV{POSTGRESHOME}/lib -lpq"],
-    'INC'	   =>  "-I$ENV{POSTGRESHOME}/include -I$Config{archlib}/DBI -I$Config{sitearch}/auto/DBI",
+    'LIBS'	   => ["-L$ENV{POSTGRES_HOME}/lib -lpq"],
+    'INC'	   =>  "-I$ENV{POSTGRES_HOME}/include -I$Config{archlib}/DBI -I$Config{sitearch}/auto/DBI",
     'OBJECT'       => 'Pg$(OBJ_EXT) dbdimp$(OBJ_EXT)',
 );
 
