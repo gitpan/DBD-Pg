@@ -1,6 +1,6 @@
 /*---------------------------------------------------------
  *
- * $Id: dbdimp.c,v 1.17 1998/02/19 20:28:54 mergl Exp $
+ * $Id: dbdimp.c,v 1.19 1998/04/20 20:06:00 mergl Exp $
  *
  * Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
  * Portions Copyright (c) 1997,1998           Edmund Mergl
@@ -42,6 +42,8 @@ dbd_error(h, error_num, error_msg)
 
     sv_setiv(DBIc_ERR(imp_xxh), (IV)error_num);		/* set err early */
     sv_setpv(DBIc_ERRSTR(imp_xxh), (char*)error_msg);
+    DBIh_EVENT2(h, ERROR_event, DBIc_ERR(imp_xxh), DBIc_ERRSTR(imp_xxh));
+    if (dbis->debug >= 2) { fprintf(DBILOGFP, "%s error %d recorded: %s\n", error_msg, error_num, SvPV(DBIc_ERRSTR(imp_xxh),na)); }
 }
 
 
@@ -69,7 +71,6 @@ dbd_db_login(dbh, imp_dbh, dbname, uid, pwd)
     char *conn_str;
     char *src;
     char *dest;
-    int len;
 
     if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_db_login\n"); }
 
@@ -127,7 +128,6 @@ int
 dbd_db_ping(dbh)
     SV *dbh;
 {
-    int id;
     D_imp_dbh(dbh);
 
     if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_db_ping\n"); }
@@ -329,7 +329,6 @@ dbd_db_STORE_attrib(dbh, imp_dbh, keysv, valuesv)
 {
     STRLEN kl;
     char *key = SvPV(keysv,kl);
-    int retval = TRUE;
     int newval = SvTRUE(valuesv);
 
     if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_db_STORE\n"); }
@@ -366,8 +365,9 @@ dbd_db_STORE_attrib(dbh, imp_dbh, keysv, valuesv)
             if (dbis->debug >= 2) { fprintf(DBILOGFP, "dbd_db_STORE: switch AutoCommit to off: begin\n"); }
         }
         imp_dbh->init_auto = 0;
+        return 1;
     } else {
-        retval = FALSE;
+        return 0;
     }
 }
 
@@ -441,9 +441,11 @@ dbd_preparse(imp_sth, statement)
     src  = statement;
     dest = imp_sth->statement;
     while(*src) {
-	if (*src == '\'')
+        if (*src == '\'') {
 	    in_literal = ~in_literal;
-	if ((*src != ':' && *src != '?') || in_literal) {
+        }
+        /* check for placeholders but take care of cast operator */
+	if ((*src != ':' && *src != '?') || (*src == ':' && (*(src-1) == ':' || *(src+1) == ':')) || in_literal) {
 	    *dest++ = *src++;
 	    continue;
 	}
@@ -546,6 +548,7 @@ dbd_st_execute(sth, imp_sth)        /* <= -2:error, >=0:ok row count, (-1=unknow
         statement = (char*)safemalloc(strlen(imp_sth->statement) + imp_sth->all_params_len);
         dest = statement;
         src  = imp_sth->statement;
+        /* scan statement for '?', ':1' and/or ':foo' style placeholders */
         while(*src) {
             if (*src == '\'') {
                 in_literal = ~in_literal;
@@ -576,6 +579,11 @@ dbd_st_execute(sth, imp_sth)        /* <= -2:error, >=0:ok row count, (-1=unknow
     }
 
     if (dbis->debug >= 2) { fprintf(DBILOGFP, "dbd_st_execute: statement = >%s<\n", statement); }
+
+    /* clear old result (if any) */
+    if (imp_sth->result) {
+        PQclear(imp_sth->result);
+    }
 
     /* execute statement */
     imp_sth->result = PQexec(imp_dbh->conn, statement);
@@ -633,7 +641,6 @@ dbd_st_fetch(sth, imp_sth)
     SV *        sth;
     imp_sth_t *imp_sth;
 {
-    D_imp_dbh_from_sth;
     int num_fields;
     int i;
     AV *av;
@@ -679,8 +686,6 @@ dbd_st_finish(sth, imp_sth)
     SV *sth;
     imp_sth_t *imp_sth;
 {
-    D_imp_dbh_from_sth;
-
     if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_st_finish\n"); }
 
     if (DBIc_ACTIVE(imp_sth) && imp_sth->result) {
@@ -701,12 +706,16 @@ dbd_st_destroy(sth, imp_sth)
 {
     if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_st_destroy\n"); }
 
-    /* Free off contents of imp_sth        */
+    /* Free off contents of imp_sth */
 
     Safefree(imp_sth->statement);
     if (imp_sth->is_bool) {
         free(imp_sth->is_bool);
         imp_sth->is_bool = 0;
+    }
+    if (imp_sth->result) {
+        PQclear(imp_sth->result);
+        imp_sth->result = 0;
     }
 
     if (imp_sth->out_params_av)

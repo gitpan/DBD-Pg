@@ -1,5 +1,21 @@
 Revision history for Perl extension DBD-Pg.
 
+0.72 April 20, 1998
+	- applied patch from Michael J Schout <mschout@gkg.net>
+	  which fixed the bug with queries containing the cast
+          operator.
+	- applied patch from "Irving Reid" <irving@tor.securecomputing.com>
+	  which fixed a memory leak.
+
+0.71 April 04, 1998
+	- applied patch from "Irving Reid" 
+	  <irving@tor.securecomputing.com> which fixed the
+	  the problem with the InactiveDestroy message.
+
+0.70 March 28, 1998
+        - linking again with the shared version of libpq 
+          due to problems on several operating systems.
+
 0.69 March  6, 1998
 	- expanded the search path for include files
         - module is now linked with static libpq.a

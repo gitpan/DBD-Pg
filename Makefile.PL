@@ -1,6 +1,6 @@
 #---------------------------------------------------------
 #
-# $Id: Makefile.PL,v 1.12 1998/03/06 21:57:11 mergl Exp $
+# $Id: Makefile.PL,v 1.13 1998/03/28 06:26:25 mergl Exp $
 #
 # Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 # Portions Copyright (c) 1997,1998           Edmund Mergl
@@ -39,7 +39,9 @@ my %opts = (
     NAME         => 'DBD::Pg',
     VERSION_FROM => 'Pg.pm',
     INC          => "-I$ENV{POSTGRES_HOME}/include -I/usr/local/include/pgsql -I/usr/include/pgsql -I$Config{archlib}/DBI -I$Config{sitearch}/auto/DBI",
-    OBJECT       => "Pg\$(OBJ_EXT) dbdimp\$(OBJ_EXT) $ENV{POSTGRES_HOME}/lib/libpq.a",
+    OBJECT       => "Pg\$(OBJ_EXT) dbdimp\$(OBJ_EXT)",
+    LIBS         => ["-L$ENV{POSTGRES_HOME}/lib -lpq"],
+
 );
 
 

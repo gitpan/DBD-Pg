@@ -1,6 +1,6 @@
 #---------------------------------------------------------
 #
-# $Id: README,v 1.17 1998/03/06 21:18:35 mergl Exp $
+# $Id: README,v 1.19 1998/04/20 20:06:00 mergl Exp $
 #
 # Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 # Portions Copyright (c) 1997,1998           Edmund Mergl
@@ -12,7 +12,7 @@
 DESCRIPTION:
 ------------
 
-This is version 0.69 of DBD-Pg.
+This is version 0.72 of DBD-Pg.
 DBD-Pg is a PostgreSQL interface for Perl 5 using DBI.
 
 For further information about DBI look at:
@@ -113,9 +113,15 @@ FreeBSD users: if you get during make test the error message:
     optimization. This error message is due to the broken
     optimization in gcc-2.7.2.1.
 
+Sun Users: if you get compile errors like:
+           /usr/include/string.h:57: parse error before `]'
+           then you need to remove from pgsql/include/libpq-fe.h
+           the define for strerror, which clashes with the definition
+           in the standard include file.
+
 
 ---------------------------------------------------------------------------
 
-   Edmund Mergl <E.Mergl@bawue.de>                       March  6, 1998
+   Edmund Mergl <E.Mergl@bawue.de>                       April 20, 1998
 
 ---------------------------------------------------------------------------
