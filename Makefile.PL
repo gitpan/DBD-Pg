@@ -1,5 +1,5 @@
 
-# $Id: Makefile.PL,v 1.22 1999/09/29 20:30:23 mergl Exp $
+# $Id: Makefile.PL,v 1.2 2002/03/06 23:02:51 jwb Exp $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -39,7 +39,7 @@ my %opts = (
     INC          => "-I$POSTGRES_INCLUDE -I$dbi_arch_dir",
     OBJECT       => "Pg\$(OBJ_EXT) dbdimp\$(OBJ_EXT)",
     LIBS         => ["-L$POSTGRES_LIB -lpq"],
-    AUTHOR       => 'Edmund Mergl (E.Mergl@bawue.de)',
+    AUTHOR       => 'Edmund Mergl (E.Mergl@bawue.de) and Jeffrey W. Baker (jwbaker@acm.org)',
     ABSTRACT     => 'PostgreSQL database driver for the DBI module',
 );
 

@@ -1,16 +1,17 @@
 
-#  $Id: Pg.pm,v 1.44 2001/06/27 17:54:58 mergl Exp $
+#  $Id: Pg.pm,v 1.1.1.1 2002/03/06 17:43:06 jwb Exp $
 #
 #  Copyright (c) 1997,1998,1999,2000 Edmund Mergl
+#  Copyright (c) 2002 Jeffrey W. Baker
 #  Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 #
 #  You may distribute under the terms of either the GNU General Public
 #  License or the Artistic License, as specified in the Perl README file.
 
 
-require 5.003;
+require 5.004;
 
-$DBD::Pg::VERSION = '1.01';
+$DBD::Pg::VERSION = '1.10';
 
 {
     package DBD::Pg;
@@ -1159,9 +1160,10 @@ L<DBI>
 DBI and DBD-Oracle by Tim Bunce (Tim.Bunce@ig.co.uk)
 
 =item *
-DBD-Pg by Edmund Mergl (E.Mergl@bawue.de)
+DBD-Pg by Edmund Mergl (E.Mergl@bawue.de) 
+and Jeffrey W. Baker (jwbaker@acm.org)
 
- Major parts of this package have been copied from DBI and DBD-Oracle.
+Major parts of this package have been copied from DBI and DBD-Oracle.
 
 
 =head1 COPYRIGHT

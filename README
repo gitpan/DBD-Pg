@@ -1,11 +1,12 @@
 
 DBD::Pg  --  a PostgreSQL interface for Perl 5.
 
-   $Id: README,v 1.45 2001/06/27 17:54:58 mergl Exp $
+   $Id: README,v 1.1.1.1 2002/03/06 17:43:06 jwb Exp $
 
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
+   Copyright (c) 2002 Jeffrey W. Baker
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
-
+   
    You may distribute under the terms of either the GNU General Public
    License or the Artistic License, as specified in the Perl README file.
 
@@ -13,20 +14,23 @@ DBD::Pg  --  a PostgreSQL interface for Perl 5.
 DESCRIPTION:
 ------------
 
-This is version 1.01 of DBD-Pg.
+This is version 1.10 of DBD-Pg.
 DBD-Pg is a PostgreSQL interface for Perl5 using DBI.
 
 For further information about DBI look at:
 
     http://dbi.symbolstone.org/
 
+For information about PostgreSQL, visit:
+    
+    http://www.postgresql.org/
 
-RECENT CHANGES:
+CHANGES:
 ---------------
 
- - fixed core dump when trying to use a BYTEA value with
-   a byte outside 0..127  Alex Pilosov <alex@pilosoft.com>
-
+Since version 1.01
+ - fix reuse of freed memory after PQfinish
+ - use PerlIO abstraction
 
 COPYRIGHT:
 ----------
@@ -40,12 +44,16 @@ HOW TO GET THE LATEST VERSION:
 
 Use the following URL to look for new versions of this module: 
 
-  http://www.perl.com/CPAN/modules/by-module/DBD/
+    http://www.perl.com/CPAN/modules/by-module/DBD/
 
+More recent or experimental versions might be found at:
+
+    http://www.perl.com/CPAN/authors/Jeffrey_Baker/
+    
 Note, that this request will be redirected automatically to the 
 nearest CPAN site. 
 
-A pre-compiled package for Windows-NT is available at:
+An older pre-compiled package for Windows-NT is available at:
 
   http://www.edmund-mergl.de/export/DBD-Pg.zip
 
@@ -53,21 +61,18 @@ A pre-compiled package for Windows-NT is available at:
 IF YOU HAVE PROBLEMS:
 ---------------------
 
-Please send comments and bug-reports to <dbi-users@fugue.com>>
+Please send comments and bug-reports to <dbi-users@fugue.com>
 
-Please include the output of perl -v,
-                         and perl -V,
-           the version of PostgreSQL,
-           the version of DBD-Pg,
-           and the version of DBI
+Please include the output of perl -v and perl -V, the version of PostgreSQL,
+the version of DBD-Pg, the version of DBI, and details about your platform
 in your bug-report.
 
 
 REQUIREMENTS:
 -------------
 
-  - build, test and install Perl 5         (at least 5.003)
-  - build, test and install the DBI module (at least 1.00)
+  - build, test and install Perl 5         (at least 5.004)
+  - build, test and install the DBI module (at least 1.21)
   - build, test and install PostgreSQL     (at least 6.5)
 
 
@@ -83,7 +88,7 @@ INSTALLATION:
 -------------
 
 The Makefile checks the environment variables POSTGRES_INCLUDE and
-POSTGRES_LIB, to find the library libpq.so and the proper include files. 
+POSTGRES_LIB, to find the library libpq.so and the proper include files.
  
 1.   perl Makefile.PL
 2.   make
@@ -100,14 +105,15 @@ README.
 TESTING:
 --------
 
-Run 'make test'.
-Note, that the user running this script must have been created with
-the access rights to create databases *AND* users ! Do not run this
-script as root !
+The tests are designed to connect to a live database.  The following
+environment variables must be set for the tests to run:
 
-If testing fails with the message 'login failed', please check if access 
-to the database template1 as well as pgperltest is not protected in pg_hba.conf. 
-
+DBDPG_MAINTAINER=1
+DBDPG_TEST_HOST=<hostname>
+DBDPG_TEST_DB=<database>
+DBDPG_TEST_USER=<user>
+DBDPG_TEST_PASS=<password>
+q
 If you are using the shared library libpq.so check if your dynamic loader 
 finds libpq.so. With Linux the command /sbin/ldconfig -v should tell you, 
 where it finds libpq.so. If ldconfig does not find libpq.so, either add an 
@@ -163,6 +169,6 @@ Win32 Users: Running DBD-Pg scripts on Win32 needs some configuration work
 
 ---------------------------------------------------------------------------
 
-   Edmund Mergl <E.Mergl@bawue.de>                          June 27, 2001
+   Jeffrey W. Baker <jwbaker@acm.org>                       6 March 2002   
 
 ---------------------------------------------------------------------------

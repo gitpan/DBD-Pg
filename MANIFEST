@@ -10,4 +10,16 @@ dbd-pg.pod
 dbdimp.c
 dbdimp.h
 eg/ApacheDBI.pl
-test.pl
+t/00basic.t
+t/01connect.t
+t/01setup.t
+t/02prepare.t
+t/03bind.t
+t/04execute.t
+t/05fetch.t
+t/06disconnect.t
+t/07reuse.t
+t/08txn.t
+t/09autocommit.t
+t/10transition.t
+t/99cleanup.t

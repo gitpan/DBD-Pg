@@ -1,5 +1,5 @@
 /*
-   $Id: Pg.xs,v 1.22 2000/07/10 17:47:51 mergl Exp $
+   $Id: Pg.xs,v 1.1.1.1 2002/03/06 17:43:06 jwb Exp $
 
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce

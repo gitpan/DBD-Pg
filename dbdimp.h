@@ -1,5 +1,5 @@
 /*
-   $Id: dbdimp.h,v 1.16 2001/04/09 17:44:18 mergl Exp $
+   $Id: dbdimp.h,v 1.1.1.1 2002/03/06 17:43:06 jwb Exp $
 
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
