@@ -1,0 +1,96 @@
+#-------------------------------------------------------
+#
+# $Id: README,v 1.3 1997/03/13 21:03:07 mergl Exp $
+#
+#  Portions Copyright (c) 1994,1995,1996  Tim Bunce
+#  Portions Copyright (c) 1997            Edmund Mergl
+#
+#-------------------------------------------------------
+
+
+*************************************************
+*						*
+*	WARNING: THIS IS ALPHA SOFTWARE.	*
+*						*
+*************************************************
+
+
+DESCRIPTION:
+------------
+
+This is version 0.1 of DBD-Pg.
+DBD-Pg is a PostgreSQL interface for Perl 5 using DBI.
+
+For further information about DBI look at:
+      http://www.fugue.com/dbi/
+
+
+IF YOU HAVE PROBLEMS:
+---------------------
+
+Please send comments and bug-reports to <E.Mergl@bawue.de>
+
+Please include the output of perl -v,
+                         and perl -V,
+           the version of PostgreSQL,
+           the version of DBD-Pg,
+           and the version of DBI
+in your bug-report.
+
+
+REQUIREMENTS:
+-------------
+
+  - build, test and install Perl 5         (at least 5.003)
+  - build, test and install the DBI module (at least 0.71)
+  - build, test and install PostgreSQL     (at least 6.0)
+
+
+PLATFORMS:
+----------
+
+  This release of DBD-Pg has been developed using Linux 2.0 with 
+  dynamic loading for the perl extensions. Let me know, if there 
+  are any problems with other platforms.
+
+
+INSTALLATION:
+-------------
+
+The Makefile checks the environment variable POSTGRESHOME as well 
+some standard locations, to find the root directory of your Postgres 
+installation.
+ 
+1.   perl Makefile.PL
+2.   make
+3.   make test
+4.   make install
+
+( 1. to 3. as normal user, not as root ! )
+
+
+TESTING:
+--------
+
+Run 'make test'.
+Note, that the user running this script must have been created with
+the access rights to create databases *AND* users ! Do not run this
+script as root !
+
+If you are using the shared library libpq.so, make sure, your dynamic 
+loader is able to find libpq.so. With Linux the command /sbin/ldconfig -v 
+should tell you, where it finds libpq.so. If not, you need to add an 
+appropriate entry to /etc/ld.so.conf or to the environment variable 
+LD_LIBRARY_PATH.
+
+Some linux distributions (eg slackware) have an incomplete perl installation.
+If you have compile errors like "XS_VERSION_BOOTCHECK undeclared", make a
+          'find /usr/lib/perl5 -name XSUB.h -print'
+If this file is not present, you need to recompile and reinstall perl.
+
+
+---------------------------------------------------------------------------
+
+   Edmund Mergl <E.Mergl@bawue.de>                       February 12, 1997
+
+---------------------------------------------------------------------------
