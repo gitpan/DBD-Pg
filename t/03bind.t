@@ -18,7 +18,7 @@ ok(defined $dbh,
 my $sql = <<SQL;
   SELECT id
   , name
-  FROM test
+  FROM dbd_pg_test
   WHERE id = ?
 SQL
 my $sth = $dbh->prepare($sql);
@@ -37,7 +37,7 @@ ok($sth->bind_param(1, 1),
 $sql = <<SQL;
    SELECT id
    , name
-   FROM test
+   FROM dbd_pg_test
    WHERE id = ?
    AND name = ?
 SQL
@@ -71,14 +71,18 @@ ok($sth->finish(),
   $sql = <<SQL;
 	 SELECT id
 	 , name
-	 FROM test
+	 FROM dbd_pg_test
 	 WHERE id = ?
 	 AND name = ?
 SQL
   $sth = $dbh->prepare($sql);
 
   $sth->bind_param(1, 'foo', DBI::SQL_BINARY);
+#rl: TODO: fix this
+ok(1, "FIXME");
 }
+
+$sth->finish();
 
 ok($dbh->disconnect(),
    'disconnect'

@@ -1,163 +1,188 @@
 
-#  $Id: Pg.pm,v 1.24 2003/03/26 15:55:41 bmomjian Exp $
+#  $Id: Pg.pm,v 1.58 2003/09/08 21:39:41 markjugg Exp $
 #
 #  Copyright (c) 1997,1998,1999,2000 Edmund Mergl
 #  Copyright (c) 2002 Jeffrey W. Baker
+#  Copyright (c) 2002,2003 PostgreSQL Global Development Group
 #  Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 #
 #  You may distribute under the terms of either the GNU General Public
 #  License or the Artistic License, as specified in the Perl README file.
 
 
-require 5.004;
+use 5.006001;
 
-$DBD::Pg::VERSION = '1.22';
+$DBD::Pg::VERSION = '1.31_5';
 
 {
-    package DBD::Pg;
+	package DBD::Pg;
 
-    use DBI ();
-    use DynaLoader ();
-    use Exporter ();
-    @ISA = qw(DynaLoader Exporter);
+	use DBI ();
+	use DynaLoader ();
+	use Exporter ();
+	@ISA = qw(DynaLoader Exporter);
 
-    %EXPORT_TAGS = (
+	%EXPORT_TAGS = (
 	pg_types => [ qw(
-           PG_BOOL PG_BYTEA PG_CHAR PG_INT8 PG_INT2 PG_INT4 PG_TEXT PG_OID
-           PG_FLOAT4 PG_FLOAT8 PG_ABSTIME PG_RELTIME PG_TINTERVAL PG_BPCHAR
-           PG_VARCHAR PG_DATE PG_TIME PG_DATETIME PG_TIMESPAN PG_TIMESTAMP
+		PG_BOOL PG_BYTEA PG_CHAR PG_INT8 PG_INT2 PG_INT4 PG_TEXT PG_OID
+		PG_FLOAT4 PG_FLOAT8 PG_ABSTIME PG_RELTIME PG_TINTERVAL PG_BPCHAR
+		PG_VARCHAR PG_DATE PG_TIME PG_DATETIME PG_TIMESPAN PG_TIMESTAMP
 	)]);
 
-    Exporter::export_ok_tags('pg_types');
+	Exporter::export_ok_tags('pg_types');
 
-    require_version DBI 1.00;
+	require_version DBI 1.35;
 
-    bootstrap DBD::Pg $VERSION;
+	bootstrap DBD::Pg $VERSION;
 
-    $err = 0;		# holds error code   for DBI::err
-    $errstr = "";	# holds error string for DBI::errstr
-    $drh = undef;	# holds driver handle once initialized
+	$err = 0;		# holds error code for DBI::err
+	$errstr = "";	# holds error string for DBI::errstr
+	$drh = undef;	# holds driver handle once initialized
 
-    sub driver{
-	return $drh if $drh;
-	my($class, $attr) = @_;
+	sub driver{
+		return $drh if $drh;
+		my($class, $attr) = @_;
 
-	$class .= "::dr";
+		$class .= "::dr";
 
-	# not a 'my' since we use it above to prevent multiple drivers
+		# not a 'my' since we use it above to prevent multiple drivers
 
-	$drh = DBI::_new_drh($class, {
-	    'Name' => 'Pg',
-	    'Version' => $VERSION,
-	    'Err'    => \$DBD::Pg::err,
-	    'Errstr' => \$DBD::Pg::errstr,
-	    'Attribution' => 'PostgreSQL DBD by Edmund Mergl',
-	});
+		$drh = DBI::_new_drh($class, {
+			'Name' => 'Pg',
+			'Version' => $VERSION,
+			'Err' => \$DBD::Pg::err,
+			'Errstr' => \$DBD::Pg::errstr,
+			'Attribution' => 'PostgreSQL DBD by Edmund Mergl',
+		});
 
-	$drh;
-    }
-
-    ## Used by both the dr and db packages
-    sub pg_server_version {
-		my $dbh = shift;
-		return $dbh->{pg_server_version} if defined $dbh->{pg_server_version};
-        my ($version) = $dbh->selectrow_array("SELECT version();");
-        return 0 unless $version =~ /^PostgreSQL ([\d\.]+)/;
-        $dbh{pg_server_version} = $1;
-        return $dbh{pg_server_version};
+		$drh;
 	}
 
-    sub pg_use_catalog {
-      my $dbh = shift;
-      my $version = DBD::Pg::pg_server_version($dbh);
-		$version =~ /^(\d+\.\d+)/;
-      return $1 < 7.3 ? "" : "pg_catalog.";
-    }
+	## Used by both the dr and db packages
+	sub _pg_server_version {
+		my $dbh = shift;
+		return $dbh->{pg_server_version} if defined $dbh->{pg_server_version};
+		my ($version) = $dbh->selectrow_array("SELECT version();");
+		$dbh->{pg_server_version} = ($version =~ /^PostgreSQL ([\d\.]+)/) ? $1 : 0;
+		return $dbh->{pg_server_version};
+	}
 
-    1;
+	## Is the second version greater than or equal to the first?
+	sub _pg_check_version($$) {
+		## Check each section from left to right
+		my @uno = split (/\./ => $_[0]);
+		my @dos = split (/\./ => $_[1]);
+		for (my $i=0; defined $uno[$i] or defined $dos[$i]; $i++) {
+			$uno[$i] = 0 if ! defined $uno[$i];
+			$dos[$i] = 0 if ! defined $dos[$i];
+			return 2 if $uno[$i] < $dos[$i];
+			return 0 if $uno[$i] > $dos[$i];
+		}
+		return 1; ## versions are equal
+	}
+
+	## Version 7.3 and up uses schemas, so add a "pg_catalog." to system tables
+	sub _pg_use_catalog {
+		my $dbh = shift;
+		return $dbh->{pg_use_catalog} if defined $dbh->{pg_use_catalog};
+		my $version = DBD::Pg::_pg_server_version($dbh);
+		$dbh->{pg_use_catalog} = DBD::Pg::_pg_check_version(7.3, $version) ? "pg_catalog." : "";
+		return $dbh->{pg_use_catalog};
+	}
+
+	1;
 }
 
 
-{   package DBD::Pg::dr; # ====== DRIVER ======
-    use strict;
+{ package DBD::Pg::dr; # ====== DRIVER ======
 
-    sub data_sources {
-        my $drh = shift;
-        my $dbh = DBD::Pg::dr::connect($drh, 'dbname=template1') or return undef;
-        $dbh->{AutoCommit} = 1;
-        my $CATALOG = DBD::Pg::pg_use_catalog($dbh);
-        my $sth = $dbh->prepare("SELECT datname FROM ${CATALOG}pg_database ORDER BY datname");
-        $sth->execute or return undef;
-        my (@sources, @datname);
-        while (@datname = $sth->fetchrow_array) {
-            push @sources, "dbi:Pg:dbname=$datname[0]";
-        }
-        $sth->finish;
-        $dbh->disconnect;
-        return @sources;
+	use strict;
+
+	sub data_sources {
+		my $drh = shift;
+		my $dbh = DBD::Pg::dr::connect($drh, 'dbname=template1') or return undef;
+		$dbh->{AutoCommit} = 1;
+		my $CATALOG = DBD::Pg::_pg_use_catalog($dbh);
+		my $sth = $dbh->prepare("SELECT datname FROM ${CATALOG}pg_database ORDER BY datname");
+		$sth->execute or return undef;
+		my (@sources, @datname);
+		while (@datname = $sth->fetchrow_array) {
+			push @sources, "dbi:Pg:dbname=$datname[0]";
+		}
+		$sth->finish;
+		$dbh->disconnect;
+		return @sources;
+	}
+
+
+	sub connect {
+		my($drh, $dbname, $user, $auth)= @_;
+
+		# create a 'blank' dbh
+
+		my $Name = $dbname;
+    if ($dbname =~ m#dbname\s*=\s*\"([^\"]+)\"# or $dbname =~ m#dbname\s*=\s*([^;]+)#) {
+      $Name = $1;
     }
 
+		$user = "" unless defined($user);
+		$auth = "" unless defined($auth);
 
-    sub connect {
-        my($drh, $dbname, $user, $auth)= @_;
+		$user = $ENV{DBI_USER} if $user eq "";
+		$auth = $ENV{DBI_PASS} if $auth eq "";
 
-        # create a 'blank' dbh
+		$user = "" unless defined($user);
+		$auth = "" unless defined($auth);
 
-        my $Name = $dbname;
-        $Name =~ s/^.*dbname\s*=\s*//;
-        $Name =~ s/\s*;.*$//;
+		my($dbh) = DBI::_new_dbh($drh, {
+			'Name' => $Name,
+			'User' => $user, 'CURRENT_USER' => $user,
+		});
 
-        $user = "" unless defined($user);
-        $auth = "" unless defined($auth);
+		# Connect to the database..
+		DBD::Pg::db::_login($dbh, $dbname, $user, $auth) or return undef;
 
-        $user = $ENV{DBI_USER} if $user eq "";
-        $auth = $ENV{DBI_PASS} if $auth eq "";
-
-        $user = "" unless defined($user);
-        $auth = "" unless defined($auth);
-
-        my($dbh) = DBI::_new_dbh($drh, {
-            'Name' => $Name,
-            'User' => $user, 'CURRENT_USER' => $user,
-        });
-
-        # Connect to the database..
-        DBD::Pg::db::_login($dbh, $dbname, $user, $auth) or return undef;
-
-        $dbh;
-    }
+		$dbh;
+	}
 
 }
 
 
-{   package DBD::Pg::db; # ====== DATABASE ======
-    use strict;
-    use Carp ();
+{ package DBD::Pg::db; # ====== DATABASE ======
 
-    sub prepare {
-        my($dbh, $statement, @attribs)= @_;
+	use strict;
+	use Carp ();
 
-        # create a 'blank' sth
+	sub prepare {
+		my($dbh, $statement, @attribs)= @_;
 
-        my $sth = DBI::_new_sth($dbh, {
-            'Statement' => $statement,
-        });
+		# create a 'blank' sth
 
-        DBD::Pg::st::_prepare($sth, $statement, @attribs) or return undef;
+		my $sth = DBI::_new_sth($dbh, {
+			'Statement' => $statement,
+		});
 
-        $sth;
-    }
+		DBD::Pg::st::_prepare($sth, $statement, @attribs) or return undef;
+
+		$sth;
+	}
 
 
-    sub ping {
-        my($dbh) = @_;
+	sub ping {
+		my($dbh) = @_;
+		local $SIG{__WARN__} = sub { } if $dbh->{PrintError};
+		local $dbh->{RaiseError} = 0 if $dbh->{RaiseError};
+		my $ret = DBD::Pg::db::_ping($dbh);
+		return $ret;
+	}
 
-	local $SIG{__WARN__} = sub { } if $dbh->{PrintError};
-        local $dbh->{RaiseError} = 0 if $dbh->{RaiseError};
-        my $ret = DBD::Pg::db::_ping($dbh);
-
-        return $ret;
-    }
+	sub pg_type_info {
+		my($dbh,$pg_type) = @_;
+		local $SIG{__WARN__} = sub { } if $dbh->{PrintError};
+		local $dbh->{RaiseError} = 0 if $dbh->{RaiseError};
+		my $ret = DBD::Pg::db::_pg_type_info($pg_type);
+		return $ret;
+	}
 
 	# Column expected in statement handle returned.
 	# table_cat, table_schem, table_name, column_name, data_type, type_name,
@@ -171,13 +196,16 @@ $DBD::Pg::VERSION = '1.22';
 		my ($dbh) = shift;
 		my @attrs = @_;
 		# my ($dbh, $catalog, $schema, $table, $column) = @_;
-		my $CATALOG = DBD::Pg::pg_use_catalog($dbh);
+		my $CATALOG = DBD::Pg::_pg_use_catalog($dbh);
+
+		my $version = DBD::Pg::_pg_server_version($dbh);
 
 		my @wh = ();
 		my @flds = qw/catname n.nspname c.relname a.attname/;
 
 		for my $idx (0 .. $#attrs) {
-			next if ($flds[$idx] eq 'catname'); # Skip catalog
+			next if $flds[$idx] eq 'catname'; # Skip catalog
+			next if $flds[$idx] eq 'n.nspname' and ! DBD::Pg::_pg_check_version(7.3, $version);
 			if(defined $attrs[$idx] and length $attrs[$idx]) {
 				# Insure that the value is enclosed in single quotes.
 				$attrs[$idx] =~ s/^'?(\w+)'?$/'$1'/;
@@ -186,7 +214,7 @@ $DBD::Pg::VERSION = '1.22';
 					push( @wh, q{( } . join ( " OR "
 						, map { m/\%/ 
 							? qq{$flds[$idx] ILIKE $_ }
-							: qq{$flds[$idx]    = $_ }
+							: qq{$flds[$idx] = $_ }
 							} (split /,/, $attrs[$idx]) )
 							. q{ )}
 						);
@@ -199,88 +227,196 @@ $DBD::Pg::VERSION = '1.22';
 
 		my $wh = ""; # ();
 		$wh = join( " AND ", '', @wh ) if (@wh);
-		my $version = DBD::Pg::pg_server_version($dbh);
-		my $showschema = $version < 7.3 ? "NULL::text" : "n.nspname";
-		my $schemajoin = $version < 7.3 ? "" : "LEFT JOIN pg_catalog.pg_namespace n ON (n.oid = c.relnamespace)";
-		my $col_info_sql = qq{
+		# my $showschema = DBD::Pg::_pg_check_version(7.3, $version) ? 
+		# 	"n.nspname" : "NULL::text";
+
+		# my $schemajoin = DBD::Pg::_pg_check_version(7.3, $version) ? 
+		# 	"LEFT JOIN pg_catalog.pg_namespace n ON (n.oid = c.relnamespace)" : "";
+
+		# my $pg_description_join  =  DBD::Pg::_pg_check_version(7.2, $version) ?
+		# 	"  LEFT JOIN ${CATALOG}pg_description d  ON (a.attnum = d.objsubid)
+		# 	   LEFT JOIN ${CATALOG}pg_class       dc ON (dc.oid = d.objoid ) "
+		# 	:	
+		# 	"   LEFT JOIN ${CATALOG}pg_description d ON (a.oid = d.objoid )";
+
+		my $col_info_sql;
+
+		if (DBD::Pg::_pg_check_version( 7.3, $version) < 2) {
+			$col_info_sql = qq!
+			SELECT
+					NULL::text AS "TABLE_CAT"
+				, NULL::text AS "TABLE_SCHEM"
+				, c.relname AS "TABLE_NAME"
+				, a.attname AS "COLUMN_NAME"
+				, a.atttypid 	AS "DATA_TYPE"
+				, format_type(a.atttypid, NULL)	as "TYPE_NAME"
+				, a.attlen AS "COLUMN_SIZE"
+				, NULL::text AS "BUFFER_LENGTH"
+				, NULL::text AS "DECIMAL_DIGITS"
+				, NULL::text AS "NUM_PREC_RADIX"
+				, CASE a.attnotnull WHEN 't' THEN 0 ELSE 1 END  AS "NULLABLE"
+				, col_description(a.attrelid, a.attnum) AS "REMARKS"
+				, af.adsrc AS "COLUMN_DEF"
+				, NULL::text AS "SQL_DATA_TYPE"
+				, NULL::text AS "SQL_DATETIME_SUB"
+				, NULL::text AS "CHAR_OCTET_LENGTH"
+				, a.attnum AS "ORDINAL_POSITION"
+				, CASE a.attnotnull WHEN 't' THEN 'NO' ELSE 'YES' END  AS "IS_NULLABLE"
+				, format_type(a.atttypid, a.atttypmod)	as "pg_type"
+				, format_type(a.atttypid, NULL)	as "pg_type_only"
+				, a.atttypmod    AS "pg_atttypmod"
+			FROM
+				pg_type t
+				LEFT JOIN pg_attribute a
+					ON (t.oid = a.atttypid)
+				LEFT JOIN pg_class c
+					ON (a.attrelid = c.oid)
+				LEFT JOIN pg_attrdef af
+					ON (a.attnum = af.adnum AND a.attrelid = af.adrelid)
+			WHERE
+									a.attnum >= 0
+							AND c.relkind IN ('r','v')
+							$wh
+			ORDER BY 2, c.relname, a.attnum
+			!;
+		} else {
+			$col_info_sql = qq!
 			SELECT
 				  NULL::text	AS "TABLE_CAT"
-				, $showschema	AS "TABLE_SCHEM"
+				, n.nspname		AS "TABLE_SCHEM"
 				, c.relname		AS "TABLE_NAME"
 				, a.attname		AS "COLUMN_NAME"
-				, t.typname		AS "DATA_TYPE"
-				, NULL::text	AS "TYPE_NAME"
+				, a.atttypid 	AS "DATA_TYPE"
+				, format_type(a.atttypid, NULL)	as "TYPE_NAME"
 				, a.attlen		AS "COLUMN_SIZE"
 				, NULL::text	AS "BUFFER_LENGTH"
 				, NULL::text	AS "DECIMAL_DIGITS"
 				, NULL::text	AS "NUM_PREC_RADIX"
-				, a.attnotnull	AS "NULLABLE"
-				, NULL::text	AS "REMARKS"
-				, a.atthasdef	AS "COLUMN_DEF"
+				, CASE a.attnotnull WHEN 't' THEN 0 ELSE 1 END AS "NULLABLE"
+				, ${CATALOG}col_description(a.attrelid, a.attnum) AS "REMARKS"
+				, pg_attrdef.adsrc	AS "COLUMN_DEF"
 				, NULL::text	AS "SQL_DATA_TYPE"
 				, NULL::text	AS "SQL_DATETIME_SUB"
 				, NULL::text	AS "CHAR_OCTET_LENGTH"
 				, a.attnum		AS "ORDINAL_POSITION"
-				, a.attnotnull	AS "IS_NULLABLE"
-				, a.atttypmod	as atttypmod
-				, a.attnotnull	as attnotnull
-				, a.atthasdef	as atthasdef
-				, a.attnum		as attnum
+				, CASE a.attnotnull WHEN 't' THEN 'NO' ELSE 'YES' END AS "IS_NULLABLE"
+				, format_type(a.atttypid, a.atttypmod)	as "pg_type"
+				, format_type(a.atttypid, NULL)	as "pg_type_only"
+				, a.atttypmod   AS "pg_atttypmod"
 			FROM 
-				  ${CATALOG}pg_attribute	a
-				, ${CATALOG}pg_type		t
-				, ${CATALOG}pg_class		c
-				$schemajoin
+				  ${CATALOG}pg_type		t
+				, ${CATALOG}pg_class c
+				  LEFT JOIN ${CATALOG}pg_namespace n 
+				  	ON (n.oid = c.relnamespace)
+				, ${CATALOG}pg_attribute	a
+		    		  LEFT JOIN ${CATALOG}pg_attrdef 
+				  	ON (a.attnum = pg_attrdef.adnum 
+						AND a.attrelid = pg_attrdef.adrelid) 
 			WHERE
 					a.attrelid = c.oid
-				AND a.attnum  >= 0
-				AND t.oid      = a.atttypid
-				AND c.relkind  in ('r','v')
+				AND a.attnum >= 0
+				AND t.oid = a.atttypid
+				AND c.relkind IN ('r','v')
 				$wh
-			ORDER BY 2, 3, 4
-		};
+			ORDER BY 2, c.relname, a.attnum
+			!;
 
-		my $sth = $dbh->prepare( $col_info_sql ) or return undef;
-		$sth->execute();
+		}
+
+		my $data = $dbh->selectall_arrayref($col_info_sql) || return undef;
+
+
+		# To turn the data back into a statement handle, we need 
+		# to fetch the data as an array of arrays, and also have a
+		# a matching array of all the column names
+		my %col_map = (qw/
+			TABLE_CAT			  0 
+			TABLE_SCHEM           1 
+			TABLE_NAME            2 
+			COLUMN_NAME           3 
+			DATA_TYPE             4 
+			TYPE_NAME             5 
+			COLUMN_SIZE           6 
+			BUFFER_LENGTH         7 
+			DECIMAL_DIGITS        8 
+			NUM_PREC_RADIX        9 
+			NULLABLE             10
+			REMARKS              11
+			COLUMN_DEF           12
+			SQL_DATA_TYPE        13
+			SQL_DATETIME_SUB     14
+			CHAR_OCTET_LENGTH    15
+			ORDINAL_POSITION     16
+			IS_NULLABLE          17
+			pg_type							 18
+			pg_type_only				 19
+			pg_atttypmod				 20
+			/);
+
+		 my $constraint_query = DBD::Pg::_pg_check_version(7.3, $version)
+			 ? "SELECT consrc FROM pg_catalog.pg_constraint WHERE contype = 'c' AND conname = ?" 
+			 : "SELECT rcsrc FROM pg_relcheck WHERE rcname = ?";
+	     my $constraint_sth = $dbh->prepare($constraint_query); 		 
+
+		for my $row (@$data) {
+			$row->[$col_map{COLUMN_SIZE}]   = _calc_col_size($row->[$col_map{pg_atttypmod}],$row->[$col_map{COLUMN_SIZE}]);
+
+			# Replace the Pg type with the SQL_ type
+			$row->[$col_map{DATA_TYPE}]     = DBD::Pg::db::pg_type_info($dbh,$col_map{DATA_TYPE});
+
+			pop @$row;
+
+			# Add pg_constraint
+			$constraint_sth->execute("$row->[$col_map{TABLE_NAME}]_$row->[$col_map{COLUMN_NAME}]");
+			$col_map{pg_constraint} = 20;
+			($row->[$col_map{pg_constraint}]) = $constraint_sth->fetchrow_array; 
+		}
+
+		# get rid of atttypmod that we no longer need
+		delete $col_map{pg_atttypmod};
+
+		# Since we've processed the data in Perl, we have to jump through a hoop
+		# To turn it back into a statement handle 
+		# 
+		my $sth = _prepare_from_data(
+			'column_info', 
+			$data, 
+		    [ sort { $col_map{$a} <=> $col_map{$b}  } keys %col_map]);
+
 
 		return $sth;
 	}
 
+	sub _prepare_from_data {
+		my ($statement, $data, $names, %attr) = @_;
+		my $sponge = DBI->connect("dbi:Sponge:","","",{ RaiseError => 1 });
+		my $sth = $sponge->prepare($statement, { rows=>$data, NAME=>$names, %attr });
+		return $sth;
+	}
+
+
+
 	sub primary_key_info {
-        my $dbh = shift;
+		my $dbh = shift;
 		my ($catalog, $schema, $table) = @_;
 		my @attrs = @_;
-        my $CATALOG = DBD::Pg::pg_use_catalog($dbh);
+		my $CATALOG = DBD::Pg::_pg_use_catalog($dbh);
 
 		# TABLE_CAT:, TABLE_SCHEM:, TABLE_NAME:, COLUMN_NAME:, KEY_SEQ:
 		# , PK_NAME:
 
-		my @wh = (); my @dat = ();  # Used to hold data for the attributes.
+		my @wh = (); my @dat = (); # Used to hold data for the attributes.
 
-		my $version = DBD::Pg::pg_server_version($dbh);
-		$version =~ /^(\d+)\.(\d)/;
+		my $version = DBD::Pg::_pg_server_version($dbh);
 
-		my @flds = qw/catname u.usename bc.relname/;
-		$flds[1] = 'n.nspname' unless ($1.$2 < 73);
+		my @flds = qw/catname n.nspname bc.relname/;
 
 		for my $idx (0 .. $#attrs) {
-			next if ($flds[$idx] eq 'catname'); # Skip catalog
+			next if $flds[$idx] eq 'catname'; # Skip catalog
+			next if $flds[$idx] eq 'n.nspname' and ! DBD::Pg::_pg_check_version(7.3, $version);
 			if(defined $attrs[$idx] and length $attrs[$idx]) {
-				if ($attrs[$idx] =~ m/[,%_?]/) {
-					# contains a meta character.
-					push( @wh, q{( } . join ( " OR "
-						, map { push(@dat, $_);
-							m/[%_?]/ 
-							? qq{$flds[$idx] iLIKE ? }
-							: qq{$flds[$idx]    = ?  }
-							} (split /,/, $attrs[$idx]) )
-							. q{ )}
-						);
-				}
-				else {
-					push( @dat, $attrs[$idx] );
-					push( @wh, qq{$flds[$idx] = ? } );
-				}
+				push( @dat, $attrs[$idx] );
+				push( @wh, qq{$flds[$idx] = ? } );
 			}
 		}
 
@@ -288,16 +424,20 @@ $DBD::Pg::VERSION = '1.22';
 		$wh = join( " AND ", '', @wh ) if (@wh);
 
 		# Base primary key selection query borrowed from phpPgAdmin.
-		my $showschema = $version < 7.3 ? "NULL::text" : "n.nspname";
-        my $schemajoin = $version < 7.3 ? "" : "LEFT JOIN pg_catalog.pg_namespace n ON (n.oid = bc.relnamespace)";
+		my $showschema = DBD::Pg::_pg_check_version(7.3, $version) ? 
+			"n.nspname" : "NULL::text";
+		my $schemajoin = DBD::Pg::_pg_check_version(7.3, $version) ? 
+			"LEFT JOIN pg_catalog.pg_namespace n ON (n.oid = bc.relnamespace)" : "";
+		my $indexjoin = DBD::Pg::_pg_check_version(7.4, $version) ?
+			"i.indexprs IS NULL" : "i.indproc = '0'::oid";
 		my $pri_key_sql = qq{
 			SELECT
-				NULL::text		AS "TABLE_CAT"
-				, $showschema	AS "TABLE_SCHEM"
-				, bc.relname	AS "TABLE_NAME"
-				, a.attname		AS "COLUMN_NAME"
-				, a.attnum		AS "KEY_SEQ"
-				, ic.relname    AS "PK_NAME"
+				NULL::text    AS "TABLE_CAT"
+				, $showschema AS "TABLE_SCHEM"
+				, bc.relname  AS "TABLE_NAME"
+				, a.attname   AS "COLUMN_NAME"
+				, a.attnum    AS "KEY_SEQ"
+				, ic.relname  AS "PK_NAME"
 			FROM
 				${CATALOG}pg_index i
 				, ${CATALOG}pg_attribute a
@@ -336,19 +476,19 @@ $DBD::Pg::VERSION = '1.22';
 				i.indkey[12] = a.attnum
 			)
 			AND a.attrelid = bc.oid
-			AND i.indproc = '0'::oid
+			AND $indexjoin
 			AND i.indisprimary = 't' 
 			$wh
 			ORDER BY 2, 3, 5
 		};
 
-        my $sth = $dbh->prepare( $pri_key_sql ) or return undef;
-        $sth->execute(@dat);
+		my $sth = $dbh->prepare( $pri_key_sql ) or return undef;
+		$sth->execute(@dat);
 
-        return $sth;
+		return $sth;
 	}
 
-    sub foreign_key_info {
+	sub foreign_key_info {
 	# todo: verify schema work as expected
 	# add code to handle multiple-column keys correctly
 	# return something nicer for pre-7.3?
@@ -360,9 +500,8 @@ $DBD::Pg::VERSION = '1.22';
 		$fk_catalog, $fk_schema, $fk_table) = @_;
 
 	# this query doesn't work for Postgres before 7.3
-	my $version = $dbh->pg_server_version;
-	$version =~ /^(\d+)\.(\d)/;
-	return undef if ($1.$2 < 73);
+	my $version = DBD::Pg::_pg_server_version($dbh);
+	return undef unless DBD::Pg::_pg_check_version(7.3, $version);
 
 	# Used to hold data for the attributes.
 	my @dat = ();
@@ -385,25 +524,25 @@ $DBD::Pg::VERSION = '1.22';
 		WHEN pkcon.confupdtype = 'n' THEN 2
 		WHEN pkcon.confupdtype = 'a' THEN 3
 		WHEN pkcon.confupdtype = 'd' THEN 4
-		END AS UPDATE_RULE,
+	END AS UPDATE_RULE,
 	CASE
 		WHEN pkcon.confdeltype = 'c' THEN 0
 		WHEN pkcon.confdeltype = 'r' THEN 1
 		WHEN pkcon.confdeltype = 'n' THEN 2
 		WHEN pkcon.confdeltype = 'a' THEN 3
 		WHEN pkcon.confdeltype = 'd' THEN 4
-		END AS DELETE_RULE,
+	END AS DELETE_RULE,
 	NULL::text AS FK_NAME,
 	pkcon.conname AS PK_NAME,
 	CASE
 		WHEN pkcon.condeferrable = 'f' THEN 7
 		WHEN pkcon.condeferred = 't' THEN 6
 		WHEN pkcon.condeferred = 'f' THEN 5
-		END AS DEFERRABILITY,
+	END AS DEFERRABILITY,
 	CASE
 		WHEN pkcon.contype = 'p' THEN 'PRIMARY'
 		WHEN pkcon.contype = 'u' THEN 'UNIQUE'
-		END AS UNIQUE_OR_PRIMARY
+	END AS UNIQUE_OR_PRIMARY
 	FROM
 		pg_constraint AS pkcon
 	JOIN
@@ -432,25 +571,25 @@ $DBD::Pg::VERSION = '1.22';
 		WHEN fkcon.confupdtype = 'n' THEN 2
 		WHEN fkcon.confupdtype = 'a' THEN 3
 		WHEN fkcon.confupdtype = 'd' THEN 4
-		END AS UPDATE_RULE,
+	END AS UPDATE_RULE,
 	CASE
 		WHEN fkcon.confdeltype = 'c' THEN 0
 		WHEN fkcon.confdeltype = 'r' THEN 1
 		WHEN fkcon.confdeltype = 'n' THEN 2
 		WHEN fkcon.confdeltype = 'a' THEN 3
 		WHEN fkcon.confdeltype = 'd' THEN 4
-		END AS DELETE_RULE,
+	END AS DELETE_RULE,
 	fkcon.conname AS FK_NAME,
 	pkcon.conname AS PK_NAME,
 	CASE
 		WHEN fkcon.condeferrable = 'f' THEN 7
 		WHEN fkcon.condeferred = 't' THEN 6
 		WHEN fkcon.condeferred = 'f' THEN 5
-		END AS DEFERRABILITY,
+	END AS DEFERRABILITY,
 	CASE
 		WHEN pkcon.contype = 'p' THEN 'PRIMARY'
 		WHEN pkcon.contype = 'u' THEN 'UNIQUE'
-		END AS UNIQUE_OR_PRIMARY
+	END AS UNIQUE_OR_PRIMARY
 	FROM
 		pg_constraint AS fkcon
 	JOIN
@@ -527,8 +666,8 @@ $DBD::Pg::VERSION = '1.22';
 		FROM
 			pg_constraint AS fkcon
 		JOIN
-			pg_constraint AS pkcon ON fkcon.confrelid=pkcon.conrelid AND
-					fkcon.confkey=pkcon.conkey
+			pg_constraint AS pkcon ON 
+				fkcon.confrelid=pkcon.conrelid AND fkcon.confkey=pkcon.conkey
 		JOIN
 			pg_class fkc ON fkc.oid=fkcon.conrelid
 		WHERE
@@ -589,61 +728,64 @@ $DBD::Pg::VERSION = '1.22';
 	$sth->execute(@dat);
 
 	return $sth;
-    }
+	}
 
 
-    sub table_info {         # DBI spec: TABLE_CAT, TABLE_SCHEM, TABLE_NAME, TABLE_TYPE, REMARKS
-        my $dbh = shift;
+	sub table_info {	# DBI spec: TABLE_CAT, TABLE_SCHEM, TABLE_NAME, TABLE_TYPE, REMARKS
+		my $dbh = shift;
 		my ($catalog, $schema, $table, $type) = @_;
 		my @attrs = @_;
 
 		my $tbl_sql = ();
 
-        my $version = DBD::Pg::pg_server_version($dbh);
-        my $CATALOG = DBD::Pg::pg_use_catalog($dbh);
+		my $version = DBD::Pg::_pg_server_version($dbh);
+		my $CATALOG = DBD::Pg::_pg_use_catalog($dbh);
+		my $schemacase = DBD::Pg::_pg_check_version(7.3, $version) ? 
+			"CASE WHEN n.nspname ~ '^pg_' THEN 'SYSTEM TABLE' ELSE 'TABLE' END" : 
+			"CASE WHEN c.relname ~ '^pg_' THEN 'SYSTEM TABLE' ELSE 'TABLE' END";
 
 		if ( # Rules 19a
-			    (defined $catalog and $catalog eq '%')
-			and (defined $schema  and $schema  eq  '')
-			and (defined $table   and $table   eq  '')
+				(defined $catalog and $catalog eq '%')
+			and (defined $schema and $schema eq '')
+			and (defined $table  and $table  eq '')
 			) {
 				$tbl_sql = q{
 					SELECT 
-					   NULL::text    AS "TABLE_CAT"
-					 , NULL::text    AS "TABLE_SCHEM"
-					 , NULL::text    AS "TABLE_NAME"
-					 , NULL::text    AS "TABLE_TYPE"
-					 , NULL::text    AS "REMARKS"
+					   NULL::text AS "TABLE_CAT"
+					 , NULL::text AS "TABLE_SCHEM"
+					 , NULL::text AS "TABLE_NAME"
+					 , NULL::text AS "TABLE_TYPE"
+					 , NULL::text AS "REMARKS"
 					};
 		}
 		elsif (# Rules 19b
-			    (defined $catalog and $catalog eq  '')
-			and (defined $schema  and $schema  eq '%')
-			and (defined $table   and $table   eq  '')
+				(defined $catalog and $catalog eq '')
+			and (defined $schema and $schema eq '%')
+			and (defined $table  and $table  eq '')
 			) {
-				$tbl_sql = ($version < 7.3) ? q{
-					SELECT 
-					   NULL::text    AS "TABLE_CAT"
-					 , NULL::text    AS "TABLE_SCHEM"
-					 , NULL::text    AS "TABLE_NAME"
-					 , NULL::text    AS "TABLE_TYPE"
-					 , NULL::text    AS "REMARKS"
-                    } : q{
-					SELECT 
-					   NULL::text    AS "TABLE_CAT"
-					 , n.nspname     AS "TABLE_SCHEM"
-					 , NULL::text    AS "TABLE_NAME"
-					 , NULL::text    AS "TABLE_TYPE"
-					 , NULL::text    AS "REMARKS"
+				$tbl_sql = DBD::Pg::_pg_check_version(7.3, $version) ? 
+					q{SELECT 
+					   NULL::text AS "TABLE_CAT"
+					 , n.nspname  AS "TABLE_SCHEM"
+					 , NULL::text AS "TABLE_NAME"
+					 , NULL::text AS "TABLE_TYPE"
+					 , NULL::text AS "REMARKS"
 					FROM pg_catalog.pg_namespace n
 					ORDER BY 1
-					};
+					} : 
+					q{SELECT 
+					   NULL::text AS "TABLE_CAT"
+					 , NULL::text AS "TABLE_SCHEM"
+					 , NULL::text AS "TABLE_NAME"
+					 , NULL::text AS "TABLE_TYPE"
+					 , NULL::text AS "REMARKS"
+				};
 		}
 		elsif (# Rules 19c
-			    (defined $catalog and $catalog eq  '')
-			and (defined $schema  and $schema  eq  '')
-			and (defined $table   and $table   eq  '')
-			and (defined $type    and $type    eq  '%')
+				(defined $catalog and $catalog eq '')
+			and (defined $schema and $schema eq '')
+			and (defined $table  and $table  eq '')
+			and (defined $type   and $type   eq '%')
 			) {
 				# From the postgresql 7.2.1 manual 3.5 pg_class
 				#  'r' = ordinary table
@@ -658,72 +800,71 @@ $DBD::Pg::VERSION = '1.22';
 					 , NULL::text    AS "TABLE_SCHEM"
 					 , NULL::text    AS "TABLE_NAME"
 					 , 'table'       AS "TABLE_TYPE"
-					 , 'ordinary table - r'    AS "REMARKS"
-					union
+					 , 'ordinary table - r' AS "REMARKS"
+					UNION
 					SELECT 
 					   NULL::text    AS "TABLE_CAT"
 					 , NULL::text    AS "TABLE_SCHEM"
 					 , NULL::text    AS "TABLE_NAME"
 					 , 'index'       AS "TABLE_TYPE"
-					 , 'index - i'    AS "REMARKS"
-					union
+					 , 'index - i'   AS "REMARKS"
+					UNION
 					SELECT 
-					   NULL::text    AS "TABLE_CAT"
-					 , NULL::text    AS "TABLE_SCHEM"
-					 , NULL::text    AS "TABLE_NAME"
+					   NULL::text     AS "TABLE_CAT"
+					 , NULL::text     AS "TABLE_SCHEM"
+					 , NULL::text     AS "TABLE_NAME"
 					 , 'sequence'     AS "TABLE_TYPE"
-					 , 'sequence - S'    AS "REMARKS"
-					union
+					 , 'sequence - S' AS "REMARKS"
+					UNION
 					SELECT 
-					   NULL::text    AS "TABLE_CAT"
-					 , NULL::text    AS "TABLE_SCHEM"
-					 , NULL::text    AS "TABLE_NAME"
-					 , 'view'       AS "TABLE_TYPE"
-					 , 'view - v'    AS "REMARKS"
-					union
+					   NULL::text     AS "TABLE_CAT"
+					 , NULL::text     AS "TABLE_SCHEM"
+					 , NULL::text     AS "TABLE_NAME"
+					 , 'view'         AS "TABLE_TYPE"
+					 , 'view - v'     AS "REMARKS"
+					UNION
 					SELECT 
-					   NULL::text    AS "TABLE_CAT"
-					 , NULL::text    AS "TABLE_SCHEM"
-					 , NULL::text    AS "TABLE_NAME"
-					 , 'special'       AS "TABLE_TYPE"
-					 , 'special - s'    AS "REMARKS"
-					union
+					   NULL::text     AS "TABLE_CAT"
+					 , NULL::text     AS "TABLE_SCHEM"
+					 , NULL::text     AS "TABLE_NAME"
+					 , 'special'      AS "TABLE_TYPE"
+					 , 'special - s'  AS "REMARKS"
+					UNION
 					SELECT 
-					   NULL::text    AS "TABLE_CAT"
-					 , NULL::text    AS "TABLE_SCHEM"
-					 , NULL::text    AS "TABLE_NAME"
-					 , 'secondary'   AS "TABLE_TYPE"
-					 , 'secondary TOAST table - t'    AS "REMARKS"
+					   NULL::text     AS "TABLE_CAT"
+					 , NULL::text     AS "TABLE_SCHEM"
+					 , NULL::text     AS "TABLE_NAME"
+					 , 'secondary'    AS "TABLE_TYPE"
+					 , 'secondary TOAST table - t' AS "REMARKS"
 				};
 		}
 		else {
-				# Default SQL
-				my $showschema = $version < 7.3 ? "NULL::text" : "n.nspname";
-                my $schemajoin = $version < 7.3 ? "" : "LEFT JOIN pg_catalog.pg_namespace n ON (n.oid = c.relnamespace)";
-				my $schemacase = $version < 7.3 ? "CASE WHEN c.relname ~ '^pg_' THEN 'SYSTEM TABLE' ELSE 'TABLE' END" : 
-					"CASE WHEN n.nspname ~ '^pg_' THEN 'SYSTEM TABLE' ELSE 'TABLE' END";
-				$tbl_sql = qq{
-				SELECT NULL::text    AS "TABLE_CAT"
-					 , $showschema   AS "TABLE_SCHEM"
-					 , c.relname     AS "TABLE_NAME"
+			# Default SQL
+			my $showschema = DBD::Pg::_pg_check_version(7.3, $version) ? "n.nspname" : "NULL::text";
+			my $schemajoin = DBD::Pg::_pg_check_version(7.3, $version) ? 
+				"LEFT JOIN pg_catalog.pg_namespace n ON (n.oid = c.relnamespace)" : "";
+			my $has_objsubid = DBD::Pg::_pg_check_version(7.2, $version) ? 
+				"AND d.objsubid = 0" : "";
+			$tbl_sql = qq{
+				SELECT NULL::text AS "TABLE_CAT"
+					 , $showschema  AS "TABLE_SCHEM"
+					 , c.relname    AS "TABLE_NAME"
 					 , CASE
-					 	 WHEN c.relkind = 'v' THEN 'VIEW'
-					  	 ELSE $schemacase
-						END			 AS "TABLE_TYPE"
+					 	WHEN c.relkind = 'v' THEN 'VIEW'
+						ELSE $schemacase
+						END AS "TABLE_TYPE"
 					 , d.description AS "REMARKS"
-				FROM ${CATALOG}pg_user		AS u
-				   , ${CATALOG}pg_class		AS c
-					 LEFT JOIN 
-					 ${CATALOG}pg_description	AS d 
-						ON (c.relfilenode = d.objoid AND d.objsubid = 0)
-                     $schemajoin
+				FROM ${CATALOG}pg_class AS c
+					LEFT JOIN 
+					${CATALOG}pg_description AS d 
+						ON (c.relfilenode = d.objoid $has_objsubid)
+					$schemajoin
 				WHERE 
-					  ((c.relkind     =  'r'
-				  AND c.relhasrules =  FALSE) OR
-					  (c.relkind     =  'v'
-				  AND c.relhasrules =  TRUE))
-				  AND c.relname     !~ '^xin[vx][0-9]+'
-				  AND c.relowner    =  u.usesysid
+					((c.relkind = 'r'
+				 AND c.relhasrules = FALSE) OR
+					(c.relkind = 'v'
+				 AND c.relhasrules = TRUE))
+				 AND c.relname !~ '^xin[vx][0-9]+'
 				ORDER BY 1, 2, 3
 				};
 
@@ -733,10 +874,11 @@ $DBD::Pg::VERSION = '1.22';
 				my @flds = qw/catname n.nspname c.relname c.relkind/;
 
 				for my $idx (0 .. $#attrs) {
-					next if ($flds[$idx] eq 'catname'); # Skip catalog
+					next if $flds[$idx] eq 'catname'; # Skip catalog
+					next if $flds[$idx] eq 'n.nspname' and ! DBD::Pg::_pg_check_version(7.3, $version);
 					if(defined $attrs[$idx] and length $attrs[$idx]) {
 						# Change the "name" of the types to the real value.
-						if ($flds[$idx]  =~ m/relkind/) {
+						if ($flds[$idx] =~ m/relkind/) {
 							$attrs[$idx] =~ s/^\'?table\'?/'r'/i;
 							$attrs[$idx] =~ s/^\'?index\'?/'i'/i;
 							$attrs[$idx] =~ s/^\'?sequence\'?/'S'/i;
@@ -751,7 +893,7 @@ $DBD::Pg::VERSION = '1.22';
 							push( @wh, q{( } . join ( " OR "
 								, map { m/\%/ 
 									? qq{$flds[$idx] LIKE $_ }
-									: qq{$flds[$idx]    = $_ }
+									: qq{$flds[$idx] = $_ }
 									} (split /,/, $attrs[$idx]) )
 									. q{ )}
 								);
@@ -766,213 +908,155 @@ $DBD::Pg::VERSION = '1.22';
 				if (@wh) {
 					$wh = join( " AND ",'', @wh );
 					$tbl_sql = qq{
-					SELECT NULL::text    AS "TABLE_CAT"
+					SELECT NULL::text  AS "TABLE_CAT"
 						 , $showschema   AS "TABLE_SCHEM"
 						 , c.relname     AS "TABLE_NAME"
 						 , CASE
-							 WHEN c.relkind = 'r' THEN 
-								CASE WHEN n.nspname ~ '^pg_' THEN 'SYSTEM TABLE' ELSE 'TABLE' END
-							 WHEN c.relkind = 'v' THEN 'VIEW'
-							 WHEN c.relkind = 'i' THEN 'INDEX'
-							 WHEN c.relkind = 'S' THEN 'SEQUENCE'
-							 WHEN c.relkind = 's' THEN 'SPECIAL'
-							 WHEN c.relkind = 't' THEN 'SECONDARY'
-							 ELSE 'UNKNOWN'
-							END			 AS "TABLE_TYPE"
+								WHEN c.relkind = 'r' THEN
+								$schemacase
+								WHEN c.relkind = 'v' THEN 'VIEW'
+								WHEN c.relkind = 'i' THEN 'INDEX'
+								WHEN c.relkind = 'S' THEN 'SEQUENCE'
+								WHEN c.relkind = 's' THEN 'SPECIAL'
+								WHEN c.relkind = 't' THEN 'SECONDARY'
+								ELSE 'UNKNOWN'
+							END	AS "TABLE_TYPE"
 						 , d.description AS "REMARKS"
-					FROM ${CATALOG}pg_class		AS c
-						LEFT JOIN 
-						 ${CATALOG}pg_description	AS d 
-							ON (c.relfilenode = d.objoid AND d.objsubid = 0)
+					FROM ${CATALOG}pg_class AS c
+						LEFT JOIN
+						${CATALOG}pg_description AS d 
+							ON (c.relfilenode = d.objoid $has_objsubid)
 						$schemajoin
 					WHERE 
-					  	  c.relname     !~ '^xin[vx][0-9]+'
-					  $wh
+						c.relname !~ '^xin[vx][0-9]+'
+					$wh
 					ORDER BY 2, 3
 					};
 				}
 			}
 		}
 
-        my $sth = $dbh->prepare( $tbl_sql ) or return undef;
-        $sth->execute();
+		my $sth = $dbh->prepare( $tbl_sql ) or return undef;
+		$sth->execute();
 
-        return $sth;
-    }
-
-
-    sub tables {
-        my($dbh) = @_;
-        my $version = DBD::Pg::pg_server_version($dbh);
-
-		my $SQL = ($version < 7.3) ? 
-            "SELECT relname  AS \"TABLE_NAME\"
-            FROM   pg_class 
-            WHERE  relkind = 'r'
-            AND    relname !~ '^pg_'
-            AND    relname !~ '^xin[vx][0-9]+'
-            ORDER BY 1" : 
-            "SELECT n.nspname AS \"SCHEMA_NAME\", c.relname  AS \"TABLE_NAME\"
-            FROM   pg_catalog.pg_class c
-            LEFT JOIN pg_catalog.pg_namespace n ON (n.oid = c.relnamespace)
-            WHERE  c.relkind = 'r'
-            AND n.nspname NOT IN ('pg_catalog', 'pg_toast')
-            AND pg_catalog.pg_table_is_visible(c.oid)
-            ORDER BY 1,2";
-        my $sth = $dbh->prepare($SQL) or return undef;
-        $sth->execute or return undef;
-        my (@tables, @relname);
-        while (@relname = $sth->fetchrow_array) {
-            push @tables, $version < 7.3 ? $relname[0] : "$relname[0].$relname[1]";
-        }
-        $sth->finish;
-
-        return @tables;
-    }
+		return $sth;
+	}
 
 
-    sub table_attributes {
-        my ($dbh, $table) = @_;
-        my $CATALOG = DBD::Pg::pg_use_catalog($dbh);
-        my $result = [];    
-        my $attrs  = $dbh->selectall_arrayref(
-             "select a.attname, t.typname, a.attlen, a.atttypmod, a.attnotnull, a.atthasdef, a.attnum
-              from ${CATALOG}pg_attribute a,
-                   ${CATALOG}pg_class     c,
-                   ${CATALOG}pg_type      t
-              where c.relname  = ?
-                and a.attrelid = c.oid
-                and a.attnum  >= 0
-                and t.oid      = a.atttypid
-                order by 1 
-             ", undef, $table);
-    
-        return $result unless scalar(@$attrs);
+	sub tables {
+		my($dbh) = @_;
+		my $version = DBD::Pg::_pg_server_version($dbh);
 
-	# Select the array value for tables primary key.
-	my $pk_key_sql = qq{SELECT pg_index.indkey
-                            FROM   ${CATALOG}pg_class, ${CATALOG}pg_index
-                            WHERE
-                                   pg_class.oid          = pg_index.indrelid
-                            AND    pg_class.relname      = '$table'
-                            AND    pg_index.indisprimary = 't'
-			};
-	# Expand this (returned as a string) a real array.
-	my @pk = ();
-    my $pkeys = $dbh->selectrow_array( $pk_key_sql );
-    if (defined $pkeys) {
-    	foreach (split( /\s+/, $pkeys))
-	    {
-		    push @pk, $_;
-	    }
-    }
-	my $pk_bt = 
-		(@pk)   ? "AND    pg_attribute.attnum in (" . join ( ", ", @pk ) . ")"
-			: "";
-		
-        # Get the primary key
-        my $pri_key = $dbh->selectcol_arrayref("SELECT pg_attribute.attname
-                                               FROM   ${CATALOG}pg_class, ${CATALOG}pg_attribute, ${CATALOG}pg_index
-                                               WHERE  pg_class.oid          = pg_attribute.attrelid 
-                                               AND    pg_class.oid          = pg_index.indrelid 
-					       $pk_bt
-                                               AND    pg_index.indisprimary = 't'
-                                               AND    pg_class.relname      = ?
-					       ORDER BY pg_attribute.attnum
-					       ", undef, $table );
-        $pri_key = [] unless $pri_key;
+		my $SQL = DBD::Pg::_pg_check_version(7.3, $version) ? 
+			"SELECT n.nspname AS \"SCHEMA_NAME\", c.relname AS \"TABLE_NAME\"
+			FROM pg_catalog.pg_class c
+			LEFT JOIN pg_catalog.pg_namespace n ON (n.oid = c.relnamespace)
+			WHERE c.relkind = 'r'
+			AND n.nspname NOT IN ('pg_catalog', 'pg_toast')
+			AND pg_catalog.pg_table_is_visible(c.oid)
+			ORDER BY 1,2"
+			:
+			"SELECT relname AS \"TABLE_NAME\"
+			FROM   pg_class 
+			WHERE  relkind = 'r'
+			AND    relname !~ '^pg_'
+			AND    relname !~ '^xin[vx][0-9]+'
+			ORDER BY 1";
+		my $sth = $dbh->prepare($SQL) or return undef;
+		$sth->execute or return undef;
+		my (@tables, @relname);
+		while (@relname = $sth->fetchrow_array) {
+			push @tables, DBD::Pg::_pg_check_version(7.3, $version) ? 
+			"$relname[0].$relname[1]" : $relname[0];
+		}
+		$sth->finish;
+		return @tables;
+	}
 
-        foreach my $attr (reverse @$attrs) {
-            my ($col_name, $col_type, $size, $mod, $notnull, $hasdef, $attnum) = @$attr;
-            my $col_size = do { 
-                if ($size > 0) {
-                    $size;
-                } elsif ($mod > 0xffff) {
-                    my $prec = ($mod & 0xffff) - 4;
-                    $mod >>= 16;
-                    my $dig = $mod;
-                    $dig;
-                } elsif ($mod >= 4) {
-                    $mod - 4;
-                } else {
-                    $mod;
-                }
-            };
+	sub table_attributes {
+		my ($dbh, $table) = @_;
+		my $CATALOG = DBD::Pg::_pg_use_catalog($dbh);
+		my $sth = $dbh->column_info(undef,undef,$table);
 
-            # Get the default value, if any
-            my ($default) = $dbh->selectrow_array("SELECT adsrc FROM ${CATALOG}pg_attrdef WHERE  adnum = $attnum") if -1 == $attnum;
-            $default = '' unless $default;
+		my %convert = (
+			COLUMN_NAME   => 'NAME',
+			DATA_TYPE     => 'TYPE',
+			COLUMN_SIZE   => 'SIZE',
+			NULLABLE 	  => 'NOTNULL',
+			REMARKS       => 'REMARKS',
+			COLUMN_DEF    => 'DEFAULT',
+			pg_constraint => 'CONSTRAINT',
+		);
 
-            # Test for any constraints
-            # Note: as of PostgreSQL 7.3 pg_relcheck has been replaced
-            # by pg_constraint. To maintain compatibility, check 
-            # version number and execute appropriate query.
-	
-            my $version = pg_server_version( $dbh );
-            
-            my $con_query = $version < 7.3
-             ? "SELECT rcsrc FROM pg_relcheck WHERE rcname = '${table}_$col_name'"
-             : "SELECT consrc FROM pg_catalog.pg_constraint WHERE contype = 'c' AND conname = '${table}_$col_name'";
-            my ($constraint) = $dbh->selectrow_array($con_query);
-            $constraint = '' unless $constraint;
+		my $attrs = $sth->fetchall_arrayref(\%convert);
 
-            # Check to see if this is the primary key
-            my $is_primary_key = scalar(grep { /^$col_name$/i } @$pri_key) ? 1 : 0;
+		foreach my $row (@$attrs) {
+			# switch the column names
+			for my $name (keys %$row) {
+				$row->{ $convert{$name} } = $row->{$name};
 
-            push @$result,
-                { NAME        => $col_name,
-                  TYPE        => $col_type,
-                  SIZE        => $col_size,
-                  NOTNULL     => $notnull,
-                  DEFAULT     => $default,
-                  CONSTRAINT  => $constraint,
-                  PRIMARY_KEY => $is_primary_key,
-                };
-        }
+				# The REMARKS column is an exception because the name is the same
+				delete $row->{$name} unless ($name eq 'REMARKS');
 
-        return $result;
-    }
+			}
+			# Moved check outside of loop as it was inverting the NOTNULL value for
+			# attribute.
+			# NOTNULL inverts the sense of NULLABLE
+			$row->{NOTNULL} = ($row->{NOTNULL} ? 0 : 1);
+
+			my @pri_keys = ();
+			@pri_keys = $dbh->primary_key( $CATALOG, undef, $table );
+            $row->{PRIMARY_KEY} = scalar(grep { /^$row->{NAME}$/i } @pri_keys) ? 1 : 0;
+		}
+
+		return $attrs;
+
+	}
+
+	sub _calc_col_size { 
+		my $mod = shift;
+		my $size = shift;
 
 
-    sub type_info_all {
-        my ($dbh) = @_;
+		if ((defined $size) and ($size > 0)) {
+			return $size;
+		} elsif ($mod > 0xffff) {
+			my $prec = ($mod & 0xffff) - 4;
+			$mod >>= 16;
+			my $dig = $mod;
+			return "$prec,$dig";
+		} elsif ($mod >= 4) {
+			return $mod - 4;
+		} # else {
+			# $rtn = $mod;
+			# $rtn = undef;
+		# }
 
-	#my $names = {
-    #      TYPE_NAME		=> 0,
-    #      DATA_TYPE		=> 1,
-    #      PRECISION		=> 2,
-    #      LITERAL_PREFIX	=> 3,
-    #      LITERAL_SUFFIX	=> 4,
-    #      CREATE_PARAMS		=> 5,
-    #      NULLABLE		=> 6,
-    #      CASE_SENSITIVE	=> 7,
-    #      SEARCHABLE		=> 8,
-    #      UNSIGNED_ATTRIBUTE	=> 9,
-    #      MONEY			=>10,
-    #      AUTO_INCREMENT	=>11,
-    #      LOCAL_TYPE_NAME	=>12,
-    #      MINIMUM_SCALE		=>13,
-    #      MAXIMUM_SCALE		=>14,
-    #    };
+		return;
+	}
+
+
+	sub type_info_all {
+		my ($dbh) = @_;
 
 	my $names = {
-        TYPE_NAME         => 0,
-        DATA_TYPE         => 1,
-        COLUMN_SIZE       => 2,     # was PRECISION originally
-        LITERAL_PREFIX    => 3,
-        LITERAL_SUFFIX    => 4,
-        CREATE_PARAMS     => 5,
-        NULLABLE          => 6,
-        CASE_SENSITIVE    => 7,
-        SEARCHABLE        => 8,
-        UNSIGNED_ATTRIBUTE=> 9,
-        FIXED_PREC_SCALE  => 10,    # was MONEY originally
-        AUTO_UNIQUE_VALUE => 11,    # was AUTO_INCREMENT originally
-        LOCAL_TYPE_NAME   => 12,
-        MINIMUM_SCALE     => 13,
-        MAXIMUM_SCALE     => 14,
-        NUM_PREC_RADIX    => 15,
-    };
+		TYPE_NAME         => 0,
+		DATA_TYPE         => 1,
+		COLUMN_SIZE       => 2,    # was PRECISION originally
+		LITERAL_PREFIX    => 3,
+		LITERAL_SUFFIX    => 4,
+		CREATE_PARAMS     => 5,
+		NULLABLE          => 6,
+		CASE_SENSITIVE    => 7,
+		SEARCHABLE        => 8,
+		UNSIGNED_ATTRIBUTE=> 9,
+		FIXED_PREC_SCALE  => 10,   # was MONEY originally
+		AUTO_UNIQUE_VALUE => 11,   # was AUTO_INCREMENT originally
+		LOCAL_TYPE_NAME   => 12,
+		MINIMUM_SCALE     => 13,
+		MAXIMUM_SCALE     => 14,
+		NUM_PREC_RADIX    => 15,
+	};
 
 
 	#  typname       |typlen|typprtlen|    SQL92
@@ -997,82 +1081,220 @@ $DBD::Pg::VERSION = '1.22';
 	#  timestamp     |     4|       19|    TIMESTAMP
 	#  --------------+------+---------+
 
-        # DBI type definitions / PostgreSQL definitions     # type needs to be DBI-specific (not pg_type)
-        #
-        # SQL_ALL_TYPES  0	
-        # SQL_CHAR       1	1042 bpchar
-        # SQL_NUMERIC    2	 700 float4
-        # SQL_DECIMAL    3	 700 float4
-        # SQL_INTEGER    4	  23 int4
-        # SQL_SMALLINT   5	  21 int2
-        # SQL_FLOAT      6	 700 float4
-        # SQL_REAL       7	 701 float8
-        # SQL_DOUBLE     8	  20 int8
-        # SQL_DATE       9	1082 date
-        # SQL_TIME      10	1083 time
-        # SQL_TIMESTAMP 11	1296 timestamp
-        # SQL_VARCHAR   12	1043 varchar
+		# DBI type definitions / PostgreSQL definitions     # type needs to be DBI-specific (not pg_type)
+		#
+		# SQL_ALL_TYPES  0
+		# SQL_CHAR       1  1042 bpchar
+		# SQL_NUMERIC    2   700 float4
+		# SQL_DECIMAL    3   700 float4
+		# SQL_INTEGER    4    23 int4
+		# SQL_SMALLINT   5    21 int2
+		# SQL_FLOAT      6   700 float4
+		# SQL_REAL       7   701 float8
+		# SQL_DOUBLE     8    20 int8
+		# SQL_DATE       9  1082 date
+		# SQL_TIME      10  1083 time
+		# SQL_TIMESTAMP 11  1296 timestamp
+		# SQL_VARCHAR   12  1043 varchar
 
 	my $ti = [
-	  $names,
-          # name          type  prec  prefix suffix  create params null case se unsign mon  incr       local   min    max
-          #					     
-          [ 'bytea',        -2, 4096,  '\'',  '\'',           undef, 1, '1', 3, undef, '0', '0',     'BYTEA', undef, undef, undef ],
-          [ 'bool',          0,    1,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'BOOLEAN', undef, undef, undef ],
-          [ 'int8',          8,   20, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',   'LONGINT', undef, undef, undef ],
-          [ 'int2',          5,    5, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',  'SMALLINT', undef, undef, undef ],
-          [ 'int4',          4,   10, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',   'INTEGER', undef, undef, undef ],
-          [ 'text',         12, 4096,  '\'',  '\'',           undef, 1, '1', 3, undef, '0', '0',      'TEXT', undef, undef, undef ],
-          [ 'float4',        6,   12, undef, undef,     'precision', 1, '0', 2,   '0', '0', '0',     'FLOAT', undef, undef, undef ],
-          [ 'float8',        7,   24, undef, undef,     'precision', 1, '0', 2,   '0', '0', '0',      'REAL', undef, undef, undef ],
-          [ 'abstime',      10,   20,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'ABSTIME', undef, undef, undef ],
-          [ 'reltime',      10,   20,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'RELTIME', undef, undef, undef ],
-          [ 'tinterval',    11,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0', 'TINTERVAL', undef, undef, undef ],
-          [ 'money',         0,   24, undef, undef,           undef, 1, '0', 2, undef, '1', '0',     'MONEY', undef, undef, undef ],
-          [ 'bpchar',        1, 4096,  '\'',  '\'',    'max length', 1, '1', 3, undef, '0', '0', 'CHARACTER', undef, undef, undef ],
-          [ 'bpchar',       12, 4096,  '\'',  '\'',    'max length', 1, '1', 3, undef, '0', '0', 'CHARACTER', undef, undef, undef ],
-          [ 'varchar',      12, 4096,  '\'',  '\'',    'max length', 1, '1', 3, undef, '0', '0',   'VARCHAR', undef, undef, undef ],
-          [ 'date',          9,   10,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',      'DATE', undef, undef, undef ],
-          [ 'time',         10,   16,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',      'TIME', undef, undef, undef ],
-          [ 'datetime',     11,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',  'DATETIME', undef, undef, undef ],
-          [ 'timespan',     11,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',  'INTERVAL', undef, undef, undef ],
-          [ 'timestamp',    10,   19,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0', 'TIMESTAMP', undef, undef, undef ]
-          #
-          # intentionally omitted: char, all geometric types, all array types
-        ];
+		$names,
+		# name          type  prec  prefix suffix  create params null case se unsign mon  incr       local   min    max
+		#
+		[ 'bytea',        -2, 4096,  '\'',  '\'',           undef, 1, '1', 3, undef, '0', '0',     'BYTEA', undef, undef, undef ],
+		[ 'bool',          0,    1,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'BOOLEAN', undef, undef, undef ],
+		[ 'int8',          8,   20, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',   'LONGINT', undef, undef, undef ],
+		[ 'int2',          5,    5, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',  'SMALLINT', undef, undef, undef ],
+		[ 'int4',          4,   10, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',   'INTEGER', undef, undef, undef ],
+		[ 'text',         12, 4096,  '\'',  '\'',           undef, 1, '1', 3, undef, '0', '0',      'TEXT', undef, undef, undef ],
+		[ 'float4',        6,   12, undef, undef,     'precision', 1, '0', 2,   '0', '0', '0',     'FLOAT', undef, undef, undef ],
+		[ 'float8',        7,   24, undef, undef,     'precision', 1, '0', 2,   '0', '0', '0',      'REAL', undef, undef, undef ],
+		[ 'abstime',      10,   20,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'ABSTIME', undef, undef, undef ],
+		[ 'reltime',      10,   20,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'RELTIME', undef, undef, undef ],
+		[ 'tinterval',    11,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0', 'TINTERVAL', undef, undef, undef ],
+		[ 'money',         0,   24, undef, undef,           undef, 1, '0', 2, undef, '1', '0',     'MONEY', undef, undef, undef ],
+		[ 'bpchar',        1, 4096,  '\'',  '\'',    'max length', 1, '1', 3, undef, '0', '0', 'CHARACTER', undef, undef, undef ],
+		[ 'bpchar',       12, 4096,  '\'',  '\'',    'max length', 1, '1', 3, undef, '0', '0', 'CHARACTER', undef, undef, undef ],
+		[ 'varchar',      12, 4096,  '\'',  '\'',    'max length', 1, '1', 3, undef, '0', '0',   'VARCHAR', undef, undef, undef ],
+		[ 'date',          9,   10,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',      'DATE', undef, undef, undef ],
+		[ 'time',         10,   16,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',      'TIME', undef, undef, undef ],
+		[ 'datetime',     11,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',  'DATETIME', undef, undef, undef ],
+		[ 'timespan',     11,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',  'INTERVAL', undef, undef, undef ],
+		[ 'timestamp',    10,   19,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0', 'TIMESTAMP', undef, undef, undef ]
+		#
+		# intentionally omitted: char, all geometric types, all array types
+		];
 	return $ti;
-    }
+	}
 
 
-    # Characters that need to be escaped by quote().
-    my %esc = ( "'"  => '\\047', # '\\' . sprintf("%03o", ord("'")), # ISO SQL 2
-                '\\' => '\\134', # '\\' . sprintf("%03o", ord("\\")),
-              );
+	# Characters that need to be escaped by quote().
+	my %esc = (
+		"'"  => '\\047', # '\\' . sprintf("%03o", ord("'")), # ISO SQL 2
+		'\\' => '\\134', # '\\' . sprintf("%03o", ord("\\")),
+	);
 
-    # Set up lookup for SQL types we don't want to escape.
-    my %no_escape = map { $_ => 1 }
-      DBI::SQL_INTEGER, DBI::SQL_SMALLINT, DBI::SQL_DECIMAL,
-      DBI::SQL_FLOAT, DBI::SQL_REAL, DBI::SQL_DOUBLE, DBI::SQL_NUMERIC;
+	# Set up lookup for SQL types we don't want to escape.
+	my %no_escape = map { $_ => 1 }
+		DBI::SQL_INTEGER, DBI::SQL_SMALLINT, DBI::SQL_DECIMAL,
+		DBI::SQL_FLOAT, DBI::SQL_REAL, DBI::SQL_DOUBLE, DBI::SQL_NUMERIC;
 
-    sub quote {
-        my ($dbh, $str, $data_type) = @_;
-        return "NULL" unless defined $str;
-		return $str if $data_type && $no_escape{$data_type};
+	sub get_info {
 
-        $dbh->DBI::set_err(1, "Use of SQL_BINARY invalid in quote()")
-          if $data_type && $data_type == DBI::SQL_BINARY;
+		my ($dbh,$type) = @_;
+ 
+		return undef unless defined $type and length $type;
+ 
+		my $version = DBD::Pg::_pg_server_version($dbh);
+ 
+		my %type = (
+ 
+## Basic information:
+ 
+    6  => ["SQL_DRIVER_NAME",                'DBD/Pg.pm',         ],
+   17  => ["SQL_DBMS_NAME",                  'PostgreSQL'         ],
+   18  => ["SQL_DBMS_VERSION",               'ODBCVERSION'        ],
+   29  => ["SQL_IDENTIFIER_QUOTE_CHAR",      '\"'                 ],
+   41  => ["SQL_CATALOG_NAME_SEPARATOR",     ''                   ],
+   47  => ["SQL_USER_NAME",                  $dbh->{CURRENT_USER} ],
+ 
+## Size limits
+ 
+   30  => ["SQL_MAX_COLUMN_NAME_LEN",        'NAMEDATALEN'        ],
+   32  => ["SQL_MAX_SCHEMA_NAME_LEN",        'NAMEDATALEN'        ],
+   34  => ["SQL_MAX_CATALOG_NAME_LEN",       0                    ],
+   35  => ["SQL_MAX_TABLE_NAME_LEN",         'NAMEDATALEN'        ],
+   97  => ["SQL_MAX_COLUMNS_IN_GROUP_BY",    0                    ],
+   98  => ["SQL_MAX_COLUMNS_IN_INDEX",       0                    ],
+   99  => ["SQL_MAX_COLUMNS_IN_ORDER_BY",    0                    ],
+  100  => ["SQL_MAX_COLUMNS_IN_SELECT",      0                    ],
+  101  => ["SQL_MAX_COLUMNS_IN_TABLE",       0                    ],
+  102  => ["SQL_MAX_INDEX_SIZE",             0                    ],
+  104  => ["SQL_MAX_ROW_SIZE",               0                    ],
+  105  => ["SQL_MAX_STATEMENT_LEN",          0                    ],
+  106  => ["SQL_MAX_TABLES_IN_SELECT",       0                    ],
+  107  => ["SQL_MAX_USER_NAME_LEN",          'NAMEDATALEN'        ],
+  108  => ["SQL_MAX_STATEMENT_LEN",          0                    ],
+  109  => ["SQL_MAX_STATEMENT_LEN",          0                    ],
+  105  => ["SQL_MAX_STATEMENT_LEN",          0                    ],
+  105  => ["SQL_MAX_STATEMENT_LEN",          0                    ],
+  112  => ["SQL_MAX_BINARY_LITERAL_LEN",     0                    ],
+10005  => ["SQL_MAX_IDENTIFIER_LEN",         'NAMEDATALEN'        ],
+ 
+## Catalog support
+ 
+   41  => ["SQL_CATALOG_NAME_SEPARATOR",     ''                   ],
+   42  => ["SQL_CATALOG_TERM",               ''                   ],
+  114  => ["SQL_CATALOG_LOCATION",           0                    ],
+10003  => ["SQL_CATALOG_NAME",               'N'                  ],
+ 
+## Domain support
+ 
+  117  => ["SQL_ALTER_DOMAIN",               0                    ],
+  130  => ["SQL_CREATE_DOMAIN",              0                    ],
+  139  => ["SQL_DROP_DOMAIN",                0                    ],
+ 
+## Schema support (7.3 and up)
+ 
+   39  => ["SQL_SCHEMA_TERM",                'schema'             ],
+   91  => ["SQL_SCHEMA_USAGE",               'SCHEMAUSAGE'        ],
+  131  => ["SQL_CREATE_SCHEMA",              'CREATESCHEMA'       ],
+  140  => ["SQL_DROP_SCHEMA",                'DROPSCHEMA'         ],
+ 
+## Various
+ 
+    2  => ["SQL_DATA_SOURCE_NAME",           'SOURCENAME'         ],
+    7  => ["SQL_DRIVER_VER",                 'DBDVERSION'         ],
+   13  => ["SQL_SERVER_NAME",                $dbh->{Name}         ],
+   14  => ["SQL_SEARCH_PATTERN_ESCAPE",      '\\'                 ],
+   22  => ["SQL_CONCAT_NULL_BEHAVIOR",       0                    ], ## SQL_CB_NULL
+   28  => ["SQL_IDENTIFIER_CASE",            4                    ], ## SQL_IC_MIXED 
+   29  => ["SQL_IDENTIFIER_QUOTE_CHAR",      '\"'                 ],
+   40  => ["SQL_PROCEDURE_TERM",             'Function'           ],
+   45  => ["SQL_TABLE_TERM",                 'Table'              ],
+   46  => ["SQL_TXN_CAPABLE",                4                    ], ## SQL_TC_ALL
+   87  => ["SQL_COLUMN_ALIAS",               'Y'                  ],
+   90  => ["SQL_ORDER_BY_COLUMNS_IN_SELECT", 'N'                  ],
+   93  => ["SQL_QUOTED_IDENTIFIER_CASE",     3                    ], ## SQL_IC_SENSITIVE
+  113  => ["SQL_LIKE_ESCAPE_CLAUSE",         'Y'                  ],
+  127  => ["SQL_CREATE_ASSERTION",           0                    ],
+  136  => ["SQL_DROP_ASSERTION",             0                    ],
+);
+ 
+		## Put both numbers and names into a hash
+		my %t;
+		for (keys %type) {
+			$t{$_} = $type{$_}->[1];
+			$t{$type{$_}->[0]} = $type{$_}->[1];
+		}
+ 
+		return undef unless exists $t{$type};
+ 
+		my $ans = $t{$type};
+ 
+		if ($ans eq 'NAMEDATALEN') {
+			return DBD::Pg::_pg_check_version(7.3, $version) ? 63 : 31;
+		}
+		elsif ($ans eq 'ODBCVERSION') {
+			return sprintf "%02d.%02d.%1d%1d%1d%1d", split (/\./, "$version.0.0.0.0.0.0");
+		}
+		elsif ($ans eq 'DBDVERSION') {
+			my $simpleversion = $DBD::Pg::VERSION;
+			$simpleversion =~ s/_/./g;
+			return sprintf "%02d.%02d.%1d%1d%1d%1d", split (/\./, "$simpleversion.0.0.0.0.0.0");
+		}
+		elsif ($ans eq 'SOURCENAME') {
+			return "dbi:Pg:dbname=$dbh->{Name}";
+		}
+		elsif ($ans eq 'SCHEMAUSAGE') {
+			return 0 if ! DBD::Pg::_pg_check_version(7.3, $version);
+			my %bitmask = (
+				SQL_SU_DML_STATEMENT        => 1,
+				SQL_SU_PROCEDURE_INVOCATION => 2,
+				SQL_SU_TABLE_DEFINITION     => 4,
+				SQL_SU_INDEX_DEFINITION     => 8,
+				SQL_SU_PRIVILEGE_DEFINITION => 16,
+			);
+			return 31; ## all of the above
+		}
+		elsif ($ans eq 'CREATESCHEMA') {
+			return 0 if ! DBD::Pg::_pg_check_version(7.3, $version);
+			my %bitmask = (
+				SQL_CS_CREATE_SCHEMA         => 1,
+	 			SQL_CS_AUTHORIZATION         => 2,
+				SQL_CS_DEFAULT_CHARACTER_SET => 4
+			);
+			return $bitmask{SQL_CS_CREATE_SCHEMA} + $bitmask{SQL_CS_AUTHORIZATION};
+		 }
+		 elsif ($ans eq 'DROPSCHEMA') {
+			return 0 if ! DBD::Pg::_pg_check_version(7.3, $version);
+			my %bitmask = (
+				SQL_DS_DROP_SCHEMA => 1,
+	 			SQL_DS_RESTRICT    => 2,
+				SQL_DS_CASCADE     => 4
+			);
+			return 7; ## All of the above
+		 }
+ 
+		 return $ans;
+ 
+	} # end of get_info
+ 
+ 
 
-		$str =~ s/(['\\\0])/$esc{$1}/g;
-		return "'$str'";
-    }
+} # end of package DBD::Pg::db
 
-}    # end of package DBD::Pg::db
+{  package DBD::Pg::st; # ====== STATEMENT ======
 
-{   package DBD::Pg::st; # ====== STATEMENT ======
-
-    # all done in XS
+	# all done in XS
 
 }
+
+
+# Ummm, I don't think this extra curly brace should be here,
+# but it quite complaining when I added and things to seem to be working.
+# I'm worried. -mls 07/22/03 
+# }
 
 1;
 
@@ -1089,7 +1311,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
   $dbh = DBI->connect("dbi:Pg:dbname=$dbname", "", "");
 
   # for some advanced uses you may need PostgreSQL type values:
-  use DBD::Oracle qw(:pg_types);
+  use DBD::Pg qw(:pg_types);
 
   # See the DBI module documentation for full details
 
@@ -1128,15 +1350,15 @@ The following connect statement shows all possible parameters:
 If a parameter is undefined PostgreSQL first looks for specific environment
 variables and then it uses hard coded defaults:
 
-    parameter  environment variable  hard coded default
-    --------------------------------------------------
-    dbname     PGDATABASE            current userid
-    host       PGHOST                localhost
-    port       PGPORT                5432
-    options    PGOPTIONS             ""
-    tty        PGTTY                 ""
-    username   PGUSER                current userid
-    password   PGPASSWORD            ""
+  parameter  environment variable  hard coded default
+  --------------------------------------------------
+  dbname     PGDATABASE            current userid
+  host       PGHOST                localhost
+  port       PGPORT                5432
+  options    PGOPTIONS             ""
+  tty        PGTTY                 ""
+  username   PGUSER                current userid
+  password   PGPASSWORD            ""
 
 If a host is specified, the postmaster on this host needs to be started with
 the C<-i> option (TCP/IP sockets).
@@ -1224,6 +1446,14 @@ func interface:
 
   $attrs = $dbh->func($table, 'table_attributes');
 
+The C<table_attributes> function is no longer recommended. Instead,
+you can use the more portable C<column_info> and C<primary_key> functions
+to access all the same information.
+
+The C<table_attributes> function is no longer recommended. Instead,
+you can use the more portable C<column_info> and C<primary_key> functions
+to access all the same information.
+
 This method returns for the given table a reference to an array of hashes:
 
   NAME        attribute name
@@ -1233,6 +1463,7 @@ This method returns for the given table a reference to an array of hashes:
   DEFAULT     default value
   CONSTRAINT  constraint
   PRIMARY_KEY flag is_primary_key
+  REMARKS     attribute description
 
   $lobjId = $dbh->func($mode, 'lo_creat');
 
@@ -1287,7 +1518,7 @@ failure.
 Imports a Unix file as large object and returns the object id of the new
 object or undef upon failure.
 
-  $ret = $dbh->func($lobjId, 'lo_export', 'filename');
+  $ret = $dbh->func($lobjId, $filename, 'lo_export');
 
 Exports a large object into a Unix file. Returns false upon failure, true
 otherwise.
@@ -1297,13 +1528,12 @@ otherwise.
 Used together with the SQL-command 'COPY table FROM STDIN' to copy large
 amount of data into a table avoiding the overhead of using single
 insert commands. The application must explicitly send the two characters "\."
-to indicate to the backend that it has finished sending its data. See test.pl
-for an example on how to use this function.
+to indicate to the backend that it has finished sending its data.
 
   $ret = $dbh->func($buffer, length, 'getline');
 
 Used together with the SQL-command 'COPY table TO STDOUT' to dump a complete
-table. See test.pl for an example on how to use this function.
+table.
 
   $ret = $dbh->func('pg_notifies');
 
@@ -1477,12 +1707,52 @@ This driver supports the ping-method, which can be used to check the validity
 of a database-handle. The ping method issues an empty query and checks the
 result status.
 
+=item B<column_info>
+
+	$sth = $dbh->column_info( $catalog, $schema, $table, $column );
+
+Supported by the driver as proposed by the DBI with the follow exceptions.
+These fields are currently always returned with NULL values:
+
+   TABLE_CAT
+   TYPE_NAME
+   BUFFER_LENGTH
+   DECIMAL_DIGITS
+   NUM_PREC_RADIX
+   SQL_DATA_TYPE
+   SQL_DATETIME_SUB
+   CHAR_OCTET_LENGTH
+
+Also, one additional non-standard field is returned:
+
+  pg_constraint - holds column constraint definition
+
+=item B<column_info>
+
+	$sth = $dbh->column_info( $catalog, $schema, $table, $column );
+
+Supported by the driver as proposed by the DBI with the follow exceptions.
+These fields are currently always returned with NULL values:
+
+   TABLE_CAT
+   TYPE_NAME
+   BUFFER_LENGTH
+   DECIMAL_DIGITS
+   NUM_PREC_RADIX
+   SQL_DATA_TYPE
+   SQL_DATETIME_SUB
+   CHAR_OCTET_LENGTH
+
+Also, one additional non-standard field is returned:
+
+  pg_constraint - holds column constraint definition
+
 =item B<table_info>
 
   $sth = $dbh->table_info;
 
-Supported by the driver as proposed by DBI. This method returns all tables and
-views which are owned by the current user. It does not select any indexes and
+Supported by the driver as proposed by DBI. This method returns all table.
+which are owned by the current user. It does not select any indexes and
 sequences. Also System tables are not selected. As TABLE_QUALIFIER the reltype
 attribute is returned and the REMARKS are undefined.
 
@@ -1512,28 +1782,28 @@ frequently used data-types information is provided. The mapping between the
 PostgreSQL typename and the SQL92 data-type (if possible) has been done
 according to the following table:
 
-	+---------------+------------------------------------+
-	| typname       | SQL92                              |
-	|---------------+------------------------------------|
-	| bool          | BOOL                               |
-	| text          | /                                  |
-	| bpchar        | CHAR(n)                            |
-	| varchar       | VARCHAR(n)                         |
-	| int2          | SMALLINT                           |
-	| int4          | INT                                |
-	| int8          | /                                  |
-	| money         | /                                  |
-	| float4        | FLOAT(p)   p<7=float4, p<16=float8 |
-	| float8        | REAL                               |
-	| abstime       | /                                  |
-	| reltime       | /                                  |
-	| tinterval     | /                                  |
-	| date          | /                                  |
-	| time          | /                                  |
-	| datetime      | /                                  |
-	| timespan      | TINTERVAL                          |
-	| timestamp     | TIMESTAMP                          |
-	+---------------+------------------------------------+
+  +---------------+------------------------------------+
+  | typname       | SQL92                              |
+  |---------------+------------------------------------|
+  | bool          | BOOL                               |
+  | text          | /                                  |
+  | bpchar        | CHAR(n)                            |
+  | varchar       | VARCHAR(n)                         |
+  | int2          | SMALLINT                           |
+  | int4          | INT                                |
+  | int8          | /                                  |
+  | money         | /                                  |
+  | float4        | FLOAT(p)   p<7=float4, p<16=float8 |
+  | float8        | REAL                               |
+  | abstime       | /                                  |
+  | reltime       | /                                  |
+  | tinterval     | /                                  |
+  | date          | /                                  |
+  | time          | /                                  |
+  | datetime      | /                                  |
+  | timespan      | TINTERVAL                          |
+  | timestamp     | TIMESTAMP                          |
+  +---------------+------------------------------------+
 
 For further details concerning the PostgreSQL specific data-types please read
 the L<pgbuiltin>.
@@ -1760,9 +2030,7 @@ Implemented by DBI, no driver-specific impact.
 
 =item B<TYPE>  (array-ref, read-only)
 
-Supported by the driver as proposed by DBI, with the restriction, that the
-types are PostgreSQL specific data-types which do not correspond to
-international standards.
+Supported by the driver as proposed by DBI
 
 =item B<PRECISION>  (array-ref, read-only)
 
@@ -1870,14 +2138,6 @@ or by manipulating the schema search path with SET search_path, e.g.
 
   $dbh->do("SET search_path TO my_schema, public");
 
-B<NOTE:> If you create an object with the same name as a PostgreSQL system
-object (as contained in the pg_catalog schema) and explicitly set the search
-path so that pg_catalog comes after the new object's schema, some DBD::Pg
-methods (particularly those querying PostgreSQL system objects) may fail.
-This problem should be fixed in a future release of DBD::Pg. Creating objects
-with the same name as system objects (or beginning with 'pg_') is not
-recommended practice and should be avoided in any case.
-
 =head1 SEE ALSO
 
 L<DBI>
@@ -1904,4 +2164,5 @@ the Perl README file.
 See also B<DBI/ACKNOWLEDGMENTS>.
 
 =cut
+
 

@@ -1,6 +1,6 @@
 package App::Info::RDBMS::PostgreSQL;
 
-# $Id: PostgreSQL.pm,v 1.1 2002/11/26 19:47:33 theory Exp $
+# $Id: PostgreSQL.pm,v 1.4 2003/08/15 00:08:05 turnstep Exp $
 
 =head1 NAME
 
@@ -125,6 +125,9 @@ sub new {
          /usr/sbin
          /bin));
 
+    unshift @paths, "$ENV{POSTGRES_HOME}/bin" if exists $ENV{POSTGRES_HOME};
+    unshift @paths, "$ENV{POSTGRES_LIB}/../bin" if exists $ENV{POSTGRES_LIB};
+
     if (my $cfg = $u->first_cat_exe('pg_config', @paths)) {
         # We found it. Confirm.
         $self->{pg_config} = $self->confirm( key      => 'pg_config',
@@ -247,6 +250,10 @@ my $get_version = sub {
         if (defined $x and defined $y and defined $z) {
             @{$self}{qw(version major minor patch)} =
               ($version, $x, $y, $z);
+				## Beta/devel/release candidate versions are treated as patch level "0"
+        } elsif ($version =~ /(\d+)\.(\d+)\w+\d+/) {
+            @{$self}{qw(version major minor patch)} =
+              ($version, $1, $2, 0);
         } else {
             $self->error("Failed to parse PostgreSQL version parts from " .
                          "string '$version'");

@@ -17,13 +17,13 @@ ok(defined $dbh,
 
 my $quo = $dbh->quote("\\'?:");
 my $sth = $dbh->prepare(qq{
-			INSERT INTO test (name) VALUES ($quo)
+			INSERT INTO dbd_pg_test (id,name) VALUES (100,$quo)
 		       });
 $sth->execute();
 
 my $sql = <<SQL;
 	SELECT name
-	FROM test
+	FROM dbd_pg_test
 	WHERE name = $quo;
 SQL
 $sth = $dbh->prepare($sql);
@@ -36,6 +36,7 @@ ok((defined($retr) && $retr eq "\\'?:"),
 
 eval {
   local $dbh->{PrintError} = 0;
+  $sth = $dbh->prepare($sql);
   $sth->execute('foo');
 };
 ok($@,
@@ -44,7 +45,7 @@ ok($@,
 
 $sql = <<SQL;
        SELECT name
-       FROM test
+       FROM dbd_pg_test
        WHERE name = ?
 SQL
 $sth = $dbh->prepare($sql);
@@ -58,12 +59,13 @@ ok((defined($retr) && $retr eq "\\'?:"),
 
 $sql = <<SQL;
        SELECT name
-       FROM test
+       FROM dbd_pg_test
        WHERE name = :1
 SQL
 $sth = $dbh->prepare($sql);
 
-$sth->execute("\\'?:");
+$sth->bind_param(":1", "\\'?:");
+$sth->execute();
 
 ($retr) = $sth->fetchrow_array();
 ok((defined($retr) && $retr eq "\\'?:"),
@@ -72,13 +74,13 @@ ok((defined($retr) && $retr eq "\\'?:"),
 
 $sql = <<SQL;
        SELECT name
-       FROM test
+       FROM dbd_pg_test
        WHERE name = '?'
 SQL
-$sth = $dbh->prepare($sql);
 
 eval {
   local $dbh->{PrintError} = 0;
+  $sth = $dbh->prepare($sql);
   $sth->execute('foo');
 };
 ok($@,
@@ -87,13 +89,13 @@ ok($@,
 
 $sql = <<SQL;
        SELECT name
-       FROM test
+       FROM dbd_pg_test
        WHERE name = ':1'
 SQL
-$sth = $dbh->prepare($sql);
 
 eval {
   local $dbh->{PrintError} = 0;
+  $sth = $dbh->prepare($sql);
   $sth->execute('foo');
 };
 ok($@,
@@ -102,7 +104,7 @@ ok($@,
 
 $sql = <<SQL;
        SELECT name
-       FROM test
+       FROM dbd_pg_test
        WHERE name = '\\\\'
        AND name = '?'
 SQL

@@ -1,5 +1,5 @@
 /*
-   $Id: Pg.h,v 1.1.1.1 2002/10/15 19:20:04 bmomjian Exp $
+   $Id: Pg.h,v 1.3 2003/06/12 21:30:08 theory Exp $
 
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -42,5 +42,9 @@ static int errno;
 
 #include <dbd_xsh.h>		/* installed by the DBI module	*/
 
+
+/* defines for Driver.xst to let it know what functions to include */
+#define dbd_st_rows dbd_st_rows
+#define dbd_discon_all dbd_discon_all
 
 /* end of Pg.h */

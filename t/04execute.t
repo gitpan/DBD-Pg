@@ -18,7 +18,7 @@ ok(defined $dbh,
 my $sql = <<SQL;
   SELECT id
   , name
-  FROM test
+  FROM dbd_pg_test
   WHERE id = ?
 SQL
 my $sth = $dbh->prepare($sql);
@@ -39,7 +39,7 @@ ok($sth->execute(),
 $sql = <<SQL;
        SELECT id
        , name
-       FROM test
+       FROM dbd_pg_test
        WHERE id = ?
        AND name = ?
 SQL
@@ -60,7 +60,7 @@ eval {
   $sth->bind_param(1, 2);
   $sth->execute();
 };
-ok(!$@,
+ok($@,
   'execute with only first of two params bound'
   );
 
@@ -70,7 +70,7 @@ eval {
   $sth->bind_param(2, 'foo');
   $sth->execute();
 };
-ok(!$@,
+ok($@,
   'execute with only second of two params bound'
   );
 
@@ -79,7 +79,7 @@ eval {
   $sth = $dbh->prepare($sql);
   $sth->execute();
 };
-ok(!$@,
+ok($@,
   'execute with neither of two params bound'
   );
 
@@ -93,7 +93,7 @@ eval {
   $sth = $dbh->prepare(q{
 			 SELECT id
 			 , name
-			 FROM test
+			 FROM dbd_pg_test
 			 WHERE id = ?
 			 AND name = ?
 			});
