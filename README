@@ -1,7 +1,7 @@
 
 DBD::Pg  --  a PostgreSQL interface for Perl 5.
 
-   $Id: README,v 1.2 2002/03/07 01:29:29 jwb Exp $
+   $Id: README,v 1.3 2002/04/10 02:01:38 jwb Exp $
 
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Copyright (c) 2002 Jeffrey W. Baker
@@ -14,7 +14,7 @@ DBD::Pg  --  a PostgreSQL interface for Perl 5.
 DESCRIPTION:
 ------------
 
-This is version 1.12 of DBD-Pg.
+This is version 1.13 of DBD-Pg.
 DBD-Pg is a PostgreSQL interface for Perl5 using DBI.
 
 For further information about DBI look at:
@@ -28,6 +28,8 @@ For information about PostgreSQL, visit:
 CHANGES:
 ---------------
 
+Since version 1.12
+ - add definition for missing type 'numeric' and fix segfault in pg_type
 Since version 1.11
  - implement missing metadata methods and change existing ones
 Since version 1.10
@@ -173,6 +175,6 @@ Win32 Users: Running DBD-Pg scripts on Win32 needs some configuration work
 
 ---------------------------------------------------------------------------
 
-   Jeffrey W. Baker <jwbaker@acm.org>                       9 April 2002   
+   Jeffrey W. Baker <jwbaker@acm.org>                      27 April 2002   
 
 ---------------------------------------------------------------------------

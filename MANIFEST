@@ -25,4 +25,5 @@ t/09autocommit.t
 t/10transition.t
 t/11quoting.t
 t/12placeholders.t
+t/13pgtype.t
 t/99cleanup.t

@@ -1,6 +1,6 @@
 
 /*
-   $Id: dbdimp.c,v 1.1.1.1 2002/03/06 17:43:06 jwb Exp $
+   $Id: dbdimp.c,v 1.2 2002/04/10 02:01:38 jwb Exp $
 
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Copyright (c) 2002 Jeffrey W. Baker
@@ -1839,9 +1839,19 @@ dbd_st_FETCH_attrib (sth, imp_sth, keysv)
             case 1187:
                 type_nam = "_timespan";
                 break;
+            case 1231:
+                type_nam = "_numeric";
+                break;
             case 1296:
                 type_nam = "timestamp";
                 break;
+            case 1700:
+                type_nam = "numeric";
+                break;
+                
+            default:
+                type_nam = "unknown";
+                
             }
             av_store(av, i, newSVpv(type_nam, 0));
         }

@@ -1,5 +1,5 @@
 
-#  $Id: Pg.pm,v 1.2 2002/03/07 01:28:45 jwb Exp $
+#  $Id: Pg.pm,v 1.3 2002/04/10 02:01:38 jwb Exp $
 #
 #  Copyright (c) 1997,1998,1999,2000 Edmund Mergl
 #  Copyright (c) 2002 Jeffrey W. Baker
@@ -11,7 +11,7 @@
 
 require 5.004;
 
-$DBD::Pg::VERSION = '1.12';
+$DBD::Pg::VERSION = '1.13';
 
 {
     package DBD::Pg;

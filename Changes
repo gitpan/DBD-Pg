@@ -1,3 +1,8 @@
+2002-04-27 Jeffrey W. Baker <jwbaker@acm.org>
+
+    * dbdimp.c: Add default at end of switch statement for pg_type attrib.
+    * t/13pgtype.t: test for above.
+    
 2002-04-09 Jeffrey W. Baker <jwbaker@acm.org>
 
     * Pg.pm, dbdimp.c: Applied patch from 

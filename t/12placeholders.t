@@ -119,6 +119,7 @@ sub main {
     
     eval {
         local $dbh->{PrintError} = 0;
+        locat $sth->{PrintError} = 0;
         $sth->execute('foo');
     };
     if (!$@) {
