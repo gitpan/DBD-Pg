@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl,v 1.25 2000/06/12 15:12:17 mergl Exp $
+# $Id: test.pl,v 1.26 2001/04/09 17:44:18 mergl Exp $
 
 # Before `make install' is performed this script should be runnable with
 # `make test'. After `make install' it should work as `perl test.pl'
@@ -56,7 +56,7 @@ if ($os eq "MSWin32") {
         or  print "DBI->data_sources .......... not ok: $data_sources\n";
 }
 
-( $dbh0 = DBI->connect("$dsn_main", "", "", { AutoCommit => 1 }) )
+( $dbh0 = DBI->connect("$dsn_main", '', '', { AutoCommit => 1 }) )
     and print "DBI->connect ............... ok\n"
     or  die   "DBI->connect ............... not ok: ", $DBI::errstr;
 
@@ -110,6 +110,10 @@ my @names = $dbh->tables;
 ( join(" ", @names) eq q{builtin} ) 
     and print "\$dbh->tables ............... ok\n"
     or  print "\$dbh->tables ............... not ok: ", join(" ", @names), "\n";
+
+# from Henry C.Schmitt <HSchmitt@CedarServices.com>
+# postmaster error on ppc-platform with DBD-Pg 0.95 and PostgreSQL 7.0.2 
+# ERROR:  getattproperties: no attribute tuple 1259 -2
 
 my $attrs = $dbh->func('builtin', 'table_attributes');
 ( $$attrs[0]{NAME} eq q{varchar12_} ) 
@@ -228,10 +232,10 @@ my $pg_cmd_status = $sth->{pg_cmd_status};
 
 $sth = $dbh->prepare("SELECT * FROM builtin where int4_ < ? + ?") or die $DBI::errstr;
 
-( $sth->bind_param(1, '4000', DBI::SQL_INTEGER) )
+( $sth->bind_param(1, 4000, DBI::SQL_INTEGER) )
     and print "\$sth->bind_param ........... ok\n"
     or  die   "\$sth->bind_param ........... not ok: ", $DBI::errstr;
-$sth->bind_param(2, '6000', DBI::SQL_INTEGER);
+$sth->bind_param(2, 6000, DBI::SQL_INTEGER);
 
 $sth->execute or die $DBI::errstr;
 
@@ -369,7 +373,11 @@ foreach $ascii (0..255) {
     $pgin .= chr($ascii);
 };
 
-my $PGIN = '/tmp/pgin';
+# make large object > ~8K default chuck size (256 * 512 = 128K)
+$pgin = $pgin x 512;
+
+my $lob_len = length $pgin;
+my $PGIN    = '/tmp/pgin';
 open(PGIN, ">$PGIN") or die "can not open $PGIN";
 print PGIN $pgin;
 close PGIN;
@@ -421,11 +429,12 @@ my $lobj_fd; # may be 0
     or  print "\$dbh->func(lo_lseek) ....... not ok\n";
 
 $buf = '';
-( 256 == $dbh->func($lobj_fd, $buf, 256, 'lo_read') )
+( $lob_len == $dbh->func($lobj_fd, $buf, $lob_len, 'lo_read') )
     and print "\$dbh->func(lo_read) ........ ok\n"
     or  print "\$dbh->func(lo_read) ........ not ok\n";
 
-( 256 == $dbh->func($lobj_fd, 'lo_tell') )
+
+( $lob_len == $dbh->func($lobj_fd, 'lo_tell') )
     and print "\$dbh->func(lo_tell) ........ ok\n"
     or  print "\$dbh->func(lo_tell) ........ not ok\n";
 

@@ -1,5 +1,24 @@
 Revision history for Perl extension DBD-Pg.
 
+
+0.96 Apr 09, 2001
+	- remove memory-leak in ping function, bug-fix
+	  from Doug Perham <dperham@wgate.com>
+	- correct the recognition of primary keys in 
+	  table_attributes(). Patch from Brian Powell 
+	  <brian@nicklebys.com>.
+	- applied patch from David D. Kilzer <ddkilzer@lubricants-oil.com>
+	  which fixes a segmentation fault in DBD::pg::blob_read() when 
+	  reading LOBs that required perl to reallocate space for the 
+	  variable holding the scalar value
+	- updated test.pl to create a test blob larger than 256 bytes 
+	  (now 128 Kbytes)
+	- apply patch from Tom Lane, which fixes a seg-fault when
+	  inserting large amounts of text.
+	- apply patch from Peter Haworth   pmh@edison.ioppublishing.com,
+	  which removes the newlines from the error messages and which 
+	  quotes date placeholders.
+
 0.95 Jul 10, 2000
 	- add Win32 port from Bob Kline <bkline@rksystems.com>.
 

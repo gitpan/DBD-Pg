@@ -1,7 +1,7 @@
 
 DBD::Pg  --  a PostgreSQL interface for Perl 5.
 
-   $Id: README,v 1.39 2000/07/10 17:47:51 mergl Exp $
+   $Id: README,v 1.40 2001/04/09 17:44:18 mergl Exp $
 
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -13,7 +13,7 @@ DBD::Pg  --  a PostgreSQL interface for Perl 5.
 DESCRIPTION:
 ------------
 
-This is version 0.95 of DBD-Pg.
+This is version 0.96 of DBD-Pg.
 DBD-Pg is a PostgreSQL interface for Perl5 using DBI.
 
 For further information about DBI look at:
@@ -82,7 +82,7 @@ INSTALLATION:
 -------------
 
 The Makefile checks the environment variables POSTGRES_INCLUDE and
-POSTGRES_LIB, to find the library lipq.so and the proper include files. 
+POSTGRES_LIB, to find the library libpq.so and the proper include files. 
  
 1.   perl Makefile.PL
 2.   make
@@ -116,7 +116,16 @@ A typical error message resulting from not finding libpq.so is:
   install_driver(Pg) failed: Can't load './blib/arch/auto/DBD/Pg/Pg.so' 
   for module DBD::Pg: File not found at 
 
-Some linux distributions have an incomplete perl installation.
+If you get an error message like:
+  perl: error while loading shared libraries:
+  /usr/lib/perl5/site_perl/5.6.0/i386-linux/auto/DBD/Pg/Pg.so: undefined
+  symbol: PQconnectdb
+when you call DBI->connect, then your libpq.so was probably not seen at
+build-time. This should have caused 'make test' to fail; did you really
+run it and look at the output? Check the setting of POSTGRES_LIB and
+recompile DBD-Pg.
+ 
+ Some linux distributions have an incomplete perl installation.
 If you have compile errors like "XS_VERSION_BOOTCHECK undeclared", make a
           'find .../lib/perl5 -name XSUB.h -print'
 If this file is not present, you need to recompile and reinstall perl.
@@ -153,6 +162,6 @@ Win32 Users: Running DBD-Pg scripts on Win32 needs some configuration work
 
 ---------------------------------------------------------------------------
 
-   Edmund Mergl <E.Mergl@bawue.de>                           July 10, 2000
+   Edmund Mergl <E.Mergl@bawue.de>                           Apr 09, 2001
 
 ---------------------------------------------------------------------------

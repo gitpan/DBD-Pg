@@ -1,5 +1,5 @@
 
-#  $Id: Pg.pm,v 1.38 2000/07/10 17:47:51 mergl Exp $
+#  $Id: Pg.pm,v 1.39 2001/04/09 17:44:18 mergl Exp $
 #
 #  Copyright (c) 1997,1998,1999,2000 Edmund Mergl
 #  Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -10,7 +10,7 @@
 
 require 5.003;
 
-$DBD::Pg::VERSION = '0.95';
+$DBD::Pg::VERSION = '0.96';
 
 {
     package DBD::Pg;
@@ -79,11 +79,11 @@ $DBD::Pg::VERSION = '0.95';
         $Name =~ s/^.*dbname\s*=\s*//;
         $Name =~ s/\s*;.*$//;
 
-        $user = '' unless defined($user);
-        $auth = '' unless defined($auth);
+        $user = "" unless defined($user);
+        $auth = "" unless defined($auth);
 
-        $user = $ENV{DBI_USER} unless defined($user);
-        $auth = $ENV{DBI_PASS} unless defined($auth);
+        $user = $ENV{DBI_USER} unless $user eq "";
+        $auth = $ENV{DBI_PASS} unless $auth eq "";
 
         my($dbh) = DBI::_new_dbh($drh, {
             'Name' => $Name,
@@ -230,8 +230,7 @@ $DBD::Pg::VERSION = '0.95';
             $constraint = '' unless $constraint;
 
             # Check to see if this is the primary key
-            my $is_primary_key;
-            ($pri_key eq $col_name) ? $is_primary_key = 1 : $is_primary_key = 0;
+            my $is_primary_key = (lc $pri_key eq lc $col_name) ? 1 : 0;
 
             push @$result,
                 { NAME        => $col_name,
@@ -586,12 +585,17 @@ object $lobj_fd and undef upon failure.
 Closes an existing large object. Returns true upon success
 and false upon failure.
 
+  $lobj_fd = $dbh->func($lobj_fd, 'lo_unlink');
+
+Deletes an existing large object. Returns true upon success
+and false upon failure.
+
   $lobjId = $dbh->func($filename, 'lo_import');
 
 Imports a Unix file as large object and returns the object
 id of the new object or undef upon failure. 
 
-  $ret = $dbh->func($lobjId, 'lo_export');
+  $ret = $dbh->func($lobjId, 'lo_export', 'filename');
 
 Exports a large object into a Unix file.  Returns false upon
 failure, true otherwise.
@@ -1150,9 +1154,7 @@ DBD-Pg by Edmund Mergl (E.Mergl@bawue.de)
 
 The DBD::Pg module is free software. 
 You may distribute under the terms of either the GNU General Public
-License or the Artistic License, as specified in the Perl README file,
-with the exception that it cannot be placed on a CD-ROM or similar media
-for commercial distribution without the prior approval of the author.
+License or the Artistic License, as specified in the Perl README file.
 
 
 =head1 ACKNOWLEDGMENTS

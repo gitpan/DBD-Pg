@@ -1,5 +1,5 @@
 /*
-   $Id: dbdimp.h,v 1.15 2000/07/10 17:47:51 mergl Exp $
+   $Id: dbdimp.h,v 1.16 2001/04/09 17:44:18 mergl Exp $
 
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -63,7 +63,7 @@ struct phs_st {  	/* scalar placeholder EXPERIMENTAL	*/
     sb2 indp;		/* null indicator			*/
     char *progv;
     ub2 arcode;
-    ub2 alen;		/* effective length ( <= maxlen )	*/
+    IV alen;		/* effective length ( <= maxlen )	*/
 
     int alen_incnull;	/* 0 or 1 if alen should include null	*/
     char name[1];	/* struct is malloc'd bigger as needed	*/

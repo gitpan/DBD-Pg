@@ -1,6 +1,6 @@
 
 /*
-   $Id: dbdimp.c,v 1.34 2000/07/10 17:47:51 mergl Exp $
+   $Id: dbdimp.c,v 1.35 2001/04/09 17:44:18 mergl Exp $
 
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -73,6 +73,14 @@ pg_error (h, error_num, error_msg)
 {
     D_imp_xxh(h);
 
+    /* Remove trailing newlines */
+    if (error_msg) {
+      char *end = error_msg+strlen(error_msg);
+      while (end > error_msg && end[-1] == '\n') {
+        --end;
+      }
+      *end = 0;
+    }
     sv_setiv(DBIc_ERR(imp_xxh), (IV)error_num);		/* set err early */
     sv_setpv(DBIc_ERRSTR(imp_xxh), (char*)error_msg);
     DBIh_EVENT2(h, ERROR_event, DBIc_ERR(imp_xxh), DBIc_ERRSTR(imp_xxh));
@@ -193,6 +201,7 @@ dbd_db_ping (dbh)
 
     result = PQexec(imp_dbh->conn, " ");
     status = result ? PQresultStatus(result) : -1;
+    PQclear(result);
 
     if (PGRES_EMPTY_QUERY != status) {
         return 0;
@@ -1086,7 +1095,7 @@ dbd_st_execute (sth, imp_sth)   /* <= -2:error, >=0:ok row count, (-1=unknown co
                 val = SvPV(phs->sv, len);
             }
             /* quote string attribute */
-            if(!SvNIOK(phs->sv) && SvOK(phs->sv) && phs->ftype > 1000) { /* avoid quoting NULL, tpf: bind_param as numeric  */
+            if(SvOK(phs->sv) && (!SvNIOK(phs->sv) || phs->ftype > 1000)) { /* avoid quoting NULL, tpf: bind_param as numeric  */
 	        *dest++ = '\''; 
             }
             while (len--) {
@@ -1104,7 +1113,7 @@ dbd_st_execute (sth, imp_sth)   /* <= -2:error, >=0:ok row count, (-1=unknown co
                 *dest++ = *val++;
             }
             /* quote string attribute */
-            if(!SvNIOK(phs->sv) && SvOK(phs->sv) && phs->ftype > 1000) { /* avoid quoting NULL,  tpf: bind_param as numeric */
+            if(SvOK(phs->sv) && (!SvNIOK(phs->sv) || phs->ftype > 1000)) { /* avoid quoting NULL, tpf: bind_param as numeric  */
                 *dest++ = '\''; 
             }
         }
@@ -1292,13 +1301,13 @@ dbd_st_blob_read (sth, imp_sth, lobjId, offset, len, destrv, destoffset)
     tmp = (SvPVX(bufsv)) + destoffset + nread;
     while ((nbytes = lo_read(imp_dbh->conn, lobj_fd, tmp, BUFSIZ)) > 0) {
         nread += nbytes;
-        tmp = (SvPVX(bufsv)) + destoffset + nread;
         /* break if user wants only a specified chunk */
         if (len > 0 && nread > len) {
             nread = len;
             break;
         }
         SvGROW(bufsv, destoffset + nread + BUFSIZ + 1);
+        tmp = (SvPVX(bufsv)) + destoffset + nread;
     }
 
     /* terminate string */
