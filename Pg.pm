@@ -1,5 +1,5 @@
 
-#  $Id: Pg.pm,v 1.67 2003/11/10 03:37:25 rlippan Exp $
+#  $Id: Pg.pm,v 1.73 2003/11/14 20:38:44 rlippan Exp $
 #
 #  Copyright (c) 1997,1998,1999,2000 Edmund Mergl
 #  Copyright (c) 2002 Jeffrey W. Baker
@@ -12,7 +12,7 @@
 
 use 5.006001;
 
-$DBD::Pg::VERSION = '1.31_8';
+$DBD::Pg::VERSION = '1.31_9';
 
 {
 	package DBD::Pg;
@@ -61,13 +61,17 @@ $DBD::Pg::VERSION = '1.31_8';
 	## Used by both the dr and db packages
 	sub _pg_server_version {
 		my $dbh = shift;
-		return $dbh->{pg_server_version} if defined $dbh->{pg_server_version};
+		return $dbh->{private_dbdpg}->{server_version} if defined $dbh->{private_dbdpg}->{server_version};
 		my ($version) = $dbh->selectrow_array("SELECT version();");
-		$dbh->{pg_server_version} = ($version =~ /^PostgreSQL ([\d\.]+)/) ? $1 : 0;
-		return $dbh->{pg_server_version};
+		$dbh->{private_dbdpg}->{server_version} = ($version =~ /^PostgreSQL ([\d\.]+)/) ? $1 : 0;
+		return $dbh->{private_dbdpg}->{server_version};
 	}
 
 	## Is the second version greater than or equal to the first?
+    # Returns:
+    # 0 if first version is greater
+    # 1 if they are equal
+    # 2 if second version is greater 
 	sub _pg_check_version($$) {
 		## Check each section from left to right
 		my @uno = split (/\./ => $_[0]);
@@ -221,9 +225,12 @@ $DBD::Pg::VERSION = '1.31_8';
 		my $schemajoin = DBD::Pg::_pg_check_version(7.3, $version) ? 
 			"JOIN pg_catalog.pg_namespace n ON (n.oid = c.relnamespace)" : "";
 
-        my $remarks = DBD::Pg::_pg_check_version(7.2, $version) ?
-            "${CATALOG}col_description(a.attrelid, a.attnum)" : "NULL::text";
-
+        # Create a join to get the correct description (for Pg < 7.2 or >= 7.2)                                                              
+       my $pg_description_join = DBD::Pg::_pg_check_version(7.2, $version)                                                                  
+            ? "LEFT JOIN ${CATALOG}pg_description d  ON (a.attnum = d.objsubid)\n".                                                      
+              "\t\t\t\tLEFT JOIN ${CATALOG}pg_class       dc ON (dc.oid = d.objoid )"                                                    
+            : "LEFT JOIN ${CATALOG}pg_description d ON (a.oid = d.objoid )";                                                             
+                                                                                                                                                    
 		my $col_info_sql = qq!
 			SELECT
 				NULL::text AS "TABLE_CAT"
@@ -237,7 +244,7 @@ $DBD::Pg::VERSION = '1.31_8';
 				, NULL::text AS "DECIMAL_DIGITS"
 				, NULL::text AS "NUM_PREC_RADIX"
 				, CASE a.attnotnull WHEN 't' THEN 0 ELSE 1 END AS "NULLABLE"
-				, $remarks AS "REMARKS"
+				, d.description AS "REMARKS"
 				, af.adsrc AS "COLUMN_DEF"
 				, NULL::text AS "SQL_DATA_TYPE"
 				, NULL::text AS "SQL_DATETIME_SUB"
@@ -253,6 +260,7 @@ $DBD::Pg::VERSION = '1.31_8';
 				JOIN ${CATALOG}pg_class c ON (a.attrelid = c.oid)
 				LEFT JOIN ${CATALOG}pg_attrdef af ON (a.attnum = af.adnum AND a.attrelid = af.adrelid)
 				$schemajoin
+                $pg_description_join  
 			WHERE
 				a.attnum >= 0
 				AND c.relkind IN ('r','v')
@@ -1274,10 +1282,6 @@ The C<table_attributes> function is no longer recommended. Instead,
 you can use the more portable C<column_info> and C<primary_key> functions
 to access all the same information.
 
-The C<table_attributes> function is no longer recommended. Instead,
-you can use the more portable C<column_info> and C<primary_key> functions
-to access all the same information.
-
 This method returns for the given table a reference to an array of hashes:
 
   NAME        attribute name
@@ -1960,9 +1964,17 @@ DBI and DBD-Oracle by Tim Bunce (Tim.Bunce@ig.co.uk)
 DBD-Pg by Edmund Mergl (E.Mergl@bawue.de) and Jeffrey W. Baker
 (jwbaker@acm.org). By David Wheeler <david@wheeler.net>, Jason
 Stewart <jason@openinformatics.com> and Bruce Momjian
-<pgman@candle.pha.pa.us> after v1.13.
+<pgman@candle.pha.pa.us> and others after v1.13.
 
 Major parts of this package have been copied from DBI and DBD-Oracle.
+
+B<Mailing List>
+
+The current maintainers may be reached through the 'dbdpg-general' mailing list:
+http://gborg.postgresql.org/mailman/listinfo/dbdpg-general
+
+This list is available through Gmane (http://www.gmane.org) as a newsgroup with the name:
+C<gmane.comp.db.postgresql.dbdpg>
 
 =head1 COPYRIGHT
 
