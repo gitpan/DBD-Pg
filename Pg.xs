@@ -1,5 +1,5 @@
 /*
-   $Id: Pg.xs,v 1.15 2003/10/29 21:13:32 rlippan Exp $
+   $Id: Pg.xs,v 1.16 2004/02/19 02:34:36 rlippan Exp $
 
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -70,7 +70,7 @@ MODULE=DBD::Pg     PACKAGE = DBD::Pg::db
 
 #TODO: make quote(foo, {type=>SQL_INTEGER}) work  #rl
 #TODO: make quote(foo, {pg_type=>DBD::Pg::PG_INTEGER}) work  #rl
-void
+SV*
 quote(dbh, to_quote_sv, type_sv=Nullsv)
     SV* dbh
     SV* to_quote_sv
@@ -104,17 +104,19 @@ quote(dbh, to_quote_sv, type_sv=Nullsv)
         if (!SvOK(to_quote_sv))  {
                 quoted = "NULL";
                 len = 4;
-                ST(0) =  sv_2mortal(newSVpv(quoted,len));
+                RETVAL = newSVpvn(quoted,len);
         } else {
                 if (SvMAGICAL(to_quote_sv))
                         mg_get(to_quote_sv);
 
                 to_quote = SvPV(to_quote_sv, len);
                 quoted = type_info->quote(to_quote, len, &retlen);
-                ST(0) =  sv_2mortal(newSVpv(quoted, retlen));
-                free (quoted);
+                RETVAL = newSVpvn(quoted, retlen);
+                Safefree (quoted);
         }
     }
+    OUTPUT:
+    	RETVAL
 
 
 

@@ -126,9 +126,16 @@ $result = $dbh->selectcol_arrayref($SQL, {Columns=>[2,1]});
 $expected = ['Roseapple',10,'Pineapple',11,'Kiwi',12];
 is_deeply($result, $expected, 'DB handle method "selectcol_arrayref" works with the Columns attribute');
 
-$result = $dbh->selectcol_arrayref($SQL, {Columns=>[2], MaxRows => 1});
-$expected = ['Roseapple'];
-is_deeply($result, $expected, 'DB handle method "selectcol_arrayref" works with the MaxRows attribute');
+if ($DBI::VERSION < 1.36) {
+ SKIP: {
+		skip 'DBI must be at least version 1.36 to test "selectcol_arrayref" with "MaxRows"', 1;
+	}
+}
+else {
+	$result = $dbh->selectcol_arrayref($SQL, {Columns=>[2], MaxRows => 1});
+	$expected = ['Roseapple'];
+	is_deeply($result, $expected, 'DB handle method "selectcol_arrayref" works with the MaxRows attribute');
+}
 
 #
 # Test of the "commit" and "rollback" database handle methods
@@ -769,6 +776,14 @@ ok( $result, 'DB handle method "lo_unlink" works');
 # Test of the "putline" database handle method
 #
 
+# Older servers cannot handle column names in COPY
+if (! DBD::Pg::_pg_check_version(7.3, $pgversion)) {
+ SKIP: {
+		skip qq{Cannot test DB handle method "putline" on pre-7.3 servers.}, 2;
+	}
+}
+else {
+
 $dbh->do("COPY dbd_pg_test (id, val) FROM STDIN");
 $result = $dbh->func("13\tOlive\n", 'putline');
 $result = $dbh->func("14\tStrawberry\n", 'putline');
@@ -782,10 +797,19 @@ $expected = [[13 => 'Olive'],[14 => 'Strawberry'],[15 => 'Blueberry']];
 $result = $dbh->selectall_arrayref("SELECT id,val FROM dbd_pg_test WHERE id BETWEEN 13 AND 15 ORDER BY id ASC");
 is_deeply( $result, $expected, 'DB handle method "putline" copies strings to the database');
 
+}
+
 
 #
 # Test of the "getline" database handle method
 #
+
+if (! DBD::Pg::_pg_check_version(7.3, $pgversion)) {
+ SKIP: {
+		skip qq{Cannot test DB handle method "getline" on pre-7.3 servers.}, 4;
+	}
+}
+else {
 
 $dbh->do("COPY dbd_pg_test (id, val) TO STDOUT");
 my ($buffer,$badret,$badval) = ('',0,0);
@@ -799,6 +823,8 @@ is( $result, '', 'DB handle method "getline" returns empty string when finished'
 is( $buffer, '\.', qq{DB handle method "getline" returns '\\.' when finished});
 ok( !$badret, 'DB handle method "getline" returns a 1 for each row fetched');
 ok( !$badval, 'DB handle method "getline" properly retrieved every row');
+
+}
 
 #
 # Test of the "pg_notifies" database handle method

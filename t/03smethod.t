@@ -35,9 +35,14 @@ ok( $sth->bind_param(1, 1), 'Statement handle method "bind_param" works when bin
 ok( $sth->bind_param(1, 'foo'), 'Statement handle method "bind_param" works when rebinding an int column with a string');
 
 # Check if the server is sending us warning messages
-$sth = $dbh->prepare("SHOW client_min_messages");
-$sth->execute();
-my $client_level = $sth->fetchall_arrayref()->[0][0];
+# We assume that older servers are okay
+my $pgversion = DBD::Pg::_pg_server_version($dbh);
+my $client_level = '';
+if (DBD::Pg::_pg_check_version(7.3, $pgversion)) {
+	$sth = $dbh->prepare("SHOW client_min_messages");
+	$sth->execute();
+	$client_level = $sth->fetchall_arrayref()->[0][0];
+}
 
 # Make sure that we get warnings when we try to use SQL_BINARY.
 if ($client_level eq "error") {
@@ -125,15 +130,22 @@ is( $rows, 4, 'Statement method handle "execute_array" returns correct number of
 # Test of the "execute_for_fetch" statement handle method
 #
 
-$sth = $dbh->prepare("SELECT id+200, val FROM dbd_pg_test");
-my $goodrows = $sth->execute();
-my $sth2 = $dbh->prepare("INSERT INTO dbd_pg_test (id, val) VALUES (?,?)");
-$sth2->execute();
-my $fetch_tuple_sub = sub { $sth->fetchrow_arrayref() };
-undef @tuple_status;
-$rows = $sth2->execute_for_fetch($fetch_tuple_sub, \@tuple_status);
-is_deeply( \@tuple_status, [map{1}(1..$goodrows)], 'Statement handle method "execute_for_fetch" works');
-is( $rows, $goodrows, 'Statement handle method "execute_for_fetch" returns correct number of rows');
+if ($DBI::VERSION < 1.38) {
+ SKIP: {
+		skip 'DBI must be at least version 1.38 to test statement handle method "execute_for_fetch"', 2;
+	}
+}
+else {
+	$sth = $dbh->prepare("SELECT id+200, val FROM dbd_pg_test");
+	my $goodrows = $sth->execute();
+	my $sth2 = $dbh->prepare("INSERT INTO dbd_pg_test (id, val) VALUES (?,?)");
+	$sth2->execute();
+	my $fetch_tuple_sub = sub { $sth->fetchrow_arrayref() };
+	undef @tuple_status;
+	$rows = $sth2->execute_for_fetch($fetch_tuple_sub, \@tuple_status);
+	is_deeply( \@tuple_status, [map{1}(1..$goodrows)], 'Statement handle method "execute_for_fetch" works');
+	is( $rows, $goodrows, 'Statement handle method "execute_for_fetch" returns correct number of rows');
+}
 
 #
 # Test of the "fetchrow_arrayref" statement handle method
@@ -299,6 +311,8 @@ is_deeply( $result, $expected, 'Statement handle method "pg_size" works');
 $sth->execute();
 $result = $sth->{pg_type};
 $expected = [qw(int4 varchar text float8 bpchar timestamp bool)];
+# Hack for old servers
+$expected->[5] = 'datetime' if (! DBD::Pg::_pg_check_version(7.3, $pgversion));
 is_deeply( $result, $expected, 'Statement handle method "pg_type" works');
 $sth->finish();
 

@@ -156,7 +156,9 @@ is( $attrib, 'Pg', '$dbh->{Driver}{Name} returns correct value of "Pg"');
 
 if ($ENV{DBI_DSN} !~ /dbname\s*=\s*\"([^"]+)/o and 
 		$ENV{DBI_DSN} !~ /dbname\s*=\s*([^;]+)/o) {
-	fail('No dbname found within the DBI_DSN environment variable!');
+ SKIP: {
+		skip 'Cannot test DB handle attribute "Name": DBI_DSN has no dbname', 1;
+	}
 }
 else {
 	$attrib = $dbh->{Name};
@@ -177,8 +179,15 @@ ok( !defined $attrib, 'Setting DB handle attribute "RowCacheSize" has no effect'
 # Test of the database handle attribute "Username"
 #
 
-$attrib = $dbh->{Username};
-is( $attrib, $ENV{DBI_USER}, 'DB handle attribute "Username" returns the same value as DBI_USER');
+if ($DBI::VERSION < 1.36) {
+ SKIP: {
+		skip 'DBI must be at least version 1.36 to test the DB handle attribute "Username"', 1;
+	}
+}
+else {
+	$attrib = $dbh->{Username};
+	is( $attrib, $ENV{DBI_USER}, 'DB handle attribute "Username" returns the same value as DBI_USER');
+}
 
 #
 # Test of the database handle attributes "pg_INV_WRITE" and "pg_INV_READ"
@@ -367,9 +376,14 @@ $attrib = $dbh->{PrintError};
 is( $attrib, '', 'Database handle attribute "PrintError" is set properly');
 
 # Make sure that warnings are sent back to the client
-$sth = $dbh->prepare("SHOW client_min_messages");
-$sth->execute();
-my $client_level = $sth->fetchall_arrayref()->[0][0];
+# We assume that older servers are okay
+my $pgversion = DBD::Pg::_pg_server_version($dbh);
+my $client_level = '';
+if (DBD::Pg::_pg_check_version(7.3, $pgversion)) {
+	$sth = $dbh->prepare("SHOW client_min_messages");
+	$sth->execute();
+	$client_level = $sth->fetchall_arrayref()->[0][0];
+}
 
 if ($client_level eq "error") {
  SKIP: {
