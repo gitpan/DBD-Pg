@@ -1,6 +1,6 @@
 /*-------------------------------------------------------
  *
- * $Id: dbdimp.c,v 1.3 1997/03/13 21:03:07 mergl Exp $
+ * $Id: dbdimp.c,v 1.5 1997/04/24 20:26:54 mergl Exp $
  *
  *  Portions Copyright (c) 1994,1995,1996  Tim Bunce
  *  Portions Copyright (c) 1997            Edmund Mergl
@@ -157,7 +157,9 @@ dbd_db_destroy(dbh)
 	dbd_db_disconnect(dbh);
     }
 
-    /* fprintf(stderr, "destroy database handle\n"); */
+#ifdef PGDEBUG
+    fprintf(stderr, "destroy database handle\n");
+#endif
 
     PQfinish(imp_dbh->conn);
 
@@ -202,8 +204,14 @@ dbd_st_prepare(sth, statement, attribs)
     D_imp_sth(sth);
     D_imp_dbh_from_sth;
 
-    imp_sth->command = (char*)safemalloc(strlen(statement) + 1);
-    strcpy(imp_sth->command, statement);
+#ifdef PGDEBUG
+    fprintf(stderr, "dbd_st_prepare\n");
+#endif
+
+    /* initialize new statement handle */
+
+    imp_sth->result    = 0;
+    imp_sth->cur_tuple = 0;
 
     DBIc_IMPSET_on(imp_sth);
 
@@ -212,32 +220,47 @@ dbd_st_prepare(sth, statement, attribs)
 
 
 int
-dbd_st_execute(sth)
+dbd_st_execute(sth, statement)
     SV *sth;
+    char *statement;
 {
     D_imp_sth(sth);
     D_imp_dbh_from_sth;
-    ExecStatusType status;
+    ExecStatusType status = -1;
+    int ret = -1;
 
-    /* execute command */
-    imp_sth->result = PQexec(imp_dbh->conn, imp_sth->command);
-    status = imp_sth->result ? PQresultStatus(imp_sth->result) : -1;
+#ifdef PGDEBUG
+    fprintf(stderr, "dbd_st_execute\n");
+#endif
 
-    if (status != PGRES_COMMAND_OK && status != PGRES_TUPLES_OK) {
-        Safefree(imp_sth->command);
-        imp_sth->command = 0;
-        dbd_error(sth, status, PQerrorMessage(imp_dbh->conn));
-        return 0;
+    if (! statement) {
+        /* are we prepared ? */
+        dbd_error(sth, -1, "statement not prepared");
+    } else {
+        /* execute statement if not already done */
+        if (! imp_sth->result) {
+            imp_sth->result = PQexec(imp_dbh->conn, statement);
+        }
+        /* check status */
+        status = imp_sth->result ? PQresultStatus(imp_sth->result) : -1;
     }
-    
-    imp_sth->cur_tuple = 0;
-    
-    DBIc_NUM_FIELDS(imp_sth) = PQnfields(imp_sth->result);
-    
-    DBIc_ACTIVE_on(imp_sth); /* XXX should only set for select ? */
-    
-    return PQntuples(imp_sth->result);
 
+    if (PGRES_TUPLES_OK == status) {
+        /* select statement */
+        imp_sth->cur_tuple = 0;
+        DBIc_NUM_FIELDS(imp_sth) = PQnfields(imp_sth->result);
+        DBIc_ACTIVE_on(imp_sth);
+        ret = PQntuples(imp_sth->result);
+    } else if (PGRES_COMMAND_OK == status) {
+        /* non-select statement */
+	PQclear(imp_sth->result);
+        imp_sth->result = 0;
+        ret = 0;
+    } else {
+        dbd_error(sth, status, PQerrorMessage(imp_dbh->conn));
+    }
+
+    return ret;
 }
 
 
@@ -252,6 +275,10 @@ dbd_st_fetch(sth)
     int i;
     AV *av;
 
+#ifdef PGDEBUG
+    fprintf(stderr, "dbd_st_fetch\n");
+#endif
+
     /* Check that execute() was executed sucessfully */
     if ( !DBIc_ACTIVE(imp_sth) ) {
 	dbd_error(sth, 1, "no statement executing");
@@ -259,8 +286,8 @@ dbd_st_fetch(sth)
     }
 
     if ( imp_sth->cur_tuple == PQntuples(imp_sth->result) ) {
-
-        return Nullav;
+        imp_sth->cur_tuple = 0;
+        return Nullav; /* we reached the last tuple */
     }
 
     av = DBIS->get_fbav(imp_sth);
@@ -294,8 +321,14 @@ dbd_st_finish(sth)
 {
     D_imp_sth(sth);
 
-    Safefree(imp_sth->command);
-    imp_sth->command = 0;
+#ifdef PGDEBUG
+    fprintf(stderr, "dbd_st_finish\n");
+#endif
+
+    if (imp_sth->result) {
+	PQclear(imp_sth->result);
+        imp_sth->result = 0;
+    }
 
     DBIc_ACTIVE_off(imp_sth);
 
@@ -309,10 +342,9 @@ dbd_st_destroy(sth)
 {
     D_imp_sth(sth);
 
-    /* fprintf(stderr, "destroy statement handle\n"); */
-
-    PQclear(imp_sth->result);
-    imp_sth->result = 0;
+#ifdef PGDEBUG
+    fprintf(stderr, "dbd_st_destroy\n");
+#endif
 
     DBIc_IMPSET_off(imp_sth); /* let DBI know we've done it */
 }

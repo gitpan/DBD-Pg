@@ -1,8 +1,10 @@
 Revision history for Perl extension DBD-Pg.
 
-0.0   15 Feb 1997
+0.1   Feb 15, 1997
 	- creation, ( totally pre-alpha ! )
 
-0.1   13 Mar 1997
+0.2   Mar 13, 1997
 	- complete rewrite, ( still alpha ! )
 
+0.3   Apr 24, 1997
+        - bug fix release, ( still alpha ! )

@@ -1,6 +1,6 @@
 /*-------------------------------------------------------
  *
- * $Id: dbdimp.h,v 1.2 1997/03/13 21:03:08 mergl Exp $
+ * $Id: dbdimp.h,v 1.3 1997/04/24 20:26:54 mergl Exp $
  *
  *  Portions Copyright (c) 1994,1995,1996  Tim Bunce
  *  Portions Copyright (c) 1997            Edmund Mergl
@@ -22,7 +22,6 @@ struct imp_dbh_st {
 /* Define sth implementor data structure */
 struct imp_sth_st {
     dbih_stc_t com;		/* MUST be first element in structure	*/
-    char *command;
     PGresult* result;
     int cur_tuple;
 };

@@ -1,6 +1,6 @@
 #-------------------------------------------------------
 #
-# $Id: Pg.pm,v 1.2 1997/03/13 21:03:07 mergl Exp $
+# $Id: Pg.pm,v 1.5 1997/04/24 20:26:54 mergl Exp $
 #
 #   Portions Copyright (c) 1994,1995,1996  Tim Bunce
 #   Portions Copyright (c) 1997            Edmund Mergl
@@ -17,9 +17,9 @@ require 5.003;
     use DynaLoader ();
     @ISA = qw(DynaLoader);
 
-    $VERSION = '0.1';
+    $VERSION = '0.2';
 
-    require_version DBI 0.71;
+    require_version DBI 0.78;
 
     bootstrap DBD::Pg $VERSION;
 
@@ -86,10 +86,6 @@ require 5.003;
 	DBD::Pg::errstr(@_);
     }
 
-    sub  rows {
-        DBD::Pg::rows(@_);
-    }
-
     sub do {
         my($dbh, $statement, $attribs, @params) = @_;
 
@@ -115,7 +111,6 @@ require 5.003;
 
 	$sth;
     }
-
 }
 
 
@@ -125,10 +120,6 @@ require 5.003;
 
     sub errstr {
 	DBD::Pg::errstr(@_);
-    }
-
-    sub rows {
-        DBD::Pg::rows(@_);
     }
 }
 

@@ -1,6 +1,6 @@
 #-------------------------------------------------------
 #
-# $Id: test.pl,v 1.2 1997/03/13 21:03:08 mergl Exp $
+# $Id: test.pl,v 1.3 1997/04/06 08:41:15 mergl Exp $
 #
 #   Portions Copyright (c) 1994,1995,1996  Tim Bunce
 #   Portions Copyright (c) 1997            Edmund Mergl
@@ -18,15 +18,14 @@ use DBI;
 $loaded = 1;
 print "ok 1\n";
 
+$| = 1;
+
 ######################### End of black magic.
 
 $dbmain = 'template1';
 $dbname = 'pgperltest';
 $dbuser = '';
 $dbpass = '';
-$cnt    = 2;
-
-$| = 1;
 
 ######################### create and connect to test database
 
@@ -141,5 +140,8 @@ print "ok 14\n";
 ( $dbh->disconnect )
     and print "ok 27\n"
     or print "not ok 27: $DBI::errstr";
+
+
+print "all tests passed.\n";
 
 ######################### EOF

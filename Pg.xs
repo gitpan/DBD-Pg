@@ -1,6 +1,6 @@
 /*-------------------------------------------------------
  *
- * $Id: Pg.xs,v 1.2 1997/03/13 21:03:07 mergl Exp $
+ * $Id: Pg.xs,v 1.4 1997/04/24 20:26:54 mergl Exp $
  *
  *  Portions Copyright (c) 1994,1995,1996  Tim Bunce
  *  Portions Copyright (c) 1997            Edmund Mergl
@@ -19,6 +19,8 @@ DBISTATE_DECLARE;
 
 MODULE = DBD::Pg    PACKAGE = DBD::Pg
 
+PROTOTYPES: DISABLE
+
 BOOT:
     items = 0;	/* avoid 'unused variable' warning */
     DBISTATE_INIT;
@@ -35,6 +37,8 @@ errstr(h)
 
 
 MODULE = DBD::Pg    PACKAGE = DBD::Pg::dr
+
+PROTOTYPES: DISABLE
 
 
 void
@@ -58,6 +62,8 @@ disconnect_all(drh)
 
 
 MODULE = DBD::Pg    PACKAGE = DBD::Pg::db
+
+PROTOTYPES: DISABLE
 
 void
 _login(dbh, dbname, uid, pwd)
@@ -156,6 +162,8 @@ DESTROY(dbh)
 
 MODULE = DBD::Pg    PACKAGE = DBD::Pg::st
 
+PROTOTYPES: DISABLE
+
 void
 _prepare(sth, statement, attribs=Nullsv)
     SV *	sth
@@ -205,33 +213,16 @@ bind_param_inout(sth, param, value_ref, maxlen, attribs=Nullsv)
 
 
 void
-execute(sth, ...)
+execute(sth)
     SV *	sth
     CODE:
     D_imp_sth(sth);
     int retval;
-    if (items > 1) {
-	/* Handle binding supplied values to placeholders	*/
-	int i, error = 0;
-        SV *idx;
-	if (items-1 != DBIc_NUM_PARAMS(imp_sth)) {
-	    croak("execute called with %ld bind variables, %d needed",
-		    items-1, DBIc_NUM_PARAMS(imp_sth));
-	    XSRETURN_UNDEF;
-	}
-        idx = sv_2mortal(newSViv(0));
-	for(i=1; i < items ; ++i) {
-	    sv_setiv(idx, i);
-            /*
-	    if (!dbd_bind_ph(sth, idx, ST(i), Nullsv, FALSE, 0))
-		++error;
-            */
-	}
-	if (error) {
-	    XSRETURN_UNDEF;	/* dbd_bind_ph already registered error	*/
-	}
-    }
-    retval = dbd_st_execute(sth);
+    SV** svp;
+    char* statement;
+    svp = hv_fetch((HV *)SvRV(sth), "Statement", 9, FALSE);
+    statement = SvPV(*svp, na);
+    retval = dbd_st_execute(sth, statement);
     if (retval < 0)
 	XST_mUNDEF(0);		/* error        		*/
     else if (retval == 0)

@@ -1,6 +1,6 @@
 /*-------------------------------------------------------
  *
- * $Id: Pg.h,v 1.2 1997/03/13 21:03:07 mergl Exp $
+ * $Id: Pg.h,v 1.3 1997/04/24 20:26:53 mergl Exp $
  *
  *  Portions Copyright (c) 1994,1995,1996  Tim Bunce
  *  Portions Copyright (c) 1997            Edmund Mergl
@@ -47,7 +47,7 @@ int  dbd_db_STORE _((SV *dbh, SV *keysv, SV *valuesv));
 SV  *dbd_db_FETCH _((SV *dbh, SV *keysv));
 
 int  dbd_st_prepare _((SV *sth, char *statement, SV *attribs));
-int  dbd_st_execute _((SV *sv));
+int  dbd_st_execute _((SV *sv, char *statement));
 AV  *dbd_st_fetch _((SV *sv));
 int  dbd_st_rows _((SV *sv));
 int  dbd_st_finish _((SV *sth));

@@ -1,6 +1,6 @@
 #-------------------------------------------------------
 #
-# $Id: Makefile.PL,v 1.2 1997/03/13 21:03:07 mergl Exp $
+# $Id: Makefile.PL,v 1.3 1997/04/06 08:41:15 mergl Exp $
 #
 #  Portions Copyright (c) 1994,1995,1996  Tim Bunce
 #  Portions Copyright (c) 1997            Edmund Mergl
@@ -34,7 +34,7 @@ WriteMakefile(
     'NAME'         => 'DBD::Pg',
     'VERSION_FROM' => 'Pg.pm',
     'LIBS'	   => ["-L$ENV{POSTGRESHOME}/lib -lpq"],
-    'INC'	   =>  "-I$ENV{POSTGRESHOME}/include -I$Config{archlib}/DBI -I$Config{sitearch}/DBI",
+    'INC'	   =>  "-I$ENV{POSTGRESHOME}/include -I$Config{archlib}/DBI -I$Config{sitearch}/auto/DBI",
     'OBJECT'       => 'Pg$(OBJ_EXT) dbdimp$(OBJ_EXT)',
 );
 
