@@ -1,5 +1,16 @@
-Revision history for Perl extension DBD-Pg.
+2002-03-06 Jeffrey W. Baker <jwbaker@acm.org>
 
+    * Pg.pm (quote): Applied patch from David Wheeler <david@wheeler.net>
+    to simplfiy and speed up quoting.
+
+    * t/11quoting.t: Tests for above patch.
+    
+    * t/12placeholders.t: Tests for placeholder parsing in quoted strings.
+    
+2002-03-06 Jeffrey W. Baker
+
+    * Version 1.10 uploaded to CPAN.
+ 
 1.01 Jun 27, 2001
 	- fixed core dump when trying to use a BYTEA value with
 	  a byte outside 0..127  Alex Pilosov <alex@pilosoft.com>

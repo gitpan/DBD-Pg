@@ -1,7 +1,7 @@
 
 DBD::Pg  --  a PostgreSQL interface for Perl 5.
 
-   $Id: README,v 1.1.1.1 2002/03/06 17:43:06 jwb Exp $
+   $Id: README,v 1.2 2002/03/07 01:29:29 jwb Exp $
 
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Copyright (c) 2002 Jeffrey W. Baker
@@ -14,7 +14,7 @@ DBD::Pg  --  a PostgreSQL interface for Perl 5.
 DESCRIPTION:
 ------------
 
-This is version 1.10 of DBD-Pg.
+This is version 1.11 of DBD-Pg.
 DBD-Pg is a PostgreSQL interface for Perl5 using DBI.
 
 For further information about DBI look at:
@@ -28,6 +28,8 @@ For information about PostgreSQL, visit:
 CHANGES:
 ---------------
 
+Since version 1.10
+ - fix a lot of quoting and placeholder bugs
 Since version 1.01
  - fix reuse of freed memory after PQfinish
  - use PerlIO abstraction

@@ -1,5 +1,5 @@
 
-#  $Id: Pg.pm,v 1.1.1.1 2002/03/06 17:43:06 jwb Exp $
+#  $Id: Pg.pm,v 1.2 2002/03/07 01:28:45 jwb Exp $
 #
 #  Copyright (c) 1997,1998,1999,2000 Edmund Mergl
 #  Copyright (c) 2002 Jeffrey W. Baker
@@ -11,7 +11,7 @@
 
 require 5.004;
 
-$DBD::Pg::VERSION = '1.10';
+$DBD::Pg::VERSION = '1.11';
 
 {
     package DBD::Pg;
@@ -105,7 +105,17 @@ $DBD::Pg::VERSION = '1.10';
 
 {   package DBD::Pg::db; # ====== DATABASE ======
     use strict;
-    use POSIX(qw(isprint)); # necessary for quote()
+
+    # Characters that need to be escaped by quote().
+    my %esc = ( "'"  => '\\047', # '\\' . sprintf("%03o", ord("'")), # ISO SQL 2
+                '\\' => '\\134', # '\\' . sprintf("%03o", ord("\\")),
+                "\0" => '\\000'  # '\\' . sprintf("%03o", ord("\0")),
+              );
+
+    # Set up lookup for SQL types we don't want to escape.
+    my @no_escape;
+    grep { $no_escape[$_] = 1 } DBI::SQL_INTEGER, DBI::SQL_SMALLINT, DBI::SQL_DECIMAL,
+      DBI::SQL_FLOAT, DBI::SQL_REAL, DBI::SQL_DOUBLE, DBI::SQL_NUMERIC;
 
     sub prepare {
         my($dbh, $statement, @attribs)= @_;
@@ -342,48 +352,13 @@ $DBD::Pg::VERSION = '1.10';
 
     sub quote {
         my ($dbh, $str, $data_type) = @_;
-
         return "NULL" unless defined $str;
 
-        unless ($data_type) {
-            $str =~ s/'/''/g;           # ISO SQL2
-            # In addition to the DBI method it doubles also the
-            # backslash, because PostgreSQL treats a backslash as an
-            # escape character.
-            $str =~ s/\\/\\\\/g;
-            return "'$str'";
-        }
-
-        # Optimise for standard numerics which need no quotes
-        return $str if $data_type == DBI::SQL_INTEGER
-                    || $data_type == DBI::SQL_SMALLINT
-                    || $data_type == DBI::SQL_DECIMAL
-                    || $data_type == DBI::SQL_FLOAT
-                    || $data_type == DBI::SQL_REAL
-                    || $data_type == DBI::SQL_DOUBLE
-                    || $data_type == DBI::SQL_NUMERIC;
-        my $ti = $dbh->type_info($data_type);
-        # XXX needs checking
-        my $lp = $ti ? $ti->{LITERAL_PREFIX} || "" : "'";
-        my $ls = $ti ? $ti->{LITERAL_SUFFIX} || "" : "'";
-        # XXX don't know what the standard says about escaping
-        # in the 'general case' (where $lp != "'").
-        # So we just do this and hope:
-        $str =~ s/$lp/$lp$lp/g  
-            if $lp && $lp eq $ls && ($lp eq "'" || $lp eq '"');
-        # also, escape the backslashes, always
-        $str =~ s/\\/\\\\/g;
-        # if the type is SQL_BINARY, escape the non-printable chars
-        if ($data_type == DBI::SQL_BINARY ||
-            $data_type == DBI::SQL_VARBINARY ||
-            $data_type == DBI::SQL_LONGVARBINARY) {
-            $str=join("", map { isprint($_)?$_:'\\'.sprintf("%03o",ord($_)) } 
-                          split //, $str);
-        }
-        return "$lp$str$ls";
+	return $str if $data_type && $no_escape[$data_type];
+	$str =~ s/(['\\\0])/$esc{$1}/g;
+	return "'$str'";
     }
 }
-
 
 {   package DBD::Pg::st; # ====== STATEMENT ======
 

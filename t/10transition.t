@@ -3,10 +3,6 @@ if (!exists($ENV{DBDPG_MAINTAINER})) {
     exit;
 }
 
-if (!exists($ENV{DBDPG_MAINTAINER})) {
-    print "1..0\n";
-    exit;
-}
 use strict;
 use DBI;
 

@@ -6,6 +6,7 @@ Pg.pm
 Pg.xs
 README
 README.win32
+TODO
 dbd-pg.pod
 dbdimp.c
 dbdimp.h
@@ -22,4 +23,6 @@ t/07reuse.t
 t/08txn.t
 t/09autocommit.t
 t/10transition.t
+t/11quoting.t
+t/12placeholders.t
 t/99cleanup.t
