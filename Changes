@@ -1,5 +1,8 @@
 Revision history for Perl extension DBD-Pg.
 
+1.00 May 27, 2001
+	- Fetching all records now resets Active flag as it should.
+
 0.99 May 24, 2001
 	- fix the segmentation fault in pg_error.
 

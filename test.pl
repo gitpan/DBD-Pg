@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl,v 1.27 2001/04/20 21:01:17 mergl Exp $
+# $Id: test.pl,v 1.28 2001/05/27 14:10:13 mergl Exp $
 
 # Before `make install' is performed this script should be runnable with
 # `make test'. After `make install' it should work as `perl test.pl'
@@ -466,6 +466,6 @@ $dbh->{AutoCommit} = 1;
 $dbh0->do("DROP DATABASE $dbtest");
 $dbh0->disconnect;
 
-print "test sequence finished.\n";
+print "test sequencefinished.\n";
 
 ######################### EOF

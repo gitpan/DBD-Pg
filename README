@@ -1,7 +1,7 @@
 
 DBD::Pg  --  a PostgreSQL interface for Perl 5.
 
-   $Id: README,v 1.43 2001/05/24 17:30:45 mergl Exp $
+   $Id: README,v 1.44 2001/05/27 14:10:13 mergl Exp $
 
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -13,7 +13,7 @@ DBD::Pg  --  a PostgreSQL interface for Perl 5.
 DESCRIPTION:
 ------------
 
-This is version 0.99 of DBD-Pg.
+This is version 1.00 of DBD-Pg.
 DBD-Pg is a PostgreSQL interface for Perl5 using DBI.
 
 For further information about DBI look at:
@@ -24,7 +24,11 @@ For further information about DBI look at:
 RECENT CHANGES:
 ---------------
 
- - fix the segmentation fault in pg_error.
+ - Fetching all records now resets Active flag as it should.
+
+Please note: the version number 1.00 is misleading. It does not mean, 
+that this version is a final release. The number 1.00 is just the next 
+number after 0.99 :-)
 
 
 COPYRIGHT:
@@ -44,7 +48,7 @@ Use the following URL to look for new versions of this module:
 Note, that this request will be redirected automatically to the 
 nearest CPAN site. 
 
-A precompiled package for Windows-NT is available at:
+A pre-compiled package for Windows-NT is available at:
 
   http://www.edmund-mergl.de/export/DBD-Pg.zip
 
@@ -73,7 +77,7 @@ REQUIREMENTS:
 PLATFORMS:
 ----------
 
-  This release of DBD-Pg has been developed using Linux 2.2 with 
+  This release of DBD-Pg has been developed using Linux 2.4 with 
   dynamic loading for the perl extensions. Let me know, if there 
   are any problems with other platforms.
 
@@ -128,7 +132,7 @@ recompile DBD-Pg.
  Some linux distributions have an incomplete perl installation.
 If you have compile errors like "XS_VERSION_BOOTCHECK undeclared", make a
           'find .../lib/perl5 -name XSUB.h -print'
-If this file is not present, you need to recompile and reinstall perl.
+If this file is not present, you need to recompile and re-install perl.
 
 SGI users: if you get segmentation faults make sure, you use the malloc which 
            comes with perl when compiling perl (the default is not to).
@@ -162,6 +166,6 @@ Win32 Users: Running DBD-Pg scripts on Win32 needs some configuration work
 
 ---------------------------------------------------------------------------
 
-   Edmund Mergl <E.Mergl@bawue.de>                           May 24, 2001
+   Edmund Mergl <E.Mergl@bawue.de>                           May 27, 2001
 
 ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 
 /*
-   $Id: dbdimp.c,v 1.38 2001/05/24 17:30:45 mergl Exp $
+   $Id: dbdimp.c,v 1.39 2001/05/27 14:10:13 mergl Exp $
 
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -1218,11 +1218,13 @@ dbd_st_fetch (sth, imp_sth)
     /* Check that execute() was executed sucessfully */
     if ( !DBIc_ACTIVE(imp_sth) ) {
         pg_error(sth, 1, "no statement executing\n");
+        
         return Nullav;
     }
 
     if ( imp_sth->cur_tuple == PQntuples(imp_sth->result) ) {
         imp_sth->cur_tuple = 0;
+        DBIc_ACTIVE_off(imp_sth);
         return Nullav; /* we reached the last tuple */
     }
 
