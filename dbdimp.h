@@ -1,5 +1,5 @@
 /*
-	$Id: dbdimp.h,v 1.29 2005/01/03 15:23:46 turnstep Exp $
+	$Id: dbdimp.h,v 1.34 2005/03/29 02:35:53 turnstep Exp $
 	
 	Copyright (c) 2000-2005 PostgreSQL Global Development Group
 	Portions Copyright (c) 1997-2000 Edmund Mergl
@@ -26,19 +26,22 @@ struct imp_drh_st {
 
 /* Define dbh implementor data structure */
 struct imp_dbh_st {
-	dbih_dbc_t com;          /* MUST be first element in structure */
+	dbih_dbc_t com;            /* MUST be first element in structure */
 
-	bool    pg_bool_tf;      /* do bools return 't'/'f'? Set by user, default is 0 */
-	bool    pg_enable_utf8;  /* should we attempt to make utf8 strings? Set by user, default is 0 */
-	bool    prepare_now;     /* force immediate prepares, even with placeholders. Set by user, default is 0 */
-	char    pg_errorlevel;   /* PQsetErrorVerbosity. Set by user, defaults to 1 */
-	char    server_prepare;  /* do we want to use PQexecPrepared? 0=no 1=yes 2=smart. Can be changed by user */
+	bool    pg_bool_tf;        /* do bools return 't'/'f'? Set by user, default is 0 */
+	bool    pg_enable_utf8;    /* should we attempt to make utf8 strings? Set by user, default is 0 */
+	bool    prepare_now;       /* force immediate prepares, even with placeholders. Set by user, default is 0 */
+	char    pg_errorlevel;     /* PQsetErrorVerbosity. Set by user, defaults to 1 */
+	char    server_prepare;    /* do we want to use PQexecPrepared? 0=no 1=yes 2=smart. Can be changed by user */
 
-	PGconn  *conn;           /* connection structure */
-	bool    done_begin;      /* have we done a begin? (e.g. are we in a transaction?) */
-	int     pg_protocol;     /* value of PQprotocolVersion, usually 0, 2, or 3 */
-	int     prepare_number;  /* internal prepared statement name modifier */
-  char    *sqlstate;       /* from the last result */
+	PGconn  *conn;             /* connection structure */
+	bool    done_begin;        /* have we done a begin? (e.g. are we in a transaction?) */
+	AV      *savepoints;       /* list of savepoints */
+	int     pg_protocol;       /* value of PQprotocolVersion, usually 0, 2, or 3 */
+	int     pg_server_version; /* Server version e.g. 80100 */
+	int     prepare_number;    /* internal prepared statement name modifier */
+	char    *sqlstate;         /* from the last result */
+	int     copystate;         /* 0=none PGRES_COPY_IN PGRES_COPY_OUT */
 };
 
 
@@ -59,6 +62,7 @@ struct ph_st {
 	char  *quoted;              /* quoted version of the value, for PQexec only */
 	STRLEN quotedlen;           /* length of the quoted value */
 	bool   referenced;          /* used for PREPARE AS construction */
+	bool   defaultval;          /* is it using a generic 'default' value? */
 	sql_type_info_t* bind_type; /* type information for this placeholder */
 	struct ph_st *nextph;       /* more linked list goodness */
 };

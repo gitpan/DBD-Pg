@@ -1,5 +1,5 @@
 /*
-   $Id: Pg.xs,v 1.27 2005/01/03 15:23:37 turnstep Exp $
+   $Id: Pg.xs,v 1.31 2005/03/29 02:35:53 turnstep Exp $
 
    Copyright (c) 2000-2005 PostgreSQL Global Development Group
    Portions Copyright (c) 1997-20000 Edmund Mergl
@@ -56,7 +56,7 @@ constant(name=Nullch)
 			if (!name) {
 				name = GvNAME(CvGV(cv));
 			}
-			Perl_croak("Unknown DBD::Pg constant '%s'", name);
+			croak("Unknown DBD::Pg constant '%s'", name);
 		}
     else {
 			RETVAL = ix;
@@ -161,12 +161,50 @@ getfd(dbh)
     ST(0) = sv_2mortal( newSViv( ret ) );
 
 void
+pg_endcopy(dbh)
+    SV * dbh
+    CODE:
+    D_imp_dbh(dbh);
+		ST(0) = pg_db_endcopy(dbh) ? &sv_no : &sv_yes;
+
+void
 pg_notifies(dbh)
     SV * dbh
     CODE:
     D_imp_dbh(dbh);
 
     ST(0) = dbd_db_pg_notifies(dbh, imp_dbh);
+
+void
+pg_savepoint(dbh,name)
+    SV * dbh
+    char * name
+    CODE:
+    D_imp_dbh(dbh);
+    if (DBIc_has(imp_dbh,DBIcf_AutoCommit) && DBIc_WARN(imp_dbh))
+      warn("savepoint ineffective with AutoCommit enabled");
+    ST(0) = pg_db_savepoint(dbh, imp_dbh, name) ? &sv_yes : &sv_no;
+
+
+void
+pg_rollback_to(dbh,name)
+    SV * dbh
+    char * name
+    CODE:
+    D_imp_dbh(dbh);
+    if (DBIc_has(imp_dbh,DBIcf_AutoCommit) && DBIc_WARN(imp_dbh))
+      warn("rollback_to ineffective with AutoCommit enabled");
+    ST(0) = pg_db_rollback_to(dbh, imp_dbh, name) ? &sv_yes : &sv_no;
+
+void
+pg_release(dbh,name)
+    SV * dbh
+    char * name
+    CODE:
+    D_imp_dbh(dbh);
+    if (DBIc_has(imp_dbh,DBIcf_AutoCommit) && DBIc_WARN(imp_dbh))
+      warn("release ineffective with AutoCommit enabled");
+    ST(0) = pg_db_release(dbh, imp_dbh, name) ? &sv_yes : &sv_no;
 
 void
 lo_open(dbh, lobjId, mode)
@@ -273,11 +311,33 @@ lo_export(dbh, lobjId, filename)
 
 
 void
+pg_putline(dbh, buf)
+    SV * dbh
+    char * buf
+    CODE:
+      ST(0) = pg_db_putline(dbh, buf) ? &sv_no : &sv_yes;
+
+void
 putline(dbh, buf)
     SV * dbh
     char * buf
     CODE:
-        int ret = pg_db_putline(dbh, buf);
+      ST(0) = pg_db_putline(dbh, buf) ? &sv_no : &sv_yes;
+
+void
+pg_getline(dbh, buf, len)
+    PREINIT:
+        SV *bufsv = SvROK(ST(1)) ? SvRV(ST(1)) : ST(1);
+    INPUT:
+        SV * dbh
+        int len
+        char * buf = SvGROW(bufsv, 3);
+    CODE:
+				if (len > 3)
+					buf = SvGROW(bufsv, len);
+        int ret = pg_db_getline(dbh, buf, len);
+    sv_setpv((SV*)ST(1), buf);
+    SvSETMAGIC(ST(1));
         ST(0) = (-1 != ret) ? &sv_yes : &sv_no;
 
 
@@ -288,16 +348,14 @@ getline(dbh, buf, len)
     INPUT:
         SV * dbh
         int len
-        char * buf = sv_grow(bufsv, len);
+        char * buf = SvGROW(bufsv, 3);
     CODE:
+				if (len > 3)
+					buf = SvGROW(bufsv, len);
         int ret = pg_db_getline(dbh, buf, len);
-        if (*buf == '\\' && *(buf+1) == '.') {
-            ret = -1;
-        }
     sv_setpv((SV*)ST(1), buf);
     SvSETMAGIC(ST(1));
         ST(0) = (-1 != ret) ? &sv_yes : &sv_no;
-
 
 void
 endcopy(dbh)

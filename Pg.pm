@@ -1,5 +1,5 @@
 # -*-cperl-*-
-#  $Id: Pg.pm,v 1.139 2005/02/22 06:01:34 theory Exp $
+#  $Id: Pg.pm,v 1.149 2005/03/29 02:52:32 turnstep Exp $
 #
 #  Copyright (c) 2002-2005 PostgreSQL Global Development Group
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -15,7 +15,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	our $VERSION = '1.40';
+	our $VERSION = '1.40_01';
 
 	use DBI ();
 	use DynaLoader ();
@@ -24,14 +24,12 @@ use 5.006001;
 	@ISA = qw(DynaLoader Exporter);
 
 	%EXPORT_TAGS = (
-									pg_types => 
-									[ 
-									 qw(
-											PG_BOOL PG_BYTEA PG_CHAR PG_INT8 PG_INT2 PG_INT4 PG_TEXT PG_OID
-											PG_FLOAT4 PG_FLOAT8 PG_ABSTIME PG_RELTIME PG_TINTERVAL PG_BPCHAR
-											PG_VARCHAR PG_DATE PG_TIME PG_DATETIME PG_TIMESPAN PG_TIMESTAMP
-										 )]
-								 );
+		pg_types => [qw(
+			PG_BOOL PG_BYTEA PG_CHAR PG_INT8 PG_INT2 PG_INT4 PG_TEXT PG_OID
+			PG_FLOAT4 PG_FLOAT8 PG_ABSTIME PG_RELTIME PG_TINTERVAL PG_BPCHAR
+			PG_VARCHAR PG_DATE PG_TIME PG_DATETIME PG_TIMESPAN PG_TIMESTAMP
+		)]
+	);
 
 	Exporter::export_ok_tags('pg_types');
 
@@ -66,31 +64,26 @@ use 5.006001;
 		});
 
 
+		DBD::Pg::db->install_method("pg_putline");
+		DBD::Pg::db->install_method("pg_getline");
+		DBD::Pg::db->install_method("pg_endcopy");
 		DBD::Pg::db->install_method("pg_server_trace");
 		DBD::Pg::db->install_method("pg_server_untrace");
+		DBD::Pg::db->install_method("pg_savepoint");
+		DBD::Pg::db->install_method("pg_rollback_to");
+		DBD::Pg::db->install_method("pg_release");
 
 		$drh;
 
 	}
 
-	## Used by both the dr and db packages
-	sub _pg_server_version {
+ 	## Deprecated: use $dbh->{pg_server_version} if possible instead
+ 	sub _pg_use_catalog {
 		my $dbh = shift;
-		return $dbh->{private_dbdpg}{server_version} if defined $dbh->{private_dbdpg}{server_version};		
-		## The second column is simply to help identify DBD::Pg activity in logs for the DBA.
-		$dbh->{private_dbdpg}{full_version} = $dbh->selectrow_array("SELECT version(), 'DBD::Pg'");
-		if ($dbh->{private_dbdpg}{full_version} =~ /(\d+)\.(\d+)\.?(\d*)/) {
-			$dbh->{private_dbdpg}{dotted_version} = "$1.$2.".$3||0;
-			$dbh->{private_dbdpg}{server_version} = int sprintf("%02d%02d%02d",$1,$2,$3||0);
-		}
-		$dbh->{private_dbdpg}{server_version}||=0;
-	}
+ 		return $dbh->{private_dbdpg}{pg_use_catalog} if defined $dbh->{private_dbdpg}{pg_use_catalog};
+ 		$dbh->{private_dbdpg}{pg_use_catalog} = $dbh->{private_dbdpg}{version} >= 70300 ? 'pg_catalog.' : '';
+ 	}
 
-	## Version 7.3 and up uses schemas, so add a "pg_catalog." to system tables
-	sub _pg_use_catalog {
-		return $dbh->{private_dbdpg}{pg_use_catalog} if defined $dbh->{private_dbdpg}{pg_use_catalog};
-		$dbh->{private_dbdpg}{pg_use_catalog} = DBD::Pg::_pg_server_version(shift) >= 70300 ? 'pg_catalog.' : '';
-	}
 
 	1;
 }
@@ -100,11 +93,12 @@ use 5.006001;
 
 	use strict;
 
+	our $CATALOG = 123;
+
 	sub data_sources {
 		my $drh = shift;
 		my $dbh = DBD::Pg::dr::connect($drh, 'dbname=template1') or return undef;
 		$dbh->{AutoCommit}=1;
-		my $CATALOG = DBD::Pg::_pg_use_catalog($dbh);
 		my $SQL = "SELECT ${CATALOG}quote_ident(datname) FROM ${CATALOG}pg_database ORDER BY 1";
 		my $sth = $dbh->prepare($SQL);
 		$sth->execute() or die $DBI::errstr;
@@ -121,17 +115,17 @@ use 5.006001;
 
 		## Allow "db" and "database" as synonyms for "dbname"
 		$dbname =~ s/\b(?:db|database)\s*=/dbname=/;
-
+	
 		my $Name = $dbname;
 		if ($dbname =~ m#dbname\s*=\s*[\"\']([^\"\']+)#) {
 			$Name = "'$1'";
 			$dbname =~ s/"/'/g;
-		}			
+		}
 		elsif ($dbname =~ m#dbname\s*=\s*([^;]+)#) {
 			$Name = $1;
 		}
-
-
+	
+	
 		$user = "" unless defined($user);
 		$auth = "" unless defined($auth);
 
@@ -148,6 +142,12 @@ use 5.006001;
 
 		# Connect to the database..
 		DBD::Pg::db::_login($dbh, $dbname, $user, $auth) or return undef;
+
+		my $version = $dbh->{pg_server_version};
+		$dbh->{private_dbdpg}{version} = $version;
+
+		## If the version is 7.3 or later, fully qualify the system relations
+		$CATALOG = $version >= 70300 ? 'pg_catalog.' : '';
 
 		$dbh;
 	}
@@ -213,7 +213,7 @@ use 5.006001;
 		my ($sth, $count, $SQL, $sequence);
 
 		## Cache all of our table lookups? Default is yes
-		my $cache = 1;		
+		my $cache = 1;
 
 		## Catalog and col are not used
 		$schema = '' if ! defined $schema;
@@ -248,18 +248,16 @@ use 5.006001;
 			my @args = ($table);
 
 			## Only 7.3 and up can use schemas
-			my $version = DBD::Pg::_pg_server_version($dbh);
-			my $CATALOG = DBD::Pg::_pg_use_catalog($dbh);
-			$schema = '' if $version < 70300;
-			
+			$schema = '' if $dbh->{private_dbdpg}{version} < 70300;
+
 			## Make sure the table in question exists and grab its oid
 			my ($schemajoin,$schemawhere) = ('','');
 			if (length $schema) {
 				$schemajoin = "\n JOIN pg_catalog.pg_namespace n ON (n.oid = c.relnamespace)";
 				$schemawhere = "\n AND n.nspname = ?";
 				push @args, $schema;
-			}		
-			$SQL = "SELECT c.oid FROM ${CATALOG}pg_class c $schemajoin\n WHERE relname = ?$schemawhere";
+			}
+			$SQL = "SELECT c.oid FROM ${DBD::Pg::dr::CATALOG}pg_class c $schemajoin\n WHERE relname = ?$schemawhere";
 			$sth = $dbh->prepare($SQL);
 			$count = $sth->execute(@args);
 			if (!defined $count or $count eq '0E0') {
@@ -271,7 +269,7 @@ use 5.006001;
 			my $oid = $sth->fetchall_arrayref()->[0][0];
 			## This table has a primary key. Is there a sequence associated with it via a unique, indexed column?
 			$SQL = "SELECT a.attname, i.indisprimary, substring(d.adsrc for 128) AS def\n".
-				"FROM ${CATALOG}pg_index i, ${CATALOG}pg_attribute a, ${CATALOG}pg_attrdef d\n ".
+				"FROM ${DBD::Pg::dr::CATALOG}pg_index i, ${DBD::Pg::dr::CATALOG}pg_attribute a, ${DBD::Pg::dr::CATALOG}pg_attrdef d\n ".
 					"WHERE i.indrelid = $oid AND d.adrelid=a.attrelid AND d.adnum=a.attnum\n".
 						"  AND a.attrelid=$oid AND i.indisunique IS TRUE\n".
 							"  AND a.atthasdef IS TRUE AND i.indkey[0]=a.attnum\n".
@@ -283,7 +281,7 @@ use 5.006001;
 				die qq{No suitable column found for last_insert_id of table "$table"\n};
 			}
 			my $info = $sth->fetchall_arrayref();
-			
+
 			## We have at least one with a default value. See if we can determine sequences
 			my @def;
 			for (@$info) {
@@ -340,13 +338,12 @@ use 5.006001;
 		my $dbh = shift;
 		my ($catalog, $schema, $table, $column) = @_;
 
-		my $CATALOG = DBD::Pg::_pg_use_catalog($dbh);
-		my $version = DBD::Pg::_pg_server_version($dbh);
+		my $version = $dbh->{private_dbdpg}{version};
 
 		my @search;
 		## If the schema or table has an underscore or a %, use a LIKE comparison
 		if (defined $schema and length $schema and $version >= 70300) {
-			push @search, "n.nspname " . ($schema =~ /[_%]/ ? "LIKE " : "= ") . 
+			push @search, "n.nspname " . ($schema =~ /[_%]/ ? "LIKE " : "= ") .
 				$dbh->quote($schema);
 		}
 		if (defined $table and length $table) {
@@ -362,12 +359,12 @@ use 5.006001;
 
 		my $showschema = $version >= 70300 ? "quote_ident(n.nspname)" : "NULL::text";
 
-		my $schemajoin = $version >= 70300 ? 
+		my $schemajoin = $version >= 70300 ?
 			"JOIN pg_catalog.pg_namespace n ON (n.oid = c.relnamespace)" : "";
 
 		# col_description is not available for Pg < 7.2
 		my $remarks = $version < 70200 ? 
-			"${CATALOG}col_description(a.attrelid, a.attnum)" : "NULL::text";
+			"${DBD::Pg::dr::CATALOG}col_description(a.attrelid, a.attnum)" : "NULL::text";
 
 		my $col_info_sql = qq!
 			SELECT
@@ -376,7 +373,7 @@ use 5.006001;
 				, quote_ident(c.relname) AS "TABLE_NAME"
 				, quote_ident(a.attname) AS "COLUMN_NAME"
 				, a.atttypid AS "DATA_TYPE"
-				, ${CATALOG}format_type(a.atttypid, NULL) AS "TYPE_NAME"
+				, ${DBD::Pg::dr::CATALOG}format_type(a.atttypid, NULL) AS "TYPE_NAME"
 				, a.attlen AS "COLUMN_SIZE"
 				, NULL::text AS "BUFFER_LENGTH"
 				, NULL::text AS "DECIMAL_DIGITS"
@@ -389,15 +386,15 @@ use 5.006001;
 				, NULL::text AS "CHAR_OCTET_LENGTH"
 				, a.attnum AS "ORDINAL_POSITION"
 				, CASE a.attnotnull WHEN 't' THEN 'NO' ELSE 'YES' END AS "IS_NULLABLE"
-				, ${CATALOG}format_type(a.atttypid, a.atttypmod) AS "pg_type"
+				, ${DBD::Pg::dr::CATALOG}format_type(a.atttypid, a.atttypmod) AS "pg_type"
 				, a.attrelid AS "pg_attrelid"
 				, a.attnum AS "pg_attnum"
 				, a.atttypmod AS "pg_atttypmod"
 			FROM
-				${CATALOG}pg_type t
-				JOIN ${CATALOG}pg_attribute a ON (t.oid = a.atttypid)
-				JOIN ${CATALOG}pg_class c ON (a.attrelid = c.oid)
-				LEFT JOIN ${CATALOG}pg_attrdef af ON (a.attnum = af.adnum AND a.attrelid = af.adrelid)
+				${DBD::Pg::dr::CATALOG}pg_type t
+				JOIN ${DBD::Pg::dr::CATALOG}pg_attribute a ON (t.oid = a.atttypid)
+				JOIN ${DBD::Pg::dr::CATALOG}pg_class c ON (a.attrelid = c.oid)
+				LEFT JOIN ${DBD::Pg::dr::CATALOG}pg_attrdef af ON (a.attnum = af.adnum AND a.attrelid = af.adrelid)
 				$schemajoin
 			WHERE
 				a.attnum >= 0
@@ -412,16 +409,16 @@ use 5.006001;
 		# to fetch the data as an array of arrays, and also have a
 		# a matching array of all the column names
 		my %col_map = (qw/
-			TABLE_CAT             0 
-			TABLE_SCHEM           1 
-			TABLE_NAME            2 
-			COLUMN_NAME           3 
-			DATA_TYPE             4 
-			TYPE_NAME             5 
-			COLUMN_SIZE           6 
-			BUFFER_LENGTH         7 
-			DECIMAL_DIGITS        8 
-			NUM_PREC_RADIX        9 
+			TABLE_CAT             0
+			TABLE_SCHEM           1
+			TABLE_NAME            2
+			COLUMN_NAME           3
+			DATA_TYPE             4
+			TYPE_NAME             5
+			COLUMN_SIZE           6
+			BUFFER_LENGTH         7
+			DECIMAL_DIGITS        8
+			NUM_PREC_RADIX        9
 			NULLABLE             10
 			REMARKS              11
 			COLUMN_DEF           12
@@ -433,7 +430,7 @@ use 5.006001;
 			pg_type              18
 			pg_constraint        19
 			/);
-		
+
 		my $oldconstraint_sth;
 		if ($version < 70300) {
 			my $constraint_query = "SELECT rcsrc FROM pg_relcheck WHERE rcname = ?";
@@ -452,7 +449,7 @@ use 5.006001;
 			my $w = $row->[$col_map{DATA_TYPE}];
 			$row->[$col_map{DATA_TYPE}] = DBD::Pg::db::pg_type_info($dbh,$row->[$col_map{DATA_TYPE}]);
 			$w = $row->[$col_map{DATA_TYPE}];
-			
+
 			# Add pg_constraint
 			if ($version >= 70300) {
 				my $SQL = "SELECT consrc FROM pg_catalog.pg_constraint WHERE contype = 'c' AND ".
@@ -465,7 +462,7 @@ use 5.006001;
 					$row->[19] = undef;
 				}
 			}
-			else { 
+			else {
 				$oldconstraint_sth->execute("$row->[$col_map{TABLE_NAME}]_$row->[$col_map{COLUMN_NAME}]");
 				($row->[19]) = $oldconstraint_sth->fetchrow_array;
 			}
@@ -476,11 +473,11 @@ use 5.006001;
 		delete $col_map{pg_atttypmod};
 
 		# Since we've processed the data in Perl, we have to jump through a hoop
-		# To turn it back into a statement handle 
-		# 
+		# To turn it back into a statement handle
+		#
 		my $sth = _prepare_from_data(
-			'column_info', 
-			$data, 
+			'column_info',
+			$data,
 				[ sort { $col_map{$a} <=> $col_map{$b} } keys %col_map]);
 	}
 
@@ -499,10 +496,9 @@ use 5.006001;
 		## Catalog is ignored, but table is mandatory
 		return undef unless defined $table and length $table;
 
-		my $version = DBD::Pg::_pg_server_version($dbh);
+		my $version = $dbh->{private_dbdpg}{version};
 		my $whereclause = "AND c.relname = " . $dbh->quote($table);
 
-		my $CATALOG = DBD::Pg::_pg_use_catalog($dbh);
 		my $gotschema = $version >= 70300 ? 1 : 0;
 		if (defined $schema and length $schema and $gotschema) {
 			$whereclause .= "\n\t\t\tAND n.nspname = " . $dbh->quote($schema);
@@ -524,9 +520,9 @@ use 5.006001;
 				, quote_ident(c2.relname)
 				, i.indkey $showtablespace
 			FROM
-				${CATALOG}pg_class c
-				JOIN ${CATALOG}pg_index i ON (i.indrelid = c.oid)
-				JOIN ${CATALOG}pg_class c2 ON (c2.oid = i.indexrelid)
+				${DBD::Pg::dr::CATALOG}pg_class c
+				JOIN ${DBD::Pg::dr::CATALOG}pg_index i ON (i.indrelid = c.oid)
+				JOIN ${DBD::Pg::dr::CATALOG}pg_class c2 ON (c2.oid = i.indexrelid)
 				$schemajoin $tablespacejoin
 			WHERE
 				i.indisprimary IS TRUE
@@ -541,9 +537,9 @@ use 5.006001;
 		# Get the attribute information
 		my $indkey = join ',', split /\s+/, $info->[4];
 		my $sql = qq{
-			SELECT a.attnum, ${CATALOG}quote_ident(a.attname) AS colname,
-				${CATALOG}quote_ident(t.typname) AS typename
-			FROM ${CATALOG}pg_attribute a, ${CATALOG}pg_type t
+			SELECT a.attnum, ${DBD::Pg::dr::CATALOG}quote_ident(a.attname) AS colname,
+				${DBD::Pg::dr::CATALOG}quote_ident(t.typname) AS typename
+			FROM ${DBD::Pg::dr::CATALOG}pg_attribute a, ${DBD::Pg::dr::CATALOG}pg_type t
 			WHERE a.attrelid = '$info->[0]'
 			AND a.atttypid = t.oid
 			AND attnum IN ($indkey);
@@ -592,15 +588,15 @@ use 5.006001;
 			# PK_NAME
 			$info->[5] = $info->[3];
 			# COLUMN_NAME
-			$info->[3] = 2==$attr->{'pg_onerow'} ? 
+			$info->[3] = 2==$attr->{'pg_onerow'} ?
 				[ map { $attribs->{$_}{colname} } split /\s+/, $info->[4] ] :
-					join ', ', map { $attribs->{$_}{colname} } split /\s+/, $info->[4]; 
+					join ', ', map { $attribs->{$_}{colname} } split /\s+/, $info->[4];
 			# DATA_TYPE
-			$info->[6] = 2==$attr->{'pg_onerow'} ? 
-				[ map { $attribs->{$_}{typename} } split /\s+/, $info->[4] ] : 
+			$info->[6] = 2==$attr->{'pg_onerow'} ?
+				[ map { $attribs->{$_}{typename} } split /\s+/, $info->[4] ] :
 					join ', ', map { $attribs->{$_}{typename} } split /\s+/, $info->[4];
 			# KEY_SEQ
-			$info->[4] = 2==$attr->{'pg_onerow'} ? 
+			$info->[4] = 2==$attr->{'pg_onerow'} ?
 				[ split /\s+/, $info->[4] ] :
 					join ', ', split /\s+/, $info->[4];
 
@@ -641,14 +637,14 @@ use 5.006001;
 		return undef if !$ptable and !$ftable;
 
 		## Versions 7.2 or less have no pg_constraint table, so we cannot support
-		my $version = DBD::Pg::_pg_server_version($dbh);
+		my $version = $dbh->{private_dbdpg}{version};
 		return undef unless $version >= 70300;
 
 		my $C = 'pg_catalog.';
 
-		## If only the primary table is given, we return only those columns 
-		## that are used as foreign keys, even if that means that we return 
-		## unique keys but not primary one. We also return all the foreign 
+		## If only the primary table is given, we return only those columns
+		## that are used as foreign keys, even if that means that we return
+		## unique keys but not primary one. We also return all the foreign
 		## tables/columns that are referencing them, of course.
 
 		## The first step is to find the oid of each specific table in the args:
@@ -743,7 +739,7 @@ use 5.006001;
 			$colnum{$_->{'conrelid'}}{$1}++ while $_->{'conkey'} =~ /(\d+)/go;
 			if ($_->{'contype'} eq 'f') {
 				$colnum{$_->{'confrelid'}}{$1}++ while $_->{'confkey'} =~ /(\d+)/go;
-			}				
+			}
 		}
 
 		## Get the information about the columns computed above
@@ -776,7 +772,7 @@ use 5.006001;
 			my $multi = join ' ' => sort split/\s*/, $c->{'conkey'};
 			push @{$ukey{$c->{'conrelid'}}{$multi}}, $c;
 		}
-		
+
 		## Finally, return as a SQL/CLI structure:
 		my $fkinfo = [];
 		my $x=0;
@@ -842,15 +838,19 @@ use 5.006001;
 			} ## End each column in this foreign key
 		} ## End each foreign key
 
-		my @CLI_cols = (qw(UK_TABLE_CAT UK_TABLE_SCHEM UK_TABLE_NAME UK_COLUMN_NAME
-									 FK_TABLE_CAT FK_TABLE_SCHEM FK_TABLE_NAME FK_COLUMN_NAME
-									 ORDINAL_POSITION UPDATE_RULE DELETE_RULE FK_NAME UK_NAME 
-									 DEFERABILITY UNIQUE_OR_PRIMARY UK_DATA_TYPE FK_DATA_TYPE));
+		my @CLI_cols = (qw(
+			UK_TABLE_CAT UK_TABLE_SCHEM UK_TABLE_NAME UK_COLUMN_NAME
+			FK_TABLE_CAT FK_TABLE_SCHEM FK_TABLE_NAME FK_COLUMN_NAME
+			ORDINAL_POSITION UPDATE_RULE DELETE_RULE FK_NAME UK_NAME
+			DEFERABILITY UNIQUE_OR_PRIMARY UK_DATA_TYPE FK_DATA_TYPE
+		));
 
-		my @ODBC_cols = (qw(PKTABLE_CAT PKTABLE_SCHEM PKTABLE_NAME PKCOLUMN_NAME
-									 FKTABLE_CAT FKTABLE_SCHEM FKTABLE_NAME FKCOLUMN_NAME
-									 KEY_SEQ UPDATE_RULE DELETE_RULE FK_NAME PK_NAME 
-									 DEFERABILITY UNIQUE_OR_PRIMARY PK_DATA_TYPE FKDATA_TYPE));
+		my @ODBC_cols = (qw(
+			PKTABLE_CAT PKTABLE_SCHEM PKTABLE_NAME PKCOLUMN_NAME
+			FKTABLE_CAT FKTABLE_SCHEM FKTABLE_NAME FKCOLUMN_NAME
+			KEY_SEQ UPDATE_RULE DELETE_RULE FK_NAME PK_NAME
+			DEFERABILITY UNIQUE_OR_PRIMARY PK_DATA_TYPE FKDATA_TYPE
+		));
 
 		return _prepare_from_data('foreign_key_info', $fkinfo, $odbc ? \@ODBC_cols : \@CLI_cols);
 
@@ -863,8 +863,7 @@ use 5.006001;
 
 		my $tbl_sql = ();
 
-		my $version = DBD::Pg::_pg_server_version($dbh);
-		my $CATALOG = DBD::Pg::_pg_use_catalog($dbh);
+		my $version = $dbh->{private_dbdpg}{version};
 
 		if ( # Rule 19a
 				(defined $catalog and $catalog eq '%')
@@ -872,7 +871,7 @@ use 5.006001;
 				and (defined $table and $table eq '')
 			 ) {
 			$tbl_sql = q{
-					SELECT 
+					SELECT
 						 NULL::text AS "TABLE_CAT"
 					 , NULL::text AS "TABLE_SCHEM"
 					 , NULL::text AS "TABLE_NAME"
@@ -885,8 +884,8 @@ use 5.006001;
 					 and (defined $schema and $schema eq '%')
 					 and (defined $table and $table eq '')
 					) {
-			$tbl_sql = $version >= 70300 ? 
-				q{SELECT 
+			$tbl_sql = $version >= 70300 ?
+				q{SELECT
 						 NULL::text AS "TABLE_CAT"
 					 , quote_ident(n.nspname) AS "TABLE_SCHEM"
 					 , NULL::text AS "TABLE_NAME"
@@ -894,8 +893,8 @@ use 5.006001;
 					 , CASE WHEN n.nspname ~ '^pg_' THEN 'system schema' ELSE 'owned by ' || pg_get_userbyid(n.nspowner) END AS "REMARKS"
 					FROM pg_catalog.pg_namespace n
 					ORDER BY "TABLE_SCHEM"
-					} : 
-						q{SELECT 
+					} :
+						q{SELECT
 						 NULL::text AS "TABLE_CAT"
 					 , NULL::text AS "TABLE_SCHEM"
 					 , NULL::text AS "TABLE_NAME"
@@ -910,14 +909,14 @@ use 5.006001;
 					 and (defined $type and $type eq '%')
 					) {
 			$tbl_sql = q{
-					SELECT 
+					SELECT
 					   NULL::text AS "TABLE_CAT"
 					 , NULL::text AS "TABLE_SCHEM"
 					 , NULL::text AS "TABLE_NAME"
 					 , 'TABLE'    AS "TABLE_TYPE"
 					 , 'relkind: r' AS "REMARKS"
 					UNION
-					SELECT 
+					SELECT
 					   NULL::text AS "TABLE_CAT"
 					 , NULL::text AS "TABLE_SCHEM"
 					 , NULL::text AS "TABLE_NAME"
@@ -953,15 +952,15 @@ use 5.006001;
 			## All we can see is "table" or "view". Default is both
 			my $typesearch = "IN ('r','v')";
 			if (defined $type and length $type) {
-					if ($type =~ /\btable\b/i and $type !~ /\bview\b/i) {
-							$typesearch = "= 'r'";
-					}
-					elsif ($type =~ /\bview\b/i and $type !~ /\btable\b/i) {
-							$typesearch = "= 'v'";
-					}
+				if ($type =~ /\btable\b/i and $type !~ /\bview\b/i) {
+					$typesearch = "= 'r'";
+				}
+				elsif ($type =~ /\bview\b/i and $type !~ /\btable\b/i) {
+					$typesearch = "= 'v'";
+				}
 			}
 			push @search, "c.relkind $typesearch";
-			
+
 			my $whereclause = join "\n\t\t\t\t\t AND " => @search;
 			my $schemacase = $version >= 70300 ? "quote_ident(n.nspname)" : "quote_ident(c.relname)";
 			$tbl_sql = qq{
@@ -975,8 +974,8 @@ use 5.006001;
 								CASE WHEN $schemacase ~ '^pg_' THEN 'SYSTEM TABLE' ELSE 'TABLE' END
 						END AS "TABLE_TYPE"
 					 , d.description AS "REMARKS" $showtablespace
-				FROM ${CATALOG}pg_class AS c
-					LEFT JOIN ${CATALOG}pg_description AS d 
+				FROM ${DBD::Pg::dr::CATALOG}pg_class AS c
+					LEFT JOIN ${DBD::Pg::dr::CATALOG}pg_description AS d
 						ON (c.relfilenode = d.objoid $has_objsubid)
 					$schemajoin $tablespacejoin
 				WHERE $whereclause
@@ -994,16 +993,16 @@ use 5.006001;
 			my $attr = $args[4];
 			my $sth = $dbh->table_info(@args) or return;
 			my $tables = $sth->fetchall_arrayref() or return;
-			my $version = DBD::Pg::_pg_server_version($dbh);
+			my $version = $dbh->{private_dbdpg}{version};
 			my @tables = map { ($version >= 70300
-					and (! (ref $attr eq "HASH" and $attr->{pg_noprefix}))) ? 
+					and (! (ref $attr eq "HASH" and $attr->{pg_noprefix}))) ?
 						"$_->[1].$_->[2]" : $_->[2] } @$tables;
 			return @tables;
 	}
 
 	sub table_attributes {
 		my ($dbh, $table) = @_;
-		my $CATALOG = DBD::Pg::_pg_use_catalog($dbh);
+
 		my $sth = $dbh->column_info(undef,undef,$table,undef);
 
 		my %convert = (
@@ -1033,7 +1032,7 @@ use 5.006001;
 			$row->{NOTNULL} = ($row->{NOTNULL} ? 0 : 1);
 
 			my @pri_keys = ();
-			@pri_keys = $dbh->primary_key( $CATALOG, undef, $table );
+			@pri_keys = $dbh->primary_key( undef, undef, $table );
 			$row->{PRIMARY_KEY} = scalar(grep { /^$row->{NAME}$/i } @pri_keys) ? 1 : 0;
 		}
 
@@ -1041,7 +1040,7 @@ use 5.006001;
 
 	}
 
-	sub _calc_col_size { 
+	sub _calc_col_size {
 		my $mod = shift;
 		my $size = shift;
 
@@ -1173,23 +1172,23 @@ use 5.006001;
 	sub get_info {
 
 		my ($dbh,$type) = @_;
- 
+
 		return undef unless defined $type and length $type;
- 
-		my $version = DBD::Pg::_pg_server_version($dbh);
- 
+
+		my $version = $dbh->{private_dbdpg}{version};
+
 		my %type = (
- 
+
 ## Basic information:
- 
+
     6  => ["SQL_DRIVER_NAME",                'DBD/Pg.pm',         ],
    17  => ["SQL_DBMS_NAME",                  'PostgreSQL'         ],
    18  => ["SQL_DBMS_VERSION",               'ODBCVERSION'        ],
    29  => ["SQL_IDENTIFIER_QUOTE_CHAR",      '"'                  ],
    47  => ["SQL_USER_NAME",                  $dbh->{CURRENT_USER} ],
- 
+
 ## Size limits
- 
+
    30  => ["SQL_MAX_COLUMN_NAME_LEN",        'NAMEDATALEN'        ],
    32  => ["SQL_MAX_SCHEMA_NAME_LEN",        'NAMEDATALEN'        ],
    34  => ["SQL_MAX_CATALOG_NAME_LEN",       0                    ],
@@ -1210,35 +1209,35 @@ use 5.006001;
   105  => ["SQL_MAX_STATEMENT_LEN",          0                    ],
   112  => ["SQL_MAX_BINARY_LITERAL_LEN",     0                    ],
 10005  => ["SQL_MAX_IDENTIFIER_LEN",         'NAMEDATALEN'        ],
- 
+
 ## Catalog support
- 
+
    41  => ["SQL_CATALOG_NAME_SEPARATOR",     ''                   ],
    42  => ["SQL_CATALOG_TERM",               ''                   ],
   114  => ["SQL_CATALOG_LOCATION",           0                    ],
 10003  => ["SQL_CATALOG_NAME",               'N'                  ],
- 
+
 ## Domain support
- 
+
   117  => ["SQL_ALTER_DOMAIN",               0                    ],
   130  => ["SQL_CREATE_DOMAIN",              0                    ],
   139  => ["SQL_DROP_DOMAIN",                0                    ],
- 
+
 ## Schema support (7.3 and up)
- 
+
    39  => ["SQL_SCHEMA_TERM",                'schema'             ],
    91  => ["SQL_SCHEMA_USAGE",               'SCHEMAUSAGE'        ],
   131  => ["SQL_CREATE_SCHEMA",              'CREATESCHEMA'       ],
   140  => ["SQL_DROP_SCHEMA",                'DROPSCHEMA'         ],
- 
+
 ## Various
- 
+
     2  => ["SQL_DATA_SOURCE_NAME",           'SOURCENAME'         ],
     7  => ["SQL_DRIVER_VER",                 'DBDVERSION'         ],
    13  => ["SQL_SERVER_NAME",                $dbh->{Name}         ],
    14  => ["SQL_SEARCH_PATTERN_ESCAPE",      '\\'                 ],
    22  => ["SQL_CONCAT_NULL_BEHAVIOR",       0                    ], ## SQL_CB_NULL
-   28  => ["SQL_IDENTIFIER_CASE",            4                    ], ## SQL_IC_MIXED 
+   28  => ["SQL_IDENTIFIER_CASE",            4                    ], ## SQL_IC_MIXED
    40  => ["SQL_PROCEDURE_TERM",             'Function'           ],
    45  => ["SQL_TABLE_TERM",                 'Table'              ],
    46  => ["SQL_TXN_CAPABLE",                4                    ], ## SQL_TC_ALL
@@ -1249,23 +1248,25 @@ use 5.006001;
   127  => ["SQL_CREATE_ASSERTION",           0                    ],
   136  => ["SQL_DROP_ASSERTION",             0                    ],
 );
- 
+
 		## Put both numbers and names into a hash
 		my %t;
 		for (keys %type) {
 			$t{$_} = $type{$_}->[1];
 			$t{$type{$_}->[0]} = $type{$_}->[1];
 		}
- 
+
 		return undef unless exists $t{$type};
- 
+
 		my $ans = $t{$type};
- 
+
 		if ($ans eq 'NAMEDATALEN') {
 			return $version >= 70300 ? 63 : 31;
 		}
 		elsif ($ans eq 'ODBCVERSION') {
-			return sprintf "%02d.%02d.%1d%1d%1d%1d", split (/\./, "$dbh->{private_dbdpg}{dotted_version}.0.0.0.0.0.0");
+			my $version = $dbh->{private_dbdpg}{version};
+			my $dotted = $version =~ /(\d\d?)\.(\d\d)(\d\d)$/ ? "$1.$2.$4" : "0.0.0";
+			return sprintf "%02d.%02d.%1d%1d%1d%1d", split (/\./, "$dotted.0.0.0.0.0.0");
 		}
 		elsif ($ans eq 'DBDVERSION') {
 			my $simpleversion = $DBD::Pg::VERSION;
@@ -1316,7 +1317,7 @@ use 5.006001;
 	sub bind_param_array {
 		my $sth = shift;
 		my ($p_id, $value_array, $attr) = @_;
-		
+
 		return $sth->set_err(1, "Value for parameter $p_id must be a scalar or an arrayref, not a ".ref($value_array))
 			if defined $value_array and ref $value_array and ref $value_array ne 'ARRAY';
 
@@ -1473,7 +1474,7 @@ related to the current handle.
   $str = $h->state;
 
 Supported by this driver. Returns a five-character "SQLSTATE" code.
-PostgreSQL servers version 7.4 or less will always return a generic 
+PostgreSQL servers version 7.4 or less will always return a generic
 "S1000" code. Success is indicated by a "00000" code.
 
 The list of codes used by PostgreSQL can be found at:
@@ -1506,7 +1507,7 @@ The C<table_attributes> function is no longer recommended. Instead,
 you can use the more portable C<column_info> and C<primary_key> methods
 to access the same information.
 
-The C<table_attributes> method returns, for the given table argument, a 
+The C<table_attributes> method returns, for the given table argument, a
 reference to an array of hashes, each of which contains the following keys:
 
   NAME        attribute name
@@ -1521,7 +1522,7 @@ reference to an array of hashes, each of which contains the following keys:
 The REMARKS field will be returned as C<NULL> for Postgres versions 7.1.x and
 older.
 
-=item lo_create
+=item lo_creat
 
   $lobjId = $dbh->func($mode, 'lo_creat');
 
@@ -1539,7 +1540,7 @@ Upon failure it returns C<undef>.
   $lobj_fd = $dbh->func($lobjId, $mode, 'lo_open');
 
 Opens an existing large object and returns an object-descriptor for use in
-subsequent C<lo_*> calls. For the mode bits see C<lo_create>. Returns C<undef>
+subsequent C<lo_*> calls. For the mode bits see C<lo_creat>. Returns C<undef>
 upon failure. Note that 0 is a perfectly correct object descriptor!
 
 =item lo_write
@@ -1598,22 +1599,6 @@ object or C<undef> upon failure.
 
 Exports a large object into a Unix file. Returns false upon failure, true
 otherwise.
-
-=item putline
-
-  $ret = $dbh->func($line, 'putline');
-
-Used together with the SQL-command C<COPY table FROM STDIN> to copy large
-amount of data into a table avoiding the overhead of using single
-insert commands. The application must explicitly send the two characters "\."
-to indicate to the backend that it has finished sending its data.
-
-=item getline
-
-  $ret = $dbh->func($buffer, length, 'getline');
-
-Used together with the SQL-command C<COPY table TO STDOUT> to dump a complete
-table.
 
 =item pg_notifies
 
@@ -1759,8 +1744,12 @@ use prepared statements. This is the default when connected to servers
 earlier than version 7.4, which is when prepared statements were introduced.
 Setting C<pg_server_prepare> to "1" means that prepared statements
 should be used whenever possible. This is the default for servers
-version 7.4 or higher. This attribute can also be set at connection
-time like so:
+version 8.0 or higher. Servers that are version 7.4 get a special default 
+value of "2", because server-side statements were only partially supported 
+in that version. In this case, it only uses server-side prepares if all 
+parameters are specifically bound. 
+
+The pg_server_prepare attribute can also be set at connection time like so:
 
   $dbh = DBI->connect($DBNAME, $DBUSER, $DBPASS,
                       { AutoCommit => 0,
@@ -1800,10 +1789,6 @@ situations in which you will be executing similar data many times, the default
 plan will probably work out well. Further discussion on this subject is beyond
 the scope of this documentation: please consult the pgsql-performance mailing
 list, L<http://archives.postgresql.org/pgsql-performance/>
-
-If you are using DBD::Pg with 7.4 libraries, you must set the parameter for
-each placeholder using bind_param() in order to use prepared statements. This
-can be a big hassle: upgrading to 8.0 is highly recommended.
 
 Only certain commands will be sent to a server-side prepare: currently these
 include C<SELECT>, C<INSERT>, C<UPDATE>, and C<DELETE>. DBD::Pg uses a simple
@@ -2029,8 +2014,8 @@ Also, two additional non-standard fields are returned:
   pg_type - data type with additional info i.e. "character varying(20)"
   pg_constraint - holds column constraint definition
 
-The REMARKS field will be returned as NULL (C<undef> for PostgreSQL versions 
-older than 7.2. The TABLE_SCHEM field will be returned as NULL (C<undef>) for 
+The REMARKS field will be returned as NULL (C<undef> for PostgreSQL versions
+older than 7.2. The TABLE_SCHEM field will be returned as NULL (C<undef>) for
 versions older than 7.4.
 
 =item B<table_info>
@@ -2039,12 +2024,12 @@ versions older than 7.4.
 
 Supported by this driver as proposed by DBI. This method returns all tables
 and views visible to the current user. The $catalog argument is currently
-unused. The schema and table arguments will do a C<LIKE> search if a percent 
-sign (C<%>) or an underscore (C<_>) is detected in the argument. The $type 
-argument accepts a value of either "TABLE" or "VIEW" (using both is the 
+unused. The schema and table arguments will do a C<LIKE> search if a percent
+sign (C<%>) or an underscore (C<_>) is detected in the argument. The $type
+argument accepts a value of either "TABLE" or "VIEW" (using both is the
 default action).
 
-The TABLE_CAT field will always return NULL (C<undef>). The TABLE_SCHEM field 
+The TABLE_CAT field will always return NULL (C<undef>). The TABLE_SCHEM field
 returns NULL (C<undef>) if the server is older than version 7.4.
 
 If your database supports tablespaces (version 8.0 or greater), two additional
@@ -2175,11 +2160,11 @@ type is officially deprecated. Use C<PG_BYTEA> with C<bind_param()> instead:
 
   $dbh->pg_server_trace($filehandle);
 
-Writes debugging information from the PostgreSQL backend to a file. This is 
-not the same as the trace() method and you should not use this method unless 
-you know what you are doing. If you do enable this, be aware that the file 
-will grow very large, very quick. To stop logging to the file, use the 
-C<pg_server_untrace> function. The first argument must be a file handle, not 
+Writes debugging information from the PostgreSQL backend to a file. This is
+not the same as the trace() method and you should not use this method unless
+you know what you are doing. If you do enable this, be aware that the file
+will grow very large, very quick. To stop logging to the file, use the
+C<pg_server_untrace> function. The first argument must be a file handle, not
 a filename. Example:
 
   my $pid = $dbh->{pg_pid};
@@ -2207,9 +2192,9 @@ Stop server logging to a previously opened file.
 Supported by this driver as proposed by DBI. According to the classification of
 DBI, PostgreSQL is a database in which a transaction must be explicitly
 started. Without starting a transaction, every change to the database becomes
-immediately permanent. The default of AutoCommit is on, but this may change 
-in the future, so it is highly recommended that you explicitly set it when 
-calling C<connect()>. For details see the notes about B<Transactions> 
+immediately permanent. The default of AutoCommit is on, but this may change
+in the future, so it is highly recommended that you explicitly set it when
+calling C<connect()>. For details see the notes about B<Transactions>
 elsewhere in this document.
 
 =item B<Driver>  (handle)
@@ -2263,14 +2248,14 @@ as the characters 't' and 'f' instead of '1' and '0'.
 
 =item B<pg_errorlevel> (integer)
 
-PostgreSQL specific attribute, only works for servers version 7.4 and above. 
-Sets the amount of information returned by the server's error messages. 
-Valid entries are 1,2, and 3. Any other number will be forced to the default 
+PostgreSQL specific attribute, only works for servers version 7.4 and above.
+Sets the amount of information returned by the server's error messages.
+Valid entries are 1,2, and 3. Any other number will be forced to the default
 value of 2.
 
-A value of 0 ("TERSE") will show severity, primary text, and position only 
-and will usually fit on a single line. A value of 1 ("DEFAULT") will also 
-show any detail, hint, or context fields. A value of 2 ("VERBOSE") will 
+A value of 0 ("TERSE") will show severity, primary text, and position only
+and will usually fit on a single line. A value of 1 ("DEFAULT") will also
+show any detail, hint, or context fields. A value of 2 ("VERBOSE") will
 show all available information.
 
 =item B<pg_protocol> (integer, read-only)
@@ -2279,6 +2264,19 @@ PostgreSQL specific attribute. Returns the version of the PostgreSQL server.
 If DBD::Pg is unable to figure out the version (e.g. it was compiled
 against pre 7.4 libraries), it will return a "0". Otherwise, servers below
 version 7.4 return a "2", and (currently) 7.4 and above return a "3".
+
+=item B<pg_lib_version> (integer, read-only)
+
+PostgreSQL specific attribute. Indicates which version of PostgreSQL that 
+DBD::Pg was compiled against. In other words, which libraries were used. 
+Returns a number with major, minor, and revision together; version 7.4.2 
+would be returned as 70402.
+
+=item B<pg_server_version> (integer, read-only)
+
+PostgreSQL specific attribute. Indicates which version of PostgreSQL that 
+the current database handle is connected to. Returns a number with major, 
+minor, and revision together; version 8.0.1 would be 80001.
 
 =item B<pg_db> (string, read-only)
 
@@ -2619,6 +2617,120 @@ value. In this mode, any change to the database becomes valid immediately. Any
 C<BEGIN>, C<COMMIT> or C<ROLLBACK> statements will be rejected. DBD::Pg
 implements C<AutoCommit> by issuing a C<BEGIN> statement immediately before
 executing a statement, and a C<COMMIT> afterwards.
+
+=head2 Savepoints
+
+PostgreSQL version 8.0 introduced the concept of savepoints, which allows 
+transactions to be rolled back to a certain point without affecting the 
+rest of the transaction. DBD::Pg encourages using the following methods to 
+control savepoints:
+
+=over 4
+
+=item B<pg_savepoint>
+
+Creates a savepoint. This will fail unless you are inside of a transaction. The 
+only argument is the name of the savepoint. Note that PostgreSQL does allow 
+multiple savepoints with the same name to exist.
+
+	$dbh->pg_savepoint("mysavepoint");
+
+=item B<pg_rollback_to>
+
+Rolls the database back to a named savepoint, discarding any work performed after 
+that point. If more than one savepoint with that name exists, rolls back to the 
+most recently created one.
+
+	$dbh->pg_rollback_to("mysavepoint");
+
+=item B<pg_release>
+
+Releases (or removes) a named savepoint. If more than one savepoint with that name 
+exists, it will only destroy the most recently created one. Note that all savepoints 
+created after the one being released are also destroyed.
+
+=back
+
+=head2 COPY support
+
+DBD::Pg supports the COPY command through three functions: pg_putline, 
+pg_getline, and pg_endcopy. The COPY command allows data to be quickly 
+loaded or read from a table. The basic process is to issue a COPY 
+command via $dbh->do(), do either $dbh->pg_putline or $dbh->pg_getline, 
+and then issue a $dbh->pg_endcopy (for pg_putline only).
+
+The first step is to put the server into "COPY" mode. This is done by 
+sending a complete COPY command to the server, by using the do() method. 
+For example:
+
+  $dbh->do("COPY foobar FROM STDIN");
+
+This would tell the server to enter a COPY IN state. It is now ready to 
+receive information via the pg_putline method. The complete syntax of the 
+COPY command is more complex and not documented here: the canonical 
+PostgreSQL documentation for COPY be found at:
+
+http://www.postgresql.org/docs/current/static/sql-copy.html
+
+Note that 7.2 servers can only accept a small subset of later features in 
+the COPY command: most notably they do not accept column specifications.
+
+Once the COPY command has been issued, no other SQL commands are allowed 
+until after pg_endcopy has been successfully called. If in a COPY IN state, 
+you cannot use pg_getline, and if in COPY OUT state, you cannot use pg_putline.
+
+=over 4
+
+=item B<pg_putline>
+
+Used to put data into a table after the server has been put into COPY IN mode 
+by calling "COPY tablename FROM STDIN". The only argument is the data you want 
+inserted. The default delimiter is a tab character, but this can be changed in 
+the COPY statement. Returns a 1 on sucessful input. Examples:
+
+  $dbh->do("COPY mytable FROM STDIN");
+  $dbh->pg_putline("123\tPepperoni\t3\n");
+  $dbh->pg_putline("314\tMushroom\t8\n");
+  $dbh->pg_putline("6\tAnchovies\t100\n");
+  $dbh->pg_endcopy;
+
+  ## This example uses explicit columns and a custom delimiter
+  $dbh->do("COPY mytable(flavor, slices) FROM STDIN WITH DELIMITER '~'");
+  $dbh->pg_putline("Pepperoni~123\n");
+  $dbh->pg_putline("Mushroom~314\n");
+  $dbh->pg_putline("Anchovies~6\n");
+  $dbh->pg_endcopy;
+
+=item B<pg_getline>
+
+Used to retrieve data from a table after the server has been put into COPY OUT 
+mode by calling "COPY tablename TO STDOUT". The first argument to pg_getline is 
+the variable into which the data will be stored. The second argument is the size 
+of the variable: this should be greater than the expected size of the row. Returns 
+a 1 on success, and an empty string when the last row has been fetched. Example:
+
+  $dbh->do("COPY mytable TO STDOUT");
+  my @data;
+  my $x=0;
+  1 while($dbh->pg_getline($data[$x++], 100));
+  pop @data; ## Remove final "\\.\n" line
+
+If DBD::Pg is compiled with pre-7.4 libraries, this function will not work: you 
+will have to use the old $dbh->func($data, 100, 'getline') command, and call 
+pg_getline manually. Users are highly encouraged to upgrade to a newer version 
+of PostgreSQL if this is the case.
+
+=item B<pg_endcopy>
+
+When done with pg_putline, call pg_endcopy to put the server back in 
+a normal state. Returns a 1 on success. This method will fail if called when not 
+in a COPY IN or COPY OUT state. Note that you no longer need to send "\\.\n" when 
+in COPY IN mode: pg_endcopy will do this for you automatically as needed.
+pg_endcopy is only needed after getline if you are using the old-style method, 
+$dbh->func($data, 100, 'getline').
+
+
+=back
 
 =head2 Large Objects
 
