@@ -1,5 +1,10 @@
 Revision history for Perl extension DBD-Pg.
 
+0.65  February 14, 1998
+	- adapted to changes in DBI-0.91, so that the
+	  default setting for AutoCommit and PrintError is 
+	  again conformant to the DBI specs.
+
 0.64  February 01, 1998
         - changed syntax of data_source (ODBC-conformant): 
           'dbi:Pg:dbname=dbname;host=host;port=port'

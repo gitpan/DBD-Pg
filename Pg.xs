@@ -1,6 +1,6 @@
 /*---------------------------------------------------------
  *
- * $Id: Pg.xs,v 1.12 1998/02/01 18:40:34 mergl Exp $
+ * $Id: Pg.xs,v 1.13 1998/02/15 09:47:59 mergl Exp $
  *
  * Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
  * Portions Copyright (c) 1997                Edmund Mergl
@@ -88,13 +88,12 @@ _do(dbh, statement, attribs=Nullsv)
     D_imp_dbh(dbh);
     int retval;
     DBD_ATTRIBS_CHECK("_do", dbh, attribs);
-    if (!strncasecmp(statement, "begin", 5) ||
-        (DBIc_has(imp_dbh, DBIcf_AutoCommit) &&
-         (!strncasecmp(statement, "end",      4) ||
-          !strncasecmp(statement, "commit",   6) ||
-          !strncasecmp(statement, "abort",    5) ||
-          !strncasecmp(statement, "rollback", 8) ))) {
-        warn("transactions ineffective with AutoCommit");
+    if (!strncasecmp(statement, "begin",    5) ||
+        !strncasecmp(statement, "end",      4) ||
+        !strncasecmp(statement, "commit",   6) ||
+        !strncasecmp(statement, "abort",    5) ||
+        !strncasecmp(statement, "rollback", 8) ) {
+        warn("please use DBI functions for transaction handling");
 	retval = -2;
     } else {
         retval = dbd_db_do(dbh, statement);
@@ -144,6 +143,11 @@ disconnect(dbh)
     D_imp_dbh(dbh);
     if ( !DBIc_ACTIVE(imp_dbh) ) {
 	XSRETURN_YES;
+    }
+    /* pre-disconnect checks and tidy-ups */
+    if (DBIc_CACHED_KIDS(imp_dbh)) {
+        SvREFCNT_dec(DBIc_CACHED_KIDS(imp_dbh));
+        DBIc_CACHED_KIDS(imp_dbh) = Nullhv;
     }
     /* Check for disconnect() being called whilst refs to cursors	*/
     /* still exists. This possibly needs some more thought.			*/
@@ -242,13 +246,12 @@ _prepare(sth, statement, attribs=Nullsv)
     D_imp_sth(sth);
     D_imp_dbh_from_sth;
     DBD_ATTRIBS_CHECK("_prepare", sth, attribs);
-    if (!strncasecmp(statement, "begin", 5) ||
-        (DBIc_has(imp_dbh, DBIcf_AutoCommit) &&
-         (!strncasecmp(statement, "end",      4) ||
-          !strncasecmp(statement, "commit",   6) ||
-          !strncasecmp(statement, "abort",    5) ||
-          !strncasecmp(statement, "rollback", 8) ))) {
-        warn("transactions ineffective with AutoCommit");
+    if (!strncasecmp(statement, "begin",    5) ||
+        !strncasecmp(statement, "end",      4) ||
+        !strncasecmp(statement, "commit",   6) ||
+        !strncasecmp(statement, "abort",    5) ||
+        !strncasecmp(statement, "rollback", 8) ) {
+        warn("please use DBI functions for transaction handling");
 	ST(0) = &sv_no;
     } else {
         ST(0) = dbd_st_prepare(sth, imp_sth, statement, attribs) ? &sv_yes : &sv_no;

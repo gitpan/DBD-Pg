@@ -1,6 +1,6 @@
 #---------------------------------------------------------
 #
-# $Id: Pg.pm,v 1.12 1998/02/01 18:40:33 mergl Exp $
+# $Id: Pg.pm,v 1.13 1998/02/15 09:47:59 mergl Exp $
 #
 #  Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 #  Portions Copyright (c) 1997                Edmund Mergl
@@ -16,9 +16,9 @@ require 5.002;
     use DynaLoader ();
     @ISA = qw(DynaLoader);
 
-    $VERSION = '0.64';
+    $VERSION = '0.65';
 
-    require_version DBI 0.89;
+    require_version DBI 0.91;
 
     bootstrap DBD::Pg $VERSION;
 

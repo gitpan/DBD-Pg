@@ -1,6 +1,6 @@
 /*---------------------------------------------------------
  *
- * $Id: dbdimp.h,v 1.9 1998/02/01 10:00:52 mergl Exp $
+ * $Id: dbdimp.h,v 1.10 1998/02/15 09:48:01 mergl Exp $
  *
  * Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
  * Portions Copyright (c) 1997                Edmund Mergl
@@ -19,6 +19,7 @@ struct imp_dbh_st {
     dbih_dbc_t com;		/* MUST be first element in structure	*/
 
     PGconn    * conn;		/* connection structure */
+    int         init_auto;	/* initialize AutoCommit */
 };
 
 /* Define sth implementor data structure */

@@ -1,6 +1,6 @@
 /*---------------------------------------------------------
  *
- * $Id: dbdimp.c,v 1.15 1998/02/01 18:40:34 mergl Exp $
+ * $Id: dbdimp.c,v 1.16 1998/02/15 09:48:00 mergl Exp $
  *
  * Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
  * Portions Copyright (c) 1997                Edmund Mergl
@@ -115,7 +115,8 @@ dbd_db_login(dbh, imp_dbh, dbname, uid, pwd)
 	return 0;
     }
 
-    DBIc_on(imp_dbh, DBIcf_AutoCommit);		/* AutoCommit is default */
+    imp_dbh->init_auto = 1;			/* initialize AutoCommit */
+
     DBIc_IMPSET_on(imp_dbh);			/* imp_dbh set up now */
     DBIc_ACTIVE_on(imp_dbh);			/* call disconnect before freeing */
     return 1;
@@ -336,7 +337,10 @@ dbd_db_STORE_attrib(dbh, imp_dbh, keysv, valuesv)
     if (kl==10 && strEQ(key, "AutoCommit")) {
         int oldval = DBIc_has(imp_dbh, DBIcf_AutoCommit);
         DBIc_set(imp_dbh, DBIcf_AutoCommit, newval);
-        if (oldval == FALSE && newval != FALSE) {
+        if (oldval == FALSE && newval != FALSE && imp_dbh->init_auto) {
+            /* do nothing, fall through */
+            if (dbis->debug >= 2) { fprintf(DBILOGFP, "dbd_db_STORE: initialize AutoCommit to on\n"); }
+        } else if (oldval == FALSE && newval != FALSE) {
             /* commit any outstanding changes */
             PGresult* result = 0;
             ExecStatusType status;
@@ -347,8 +351,8 @@ dbd_db_STORE_attrib(dbh, imp_dbh, keysv, valuesv)
                 dbd_error(dbh, status, "commit failed\n");
                 return 0;
             }
-            if (dbis->debug >= 2) { fprintf(DBILOGFP, "dbd_db_STORE: switch AutoCommit to on: rollback\n"); }
-        } else if (oldval != FALSE && newval == FALSE) {
+            if (dbis->debug >= 2) { fprintf(DBILOGFP, "dbd_db_STORE: switch AutoCommit to on: commit\n"); }
+	} else if ((oldval != FALSE && newval == FALSE) || (oldval == FALSE && newval == FALSE && imp_dbh->init_auto)) {
             /* start new transaction */
             PGresult* result = 0;
             ExecStatusType status;
@@ -360,17 +364,11 @@ dbd_db_STORE_attrib(dbh, imp_dbh, keysv, valuesv)
                 return 0;
             }
             if (dbis->debug >= 2) { fprintf(DBILOGFP, "dbd_db_STORE: switch AutoCommit to off: begin\n"); }
-        } else if (oldval == 512 && newval != FALSE) {
-           /* initialization of AutoCommit = on after login */
-           /* do nothing, fall through */
         }
-    } else if (kl==10 && strEQ(key, "RaiseError")) {
-        DBIc_set(imp_dbh, DBIcf_RaiseError, newval);
-    } else if (kl==10 && strEQ(key, "PrintError")) {
-        DBIc_set(imp_dbh, DBIcf_PrintError, newval);
+        imp_dbh->init_auto = 0;
+    } else {
+        retval = FALSE;
     }
-
-    return retval;
 }
 
 
