@@ -1,7 +1,7 @@
 /*
-   $Id: Pg.h,v 1.18 1999/09/29 20:30:23 mergl Exp $
+   $Id: Pg.h,v 1.19 2000/07/10 17:47:51 mergl Exp $
 
-   Copyright (c) 1997,1998,1999 Edmund Mergl
+   Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 
    You may distribute under the terms of either the GNU General Public
@@ -9,6 +9,10 @@
 
 */
 
+
+#ifdef WIN32
+static int errno;
+#endif
 
 #include "libpq-fe.h"
 

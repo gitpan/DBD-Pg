@@ -1,7 +1,7 @@
 /*
-   $Id: dbdimp.h,v 1.14 1999/02/14 20:33:25 mergl Exp $
+   $Id: dbdimp.h,v 1.15 2000/07/10 17:47:51 mergl Exp $
 
-   Copyright (c) 1997,1998,1999 Edmund Mergl
+   Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 
    You may distribute under the terms of either the GNU General Public

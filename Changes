@@ -1,5 +1,8 @@
 Revision history for Perl extension DBD-Pg.
 
+0.95 Jul 10, 2000
+	- add Win32 port from Bob Kline <bkline@rksystems.com>.
+
 0.94 Jul 07, 2000
 	- applied patch from Rudy Lippan <almighty@randomc.com>
 	  which fixes a memory-leak with failed connections.

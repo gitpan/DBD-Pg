@@ -1,7 +1,7 @@
 
-#  $Id: Pg.pm,v 1.37 2000/07/07 10:43:34 mergl Exp $
+#  $Id: Pg.pm,v 1.38 2000/07/10 17:47:51 mergl Exp $
 #
-#  Copyright (c) 1997,1998,1999 Edmund Mergl
+#  Copyright (c) 1997,1998,1999,2000 Edmund Mergl
 #  Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 #
 #  You may distribute under the terms of either the GNU General Public
@@ -10,7 +10,7 @@
 
 require 5.003;
 
-$DBD::Pg::VERSION = '0.94';
+$DBD::Pg::VERSION = '0.95';
 
 {
     package DBD::Pg;

@@ -1,9 +1,9 @@
 
 DBD::Pg  --  a PostgreSQL interface for Perl 5.
 
-   $Id: README,v 1.38 2000/07/07 10:47:05 mergl Exp $
+   $Id: README,v 1.39 2000/07/10 17:47:51 mergl Exp $
 
-   Copyright (c) 1997,1998,1999 Edmund Mergl
+   Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 
    You may distribute under the terms of either the GNU General Public
@@ -13,16 +13,18 @@ DBD::Pg  --  a PostgreSQL interface for Perl 5.
 DESCRIPTION:
 ------------
 
-This is version 0.94 of DBD-Pg.
+This is version 0.95 of DBD-Pg.
 DBD-Pg is a PostgreSQL interface for Perl5 using DBI.
 
 For further information about DBI look at:
-      http://www.fugue.com/dbi/
 
+      http://www.isc.org/services/public/lists/dbi-lists.html
 
 
 RECENT CHANGES:
 ---------------
+
+- add Win32 port
 
 
 COPYRIGHT:
@@ -41,6 +43,10 @@ Use the following URL to look for new versions of this module:
 
 Note, that this request will be redirected automatically to the 
 nearest CPAN site. 
+
+A precompiled package for Windows-NT is available at:
+
+  http://www.edmund-mergl.de/export/DBD-Pg.zip
 
 
 IF YOU HAVE PROBLEMS:
@@ -75,22 +81,19 @@ PLATFORMS:
 INSTALLATION:
 -------------
 
-The Makefile checks the environment variables POSTGRES_INCLUDE and 
-POSTGRES_LIB, to find the library libpq.so and the include file libpq-fe.h. 
+The Makefile checks the environment variables POSTGRES_INCLUDE and
+POSTGRES_LIB, to find the library lipq.so and the proper include files. 
  
-If you are not sure about setting the two environment variables 
-POSTGRES_INCLUDE and POSTGRES_LIB, do the following:
-first try to find the files libpq-fe.h and libpq.so. If 
-available on your system use the locate command. Then set 
-POSTGRES_INCLUDE to the directory where you found libpq-fe.h
-and set POSTGRES_LIB to the directory where you found libpq.so.
-
 1.   perl Makefile.PL
 2.   make
 3.   make test
 4.   make install
 
 ( 1. to 3. as normal user, not as root ! )
+
+For Windows-NT use the pre-compiled package DBD-Pg.zip. 
+Unzip the package and follow the instructions in the 
+README. 
 
 
 TESTING:
@@ -100,9 +103,6 @@ Run 'make test'.
 Note, that the user running this script must have been created with
 the access rights to create databases *AND* users ! Do not run this
 script as root !
-
-If you need to run the test against a remote server, set the environment
-variables PGHOST and PGPORT. 
 
 If testing fails with the message 'login failed', please check if access 
 to the database template1 as well as pgperltest is not protected in pg_hba.conf. 
@@ -145,8 +145,14 @@ Sun Users: if you get compile errors like:
            in the standard include file.
 
 
+Win32 Users: Running DBD-Pg scripts on Win32 needs some configuration work
+             on the server side:
+             - add a postgres user with the same name as the NT-User (eg Administrator)
+             - make sure, that your pg_hba.conf on the server is configured, 
+               such that a connection from another host will be accepted
+
 ---------------------------------------------------------------------------
 
-   Edmund Mergl <E.Mergl@bawue.de>                       July 07, 2000
+   Edmund Mergl <E.Mergl@bawue.de>                           July 10, 2000
 
 ---------------------------------------------------------------------------

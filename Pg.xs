@@ -1,7 +1,7 @@
 /*
-   $Id: Pg.xs,v 1.21 2000/06/12 15:12:17 mergl Exp $
+   $Id: Pg.xs,v 1.22 2000/07/10 17:47:51 mergl Exp $
 
-   Copyright (c) 1997,1998,1999 Edmund Mergl
+   Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 
    You may distribute under the terms of either the GNU General Public
