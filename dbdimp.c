@@ -1,6 +1,6 @@
 /*
 
-   $Id: dbdimp.c,v 1.115 2005/04/05 01:40:42 turnstep Exp $
+   $Id: dbdimp.c,v 1.116 2005/04/05 13:48:55 turnstep Exp $
 
    Copyright (c) 2002-2005 PostgreSQL Global Development Group
    Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -1981,8 +1981,8 @@ int dbd_st_deallocate_statement (sth, imp_sth)
 			if (alen > -1) {
 				SV		*sp = Nullsv;
 				char	*cmd;
-				New(0, cmd, SvLEN(sp) + 13, char); /* Freed below */
 				sp = *av_fetch(imp_dbh->savepoints, alen, 0);
+				New(0, cmd, SvLEN(sp) + 13, char); /* Freed below */
 				if (dbis->debug >= 4)
 					PerlIO_printf(DBILOGFP, "  dbdpg: Rolling back to savepoint %s\n", SvPV_nolen(sp));
 				sprintf(cmd,"rollback to %s",SvPV_nolen(sp));
