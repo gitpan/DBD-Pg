@@ -1,5 +1,5 @@
 
-# $Id: Makefile.PL,v 1.34 2005/03/31 23:17:45 turnstep Exp $
+# $Id: Makefile.PL,v 1.35 2005/04/04 20:42:24 turnstep Exp $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -84,9 +84,6 @@ else {
 }
 
 my $comp_opts = $Config{q{ccflags}} . " -DPGLIBVERSION=$serverversion";
-
-## For debugging only
-# $comp_opts .= " -pedantic";
 
 my %opts = (
     NAME         => 'DBD::Pg',
