@@ -1,5 +1,5 @@
 
-# $Id: Makefile.PL,v 1.21 2004/02/19 02:34:36 rlippan Exp $
+# $Id: Makefile.PL,v 1.22 2004/02/19 03:46:40 turnstep Exp $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -80,7 +80,7 @@ if ($major_ver == 7) {
     }
 } elsif ($major_ver > 7) {
         $comp_opts .= " -DHAVE_PQescapeString -DHAVE_PQescapeBytea";
-        $comp_opts .= " -DHAVE_PQunescapeBytea";
+        $comp_opts .= " -DHAVE_PQunescapeBytea -DHAVE_PQfreemem";
 }
 
 my %opts = (
