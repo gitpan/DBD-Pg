@@ -11,7 +11,7 @@ main();
 sub main {
     my ($n, $dbh, $sth, $quo, $retr);
     
-    print "1..8\n";
+    print "1..9\n";
     
     $n = 1;
     
@@ -110,6 +110,22 @@ sub main {
     
     print "ok $n\n"; $n++;
     
+    $sth = $dbh->prepare(q{
+        SELECT name
+          FROM test
+         WHERE name = '\\\\'
+           AND name = '?'
+    });
+    
+    eval {
+        local $dbh->{PrintError} = 0;
+        $sth->execute('foo');
+    };
+    if (!$@) {
+        print "not ";
+    }
+    
+    print "ok $n\n"; $n++;
     $sth->finish();
     $dbh->rollback();
     $dbh->disconnect();

@@ -11,7 +11,7 @@
 
 require 5.004;
 
-$DBD::Pg::VERSION = '1.11';
+$DBD::Pg::VERSION = '1.12';
 
 {
     package DBD::Pg;
@@ -146,27 +146,38 @@ $DBD::Pg::VERSION = '1.11';
     sub table_info {         # DBI spec: TABLE_CAT, TABLE_SCHEM, TABLE_NAME, TABLE_TYPE, REMARKS
         my($dbh) = @_;
 
-        my $sth = $dbh->prepare("
-            SELECT c.reltype, u.usename, c.relname, 'TABLE', '' 
-            FROM pg_class c, pg_user u 
-            WHERE c.relkind = 'r' 
-            AND   c.relhasrules = FALSE
-            AND   c.relname !~ '^pg_' 
-            AND   c.relname !~ '^xin[vx][0-9]+' 
-            AND   c.relowner = u.usesysid 
+        my $sth = $dbh->prepare(qq{
+            SELECT NULL::text    AS "TABLE_CAT"
+                 , u.usename     AS "TABLE_SCHEM"
+                 , c.relname     AS "TABLE_NAME"
+                 , 'TABLE'       AS "TABLE_TYPE"
+                 , d.description AS "REMARKS"
+            FROM pg_user  u
+               , pg_class c LEFT OUTER JOIN pg_description AS d ON c.relfilenode = d.objoid and d.objsubid = 0
+            WHERE c.relkind     =  'r'
+              AND c.relhasrules =  FALSE
+              AND c.relname     !~ '^pg_'
+              AND c.relname     !~ '^xin[vx][0-9]+'
+              AND c.relowner    =  u.usesysid
             UNION
-            SELECT c.reltype, u.usename, c.relname, 'VIEW', '' 
-            FROM pg_class c, pg_user u 
-            WHERE c.relkind = 'r' 
+            SELECT NULL::text
+	             , u.usename
+	             , c.relname
+	             , 'VIEW'
+	             , d.description 
+            FROM pg_user u
+               , pg_class c LEFT OUTER JOIN pg_description AS d ON c.relfilenode = d.objoid and d.objsubid = 0
+            WHERE c.relkind = 'v' 
             AND   c.relhasrules = TRUE
             AND   c.relname !~ '^pg_' 
             AND   c.relname !~ '^xin[vx][0-9]+' 
             AND   c.relowner = u.usesysid 
-            ORDER BY 1, 2, 3
-        ") or return undef;
-        $sth->execute or return undef;
+            ORDER BY 2, 3, 4
+        }) or return undef;
 
-        $sth;
+        $sth->execute();
+
+        return $sth;
     }
 
 
@@ -174,7 +185,7 @@ $DBD::Pg::VERSION = '1.11';
         my($dbh) = @_;
 
         my $sth = $dbh->prepare("
-            select relname 
+            select relname  AS \"TABLE_NAME\"
             from   pg_class 
             where  relkind = 'r' 
             and    relname !~ '^pg_' 
@@ -264,23 +275,44 @@ $DBD::Pg::VERSION = '1.11';
 
     sub type_info_all {
         my ($dbh) = @_;
+
+	#my $names = {
+    #      TYPE_NAME		=> 0,
+    #      DATA_TYPE		=> 1,
+    #      PRECISION		=> 2,
+    #      LITERAL_PREFIX	=> 3,
+    #      LITERAL_SUFFIX	=> 4,
+    #      CREATE_PARAMS		=> 5,
+    #      NULLABLE		=> 6,
+    #      CASE_SENSITIVE	=> 7,
+    #      SEARCHABLE		=> 8,
+    #      UNSIGNED_ATTRIBUTE	=> 9,
+    #      MONEY			=>10,
+    #      AUTO_INCREMENT	=>11,
+    #      LOCAL_TYPE_NAME	=>12,
+    #      MINIMUM_SCALE		=>13,
+    #      MAXIMUM_SCALE		=>14,
+    #    };
+
 	my $names = {
-          TYPE_NAME		=> 0,
-          DATA_TYPE		=> 1,
-          PRECISION		=> 2,
-          LITERAL_PREFIX	=> 3,
-          LITERAL_SUFFIX	=> 4,
-          CREATE_PARAMS		=> 5,
-          NULLABLE		=> 6,
-          CASE_SENSITIVE	=> 7,
-          SEARCHABLE		=> 8,
-          UNSIGNED_ATTRIBUTE	=> 9,
-          MONEY			=>10,
-          AUTO_INCREMENT	=>11,
-          LOCAL_TYPE_NAME	=>12,
-          MINIMUM_SCALE		=>13,
-          MAXIMUM_SCALE		=>14,
-        };
+        TYPE_NAME         => 0,
+        DATA_TYPE         => 1,
+        COLUMN_SIZE       => 2,     # was PRECISION originally
+        LITERAL_PREFIX    => 3,
+        LITERAL_SUFFIX    => 4,
+        CREATE_PARAMS     => 5,
+        NULLABLE          => 6,
+        CASE_SENSITIVE    => 7,
+        SEARCHABLE        => 8,
+        UNSIGNED_ATTRIBUTE=> 9,
+        FIXED_PREC_SCALE  => 10,    # was MONEY originally
+        AUTO_UNIQUE_VALUE => 11,    # was AUTO_INCREMENT originally
+        LOCAL_TYPE_NAME   => 12,
+        MINIMUM_SCALE     => 13,
+        MAXIMUM_SCALE     => 14,
+        NUM_PREC_RADIX    => 15,
+    };
+
 
 	#  typname       |typlen|typprtlen|    SQL92
 	#  --------------+------+---------+    -------
@@ -324,25 +356,26 @@ $DBD::Pg::VERSION = '1.11';
 	  $names,
           # name          type  prec  prefix suffix  create params null case se unsign mon  incr       local   min    max
           #					     
-          [ 'bytea',        -2, 4096,  '\'',  '\'',           undef, 1, '1', 3, undef, '0', '0',     'BYTEA', undef, undef ],
-          [ 'bool',          0,    1,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'BOOLEAN', undef, undef ],
-          [ 'int8',          8,   20, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',   'LONGINT', undef, undef ],
-          [ 'int2',          5,    5, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',  'SMALLINT', undef, undef ],
-          [ 'int4',          4,   10, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',   'INTEGER', undef, undef ],
-          [ 'text',         12, 4096,  '\'',  '\'',           undef, 1, '1', 3, undef, '0', '0',      'TEXT', undef, undef ],
-          [ 'float4',        6,   12, undef, undef,     'precision', 1, '0', 2,   '0', '0', '0',     'FLOAT', undef, undef ],
-          [ 'float8',        7,   24, undef, undef,     'precision', 1, '0', 2,   '0', '0', '0',      'REAL', undef, undef ],
-          [ 'abstime',      10,   20,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'ABSTIME', undef, undef ],
-          [ 'reltime',      10,   20,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'RELTIME', undef, undef ],
-          [ 'tinterval',    11,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0', 'TINTERVAL', undef, undef ],
-          [ 'money',         0,   24, undef, undef,           undef, 1, '0', 2, undef, '1', '0',     'MONEY', undef, undef ],
-          [ 'bpchar',       12, 4096,  '\'',  '\'',    'max length', 1, '1', 3, undef, '0', '0', 'CHARACTER', undef, undef ],
-          [ 'varchar',      12, 4096,  '\'',  '\'',    'max length', 1, '1', 3, undef, '0', '0',   'VARCHAR', undef, undef ],
-          [ 'date',          9,   10,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',      'DATE', undef, undef ],
-          [ 'time',         10,   16,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',      'TIME', undef, undef ],
-          [ 'datetime',     11,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',  'DATETIME', undef, undef ],
-          [ 'timespan',     11,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',  'INTERVAL', undef, undef ],
-          [ 'timestamp',    10,   19,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0', 'TIMESTAMP', undef, undef ]
+          [ 'bytea',        -2, 4096,  '\'',  '\'',           undef, 1, '1', 3, undef, '0', '0',     'BYTEA', undef, undef, undef ],
+          [ 'bool',          0,    1,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'BOOLEAN', undef, undef, undef ],
+          [ 'int8',          8,   20, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',   'LONGINT', undef, undef, undef ],
+          [ 'int2',          5,    5, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',  'SMALLINT', undef, undef, undef ],
+          [ 'int4',          4,   10, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',   'INTEGER', undef, undef, undef ],
+          [ 'text',         12, 4096,  '\'',  '\'',           undef, 1, '1', 3, undef, '0', '0',      'TEXT', undef, undef, undef ],
+          [ 'float4',        6,   12, undef, undef,     'precision', 1, '0', 2,   '0', '0', '0',     'FLOAT', undef, undef, undef ],
+          [ 'float8',        7,   24, undef, undef,     'precision', 1, '0', 2,   '0', '0', '0',      'REAL', undef, undef, undef ],
+          [ 'abstime',      10,   20,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'ABSTIME', undef, undef, undef ],
+          [ 'reltime',      10,   20,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'RELTIME', undef, undef, undef ],
+          [ 'tinterval',    11,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0', 'TINTERVAL', undef, undef, undef ],
+          [ 'money',         0,   24, undef, undef,           undef, 1, '0', 2, undef, '1', '0',     'MONEY', undef, undef, undef ],
+          [ 'bpchar',        1, 4096,  '\'',  '\'',    'max length', 1, '1', 3, undef, '0', '0', 'CHARACTER', undef, undef, undef ],
+          [ 'bpchar',       12, 4096,  '\'',  '\'',    'max length', 1, '1', 3, undef, '0', '0', 'CHARACTER', undef, undef, undef ],
+          [ 'varchar',      12, 4096,  '\'',  '\'',    'max length', 1, '1', 3, undef, '0', '0',   'VARCHAR', undef, undef, undef ],
+          [ 'date',          9,   10,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',      'DATE', undef, undef, undef ],
+          [ 'time',         10,   16,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',      'TIME', undef, undef, undef ],
+          [ 'datetime',     11,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',  'DATETIME', undef, undef, undef ],
+          [ 'timespan',     11,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',  'INTERVAL', undef, undef, undef ],
+          [ 'timestamp',    10,   19,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0', 'TIMESTAMP', undef, undef, undef ]
           #
           # intentionally omitted: char, all geometric types, all array types
         ];

@@ -1,3 +1,9 @@
+2002-04-09 Jeffrey W. Baker <jwbaker@acm.org>
+
+    * Pg.pm, dbdimp.c: Applied patch from 
+    Thomas A. Lowery <tlowery@stlowery.net> concerning metadata
+    in table_info and so forth.
+    
 2002-03-06 Jeffrey W. Baker <jwbaker@acm.org>
 
     * Pg.pm (quote): Applied patch from David Wheeler <david@wheeler.net>

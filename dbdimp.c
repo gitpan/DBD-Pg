@@ -794,9 +794,49 @@ pg_sql_type (imp_sth, name, sql_type)
             return 17;		/* bytea */
         default:
             if (DBIc_WARN(imp_sth) && imp_sth && name) {
-                warn("SQL type %d for '%s' is not fully supported, bound as VARCHAR instead");
+                warn("SQL type %d for '%s' is not fully supported, bound as VARCHAR instead",
+						sql_type, name);
             }
             return pg_sql_type(imp_sth, name, SQL_VARCHAR);
+    }
+}
+
+static int
+sql_pg_type (imp_sth, name, sql_type)
+    imp_sth_t *imp_sth;
+    char *name;
+    int sql_type;
+{
+    if (dbis->debug >= 1) { 
+		PerlIO_printf(DBILOGFP, "sql_pg_type name '%s' type '%d'\n", name, sql_type ); 
+	}
+
+    switch (sql_type) {
+        case   17:		/* bytea */
+        	return SQL_BINARY;
+        case   20:		/* int8 */
+        	return SQL_DOUBLE;
+        case   21:		/* int2	*/
+        	return SQL_SMALLINT;
+        case   23:		/* int4	*/
+        	return SQL_INTEGER;
+        case  700:		/* float4 */
+        	return SQL_NUMERIC;
+        case  701:		/* float8 */
+        	return SQL_REAL;
+        case 1042:	/* bpchar */
+        	return SQL_CHAR;
+        case 1043:	/* varchar */
+        	return SQL_VARCHAR;
+        case 1082:	/* date */
+        	return SQL_DATE;
+        case 1083:	/* time */
+        	return SQL_TIME;
+        case 1296:	/* date */
+        	return SQL_TIMESTAMP;
+
+        default:
+			return sql_type;
     }
 }
 
@@ -1504,7 +1544,7 @@ dbd_st_FETCH_attrib (sth, imp_sth, keysv)
 {
     STRLEN kl;
     char *key = SvPV(keysv,kl);
-    int i;
+    int i, sz;
     SV *retsv = Nullsv;
 
     if (dbis->debug >= 1) { PerlIO_printf(DBILOGFP, "dbd_st_FETCH\n"); }
@@ -1522,16 +1562,20 @@ dbd_st_FETCH_attrib (sth, imp_sth, keysv)
             av_store(av, i, newSVpv(PQfname(imp_sth->result, i),0));
         }
     } else if ( kl== 4 && strEQ(key, "TYPE")) {
+		/* Need to convert the Pg type to ANSI/SQL type. */
         AV *av = newAV();
         retsv = newRV(sv_2mortal((SV*)av));
         while(--i >= 0) {
-            av_store(av, i, newSViv(PQftype(imp_sth->result, i)));
-        }
+            av_store(av, i, newSViv(sql_pg_type( imp_sth,
+        						PQfname(imp_sth->result, i),
+								PQftype(imp_sth->result, i))));
+		}
     } else if (kl==9 && strEQ(key, "PRECISION")) {
         AV *av = newAV();
         retsv = newRV(sv_2mortal((SV*)av));
         while(--i >= 0) {
-            av_store(av, i, &sv_undef);
+            sz = PQfsize(imp_sth->result, i);
+            av_store(av, i, sz > 0 ? newSViv(sz) : &sv_undef);
         }
     } else if (kl==5 && strEQ(key, "SCALE")) {
         AV *av = newAV();
@@ -1546,6 +1590,8 @@ dbd_st_FETCH_attrib (sth, imp_sth, keysv)
             av_store(av, i, newSViv(2));
         }
     } else if (kl==10 && strEQ(key, "CursorName")) {
+        retsv = &sv_undef;
+    } else if (kl==11 && strEQ(key, "RowsInCache")) {
         retsv = &sv_undef;
     } else if (kl==7 && strEQ(key, "pg_size")) {
         AV *av = newAV();
