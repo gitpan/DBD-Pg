@@ -1,6 +1,6 @@
 /*
 
-   $Id: quote.c,v 1.26 2005/03/10 23:53:03 turnstep Exp $
+   $Id: quote.c,v 1.27 2005/03/31 15:22:29 turnstep Exp $
 
    Copyright (c) 2003-2005 PostgreSQL Global Development Group
    
@@ -372,15 +372,14 @@ quote_bytea(string, len, retlen)
 		 STRLEN len;
 		 STRLEN *retlen;
 {
-	char *result;
+	char *result, *dest;
 	STRLEN resultant_len = 0;
-	unsigned char *intermead, *dest;
+	unsigned char *intermead;
 	
 	intermead = PQescapeBytea(string, len, &resultant_len);
 	New(0, result, resultant_len+2, char);
 	
-	
-	dest = result;
+ 	dest = result;
 	
 	Copy("'", dest++,1,char);
 	strcpy(dest,intermead);

@@ -1,5 +1,5 @@
 /*
-   $Id: Pg.xs,v 1.31 2005/03/29 02:35:53 turnstep Exp $
+   $Id: Pg.xs,v 1.32 2005/03/31 15:22:29 turnstep Exp $
 
    Copyright (c) 2000-2005 PostgreSQL Global Development Group
    Portions Copyright (c) 1997-20000 Edmund Mergl
@@ -333,9 +333,10 @@ pg_getline(dbh, buf, len)
         int len
         char * buf = SvGROW(bufsv, 3);
     CODE:
+				int ret;
 				if (len > 3)
 					buf = SvGROW(bufsv, len);
-        int ret = pg_db_getline(dbh, buf, len);
+        ret = pg_db_getline(dbh, buf, len);
     sv_setpv((SV*)ST(1), buf);
     SvSETMAGIC(ST(1));
         ST(0) = (-1 != ret) ? &sv_yes : &sv_no;
@@ -350,9 +351,10 @@ getline(dbh, buf, len)
         int len
         char * buf = SvGROW(bufsv, 3);
     CODE:
+				int ret;
 				if (len > 3)
 					buf = SvGROW(bufsv, len);
-        int ret = pg_db_getline(dbh, buf, len);
+        ret = pg_db_getline(dbh, buf, len);
     sv_setpv((SV*)ST(1), buf);
     SvSETMAGIC(ST(1));
         ST(0) = (-1 != ret) ? &sv_yes : &sv_no;
