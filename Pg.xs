@@ -1,12 +1,15 @@
-/*---------------------------------------------------------
- *
- * $Id: Pg.xs,v 1.15 1998/02/21 16:34:20 mergl Exp $
- *
- * Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
- * Portions Copyright (c) 1997,1998           Edmund Mergl
- *
- *---------------------------------------------------------
- */
+/*
+   $Id: Pg.xs,v 1.18 1998/10/11 17:40:36 mergl Exp $
+
+   Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
+   Portions Copyright (c) 1997,1998           Edmund Mergl
+
+   You may distribute under the terms of either the GNU General Public
+   License or the Artistic License, as specified in the Perl README file,
+   with the exception that it cannot be placed on a CD-ROM or similar media
+   for commercial distribution without the prior approval of the author.
+
+*/
 
 
 #include "Pg.h"
@@ -41,7 +44,7 @@ void
 discon_all_(drh)
     SV *	drh
     ALIAS:
-	disconnect_all = 1
+        disconnect_all = 1
     CODE:
     D_imp_drh(drh);
     ST(0) = dbd_discon_all(drh, imp_drh) ? &sv_yes : &sv_no;
@@ -54,14 +57,14 @@ discon_all_(drh)
 MODULE = DBD::Pg	PACKAGE = DBD::Pg::db
 
 void
-_login(dbh, dbname, uid, pwd)
+_login(dbh, dbname, username, pwd)
     SV *	dbh
     char *	dbname
-    char *	uid
+    char *	username
     char *	pwd
     CODE:
     D_imp_dbh(dbh);
-    ST(0) = dbd_db_login(dbh, imp_dbh, dbname, uid, pwd) ? &sv_yes : &sv_no;
+    ST(0) = dbd_db_login(dbh, imp_dbh, dbname, username, pwd) ? &sv_yes : &sv_no;
 
 
 int
@@ -71,44 +74,11 @@ _ping(dbh)
     int retval;
     retval = dbd_db_ping(dbh);
     if (retval == 0) {
-	XST_mUNDEF(0);
+        XST_mUNDEF(0);
     }
     else {
-	XST_mIV(0, retval);
+        XST_mIV(0, retval);
     }
-
-
-int
-_do(dbh, statement, attribs=Nullsv)
-    SV *	dbh
-    char *	statement
-    SV *	attribs
-    CODE:
-    {
-    D_imp_dbh(dbh);
-    int retval;
-    DBD_ATTRIBS_CHECK("_do", dbh, attribs);
-    if (!strncasecmp(statement, "begin",    5) ||
-        !strncasecmp(statement, "end",      4) ||
-        !strncasecmp(statement, "commit",   6) ||
-        !strncasecmp(statement, "abort",    5) ||
-        !strncasecmp(statement, "rollback", 8) ) {
-        warn("please use DBI functions for transaction handling");
-	retval = -2;
-    } else {
-        retval = dbd_db_do(dbh, statement);
-    }
-    if (retval == 0) {		/* ok with no rows affected	*/
-	XST_mPV(0, "0E0");	/* (true but zero)		*/
-    }
-    else if (retval < -1) {	/* -1 == unknown number of rows	*/
-	XST_mUNDEF(0);		/* <= -2 means error   		*/
-    }
-    else {
-	XST_mIV(0, retval);	/* typically 1, rowcount or -1	*/
-    }
-    }
-
 
 void
 commit(dbh)
@@ -116,11 +86,9 @@ commit(dbh)
     CODE:
     D_imp_dbh(dbh);
     if (DBIc_has(imp_dbh, DBIcf_AutoCommit)) {
-        warn("commit ineffective with AutoCommit");
-        ST(0) = &sv_no;
-    } else {
-        ST(0) = dbd_db_commit(dbh, imp_dbh) ? &sv_yes : &sv_no;
+        warn("commit ineffective with AutoCommit enabled");
     }
+    ST(0) = dbd_db_commit(dbh, imp_dbh) ? &sv_yes : &sv_no;
 
 
 void
@@ -129,11 +97,9 @@ rollback(dbh)
     CODE:
     D_imp_dbh(dbh);
     if (DBIc_has(imp_dbh, DBIcf_AutoCommit)) {
-        warn("rollback ineffective with AutoCommit");
-        ST(0) = &sv_no;
-    } else {
-        ST(0) = dbd_db_rollback(dbh, imp_dbh) ? &sv_yes : &sv_no;
+        warn("rollback ineffective with AutoCommit enabled");
     }
+    ST(0) = dbd_db_rollback(dbh, imp_dbh) ? &sv_yes : &sv_no;
 
 
 void
@@ -142,13 +108,20 @@ disconnect(dbh)
     CODE:
     D_imp_dbh(dbh);
     if ( !DBIc_ACTIVE(imp_dbh) ) {
-	XSRETURN_YES;
+        XSRETURN_YES;
+    }
+    /* pre-disconnect checks and tidy-ups */
+    if (DBIc_CACHED_KIDS(imp_dbh)) {
+        SvREFCNT_dec(DBIc_CACHED_KIDS(imp_dbh));
+        DBIc_CACHED_KIDS(imp_dbh) = Nullhv;
     }
     /* Check for disconnect() being called whilst refs to cursors	*/
-    /* still exists. This possibly needs some more thought.			*/
+    /* still exists. This possibly needs some more thought.		*/
     if (DBIc_ACTIVE_KIDS(imp_dbh) && DBIc_WARN(imp_dbh) && !dirty) {
-	warn("disconnect(%s) invalidates %d active cursor(s)",
-            SvPV(dbh,na), (int)DBIc_ACTIVE_KIDS(imp_dbh));
+        char *plural = (DBIc_ACTIVE_KIDS(imp_dbh)==1) ? "" : "s";
+        warn("disconnect(%s) invalidates %d active statement%s. %s",
+            SvPV(dbh,na), (int)DBIc_ACTIVE_KIDS(imp_dbh), plural,
+            "Either destroy statement handles or call finish on them before disconnecting.");
     }
     ST(0) = dbd_db_disconnect(dbh, imp_dbh) ? &sv_yes : &sv_no;
 
@@ -162,9 +135,9 @@ STORE(dbh, keysv, valuesv)
     D_imp_dbh(dbh);
     ST(0) = &sv_yes;
     if (!dbd_db_STORE_attrib(dbh, imp_dbh, keysv, valuesv)) {
-	if (!DBIS->set_attr(dbh, keysv, valuesv)) {
-	    ST(0) = &sv_no;
-	}
+        if (!DBIS->set_attr(dbh, keysv, valuesv)) {
+            ST(0) = &sv_no;
+        }
     }
 
 
@@ -176,7 +149,7 @@ FETCH(dbh, keysv)
     D_imp_dbh(dbh);
     SV *valuesv = dbd_db_FETCH_attrib(dbh, imp_dbh, keysv);
     if (!valuesv) {
-	valuesv = DBIS->get_attr(dbh, keysv);
+        valuesv = DBIS->get_attr(dbh, keysv);
     }
     ST(0) = valuesv;	/* dbd_db_FETCH_attrib did sv_2mortal	*/
 
@@ -188,42 +161,49 @@ DESTROY(dbh)
     D_imp_dbh(dbh);
     ST(0) = &sv_yes;
     if (!DBIc_IMPSET(imp_dbh)) {	/* was never fully set up	*/
-	if (DBIc_WARN(imp_dbh) && !dirty && dbis->debug >= 2) {
-	    warn("Database handle %s DESTROY ignored - never set up", SvPV(dbh,na));
-	}
+        if (DBIc_WARN(imp_dbh) && !dirty && dbis->debug >= 2) {
+            warn("Database handle %s DESTROY ignored - never set up", SvPV(dbh,na));
+        }
     }
     else {
+	/* pre-disconnect checks and tidy-ups */
+        if (DBIc_CACHED_KIDS(imp_dbh)) {
+            SvREFCNT_dec(DBIc_CACHED_KIDS(imp_dbh));
+            DBIc_CACHED_KIDS(imp_dbh) = Nullhv;
+        }
         if (DBIc_IADESTROY(imp_dbh)) { /* want's ineffective destroy    */
             DBIc_ACTIVE_off(imp_dbh);
         }
-	if (DBIc_ACTIVE(imp_dbh)) {
-	    static int auto_rollback = -1;
-	    if (DBIc_WARN(imp_dbh) && (!dirty || dbis->debug >= 3)) {
-		warn("Database handle destroyed without explicit disconnect");
-	    }
+        if (DBIc_ACTIVE(imp_dbh)) {
+            if (DBIc_WARN(imp_dbh) && (!dirty || dbis->debug >= 3)) {
+                warn("Database handle destroyed without explicit disconnect");
+            }
 	    /* The application has not explicitly disconnected. That's bad.	*/
 	    /* To ensure integrity we *must* issue a rollback. This will be	*/
-	    /* harmless	if the application has issued a commit. If it hasn't	*/
+	    /* harmless if the application has issued a commit. If it hasn't	*/
 	    /* then it'll ensure integrity. Consider a Ctrl-C killing perl	*/
 	    /* between two statements that must be executed as a transaction.	*/
 	    /* Perl will call DESTROY on the dbh and, if we don't rollback,	*/
-	    /* the server will automatically commit! Bham! Corrupt database!	*/ 
-	    if (auto_rollback == -1) {		/* need to determine behaviour	*/
-		/* DBD_ORACLE_AUTO_ROLLBACK is offered as a _temporary_ sop to	*/
-		/* those who can't fix their code in a short timescale.		*/
-		char *p = getenv("DBD_ORACLE_AUTO_ROLLBACK");
-		auto_rollback = (p) ? atoi(p) : 1;
-	    }
-	    if (auto_rollback) {
-		dbd_db_rollback(dbh, imp_dbh);	/* ROLLBACK! */
-	    }
-	    dbd_db_disconnect(dbh, imp_dbh);
-	}
-	dbd_db_destroy(dbh, imp_dbh);
+	    /* the server will automatically commit! Bham! Corrupt database!	*/
+            if (!DBIc_has(imp_dbh,DBIcf_AutoCommit)) {
+                static int auto_rollback = -1;
+                if (auto_rollback == -1) {	/* need to determine behaviour	*/
+		    /* DBD_ORACLE_AUTO_ROLLBACK is offered as a _temporary_ sop to */
+		    /* those who can't fix their code in a short timescale.	   */
+                    char *p = getenv("DBD_ORACLE_AUTO_ROLLBACK");
+                    auto_rollback = (p) ? atoi(p) : 1;
+                }
+                if (auto_rollback) {
+                    dbd_db_rollback(dbh, imp_dbh);	/* ROLLBACK! */
+                }
+            }
+            dbd_db_disconnect(dbh, imp_dbh);
+        }
+        dbd_db_destroy(dbh, imp_dbh);
     }
 
 
-# -- end of DBD::~DRIVER~::db
+# -- end of DBD::Pg::db
 
 
 # ------------------------------------------------------------
@@ -247,7 +227,7 @@ _prepare(sth, statement, attribs=Nullsv)
         !strncasecmp(statement, "abort",    5) ||
         !strncasecmp(statement, "rollback", 8) ) {
         warn("please use DBI functions for transaction handling");
-	ST(0) = &sv_no;
+        ST(0) = &sv_no;
     } else {
         ST(0) = dbd_st_prepare(sth, imp_sth, statement, attribs) ? &sv_yes : &sv_no;
     }
@@ -273,15 +253,16 @@ bind_param(sth, param, value, attribs=Nullsv)
     IV sql_type = 0;
     D_imp_sth(sth);
     if (attribs) {
-	if (SvIOK(attribs)) {
-	    sql_type = SvIV(attribs);
-	    attribs = Nullsv;
-	}
-	else {
-	    SV **svp;
-	    DBD_ATTRIBS_CHECK("bind_param", sth, attribs);
-	    DBD_ATTRIB_GET_IV(attribs, "TYPE",4, svp, sql_type);
-	}
+        if (SvNIOK(attribs)) {
+            sql_type = SvIV(attribs);
+            attribs = Nullsv;
+        }
+        else {
+            SV **svp;
+            DBD_ATTRIBS_CHECK("bind_param", sth, attribs);
+	    /* XXX we should perhaps complain if TYPE is not SvNIOK */
+            DBD_ATTRIB_GET_IV(attribs, "TYPE",4, svp, sql_type);
+        }
     }
     ST(0) = dbd_bind_ph(sth, imp_sth, param, value, sql_type, attribs, FALSE, 0) ? &sv_yes : &sv_no;
     }
@@ -299,21 +280,21 @@ bind_param_inout(sth, param, value_ref, maxlen, attribs=Nullsv)
     IV sql_type = 0;
     D_imp_sth(sth);
     if (!SvROK(value_ref) || SvTYPE(SvRV(value_ref)) > SVt_PVMG) {
-	croak("bind_param_inout needs a reference to a scalar value");
+        croak("bind_param_inout needs a reference to a scalar value");
     }
     if (SvREADONLY(SvRV(value_ref))) {
-	croak(no_modify);
+       croak(no_modify);
     }
     if (attribs) {
-	if (SvIOK(attribs)) {
-	    sql_type = SvIV(attribs);
-	    attribs = Nullsv;
-	}
-	else {
-	    SV **svp;
-	    DBD_ATTRIBS_CHECK("bind_param", sth, attribs);
-	    DBD_ATTRIB_GET_IV(attribs, "TYPE",4, svp, sql_type);
-	}
+        if (SvNIOK(attribs)) {
+            sql_type = SvIV(attribs);
+            attribs = Nullsv;
+        }
+        else {
+            SV **svp;
+            DBD_ATTRIBS_CHECK("bind_param", sth, attribs);
+            DBD_ATTRIB_GET_IV(attribs, "TYPE", 4, svp, sql_type);
+        }
     }
     ST(0) = dbd_bind_ph(sth, imp_sth, param, SvRV(value_ref), sql_type, attribs, TRUE, maxlen) ? &sv_yes : &sv_no;
     }
@@ -327,34 +308,31 @@ execute(sth, ...)
     int retval;
     if (items > 1) {
 	/* Handle binding supplied values to placeholders	*/
-	int i, error = 0;
+        int i;
         SV *idx;
         imp_sth->all_params_len = 0; /* used for malloc of statement string in case we have placeholders */
-	if (items-1 != DBIc_NUM_PARAMS(imp_sth)) {
-	    croak("execute called with %ld bind variables, %d needed", items-1, DBIc_NUM_PARAMS(imp_sth));
-	    XSRETURN_UNDEF;
-	}
+        if (items-1 != DBIc_NUM_PARAMS(imp_sth)) {
+            croak("execute called with %ld bind variables, %d needed", items-1, DBIc_NUM_PARAMS(imp_sth));
+            XSRETURN_UNDEF;
+        }
         idx = sv_2mortal(newSViv(0));
-	for(i=1; i < items ; ++i) {
-	    sv_setiv(idx, i);
-	    if (!dbd_bind_ph(sth, imp_sth, idx, ST(i), 0, Nullsv, FALSE, 0)) {
-		++error;
-	    }
-	}
-	if (error) {
-	    XSRETURN_UNDEF;	/* dbd_bind_ph already registered error	*/
-	}
+        for(i=1; i < items ; ++i) {
+            sv_setiv(idx, i);
+            if (!dbd_bind_ph(sth, imp_sth, idx, ST(i), 0, Nullsv, FALSE, 0)) {
+		XSRETURN_UNDEF;	/* dbd_bind_ph already registered error	*/
+            }
+        }
     }
     retval = dbd_st_execute(sth, imp_sth);
     /* remember that dbd_st_execute must return <= -2 for error	*/
     if (retval == 0) {		/* ok with no rows affected	*/
-	XST_mPV(0, "0E0");	/* (true but zero)		*/
+        XST_mPV(0, "0E0");	/* (true but zero)		*/
     }
     else if (retval < -1) {	/* -1 == unknown number of rows	*/
-	XST_mUNDEF(0);		/* <= -2 means error   		*/
+        XST_mUNDEF(0);		/* <= -2 means error   		*/
     }
     else {
-	XST_mIV(0, retval);	/* typically 1, rowcount or -1	*/
+        XST_mIV(0, retval);	/* typically 1, rowcount or -1	*/
     }
 
 
@@ -362,29 +340,29 @@ void
 fetchrow_arrayref(sth)
     SV *	sth
     ALIAS:
-	fetch = 1
+        fetch = 1
     CODE:
     D_imp_sth(sth);
     AV *av = dbd_st_fetch(sth, imp_sth);
-    ST(0) = (av) ? sv_2mortal(newRV((SV *)av)) : &sv_undef;
+    ST(0) = (av) ? sv_2mortal(newRV_inc((SV *)av)) : &sv_undef;
 
 
 void
 fetchrow_array(sth)
     SV *	sth
     ALIAS:
-	fetchrow = 1
+        fetchrow = 1
     PPCODE:
     D_imp_sth(sth);
     AV *av;
     av = dbd_st_fetch(sth, imp_sth);
     if (av) {
-	int num_fields = AvFILL(av)+1;
-	int i;
-	EXTEND(sp, num_fields);
-	for(i=0; i < num_fields; ++i) {
-	    PUSHs(AvARRAY(av)[i]);
-	}
+        int num_fields = AvFILL(av)+1;
+        int i;
+        EXTEND(sp, num_fields);
+        for(i=0; i < num_fields; ++i) {
+            PUSHs(AvARRAY(av)[i]);
+        }
     }
 
 
@@ -398,11 +376,11 @@ finish(sth)
 	/* Either an explicit disconnect() or global destruction	*/
 	/* has disconnected us from the database. Finish is meaningless	*/
 	/* XXX warn */
-	XSRETURN_YES;
+        XSRETURN_YES;
     }
     if (!DBIc_ACTIVE(imp_sth)) {
 	/* No active statement to finish	*/
-	XSRETURN_YES;
+        XSRETURN_YES;
     }
     ST(0) = dbd_st_finish(sth, imp_sth) ? &sv_yes : &sv_no;
 
@@ -419,14 +397,10 @@ blob_read(sth, field, offset, len, destrv=Nullsv, destoffset=0)
     {
     D_imp_sth(sth);
     if (!destrv) {
-        destrv = sv_2mortal(newRV(sv_2mortal(newSV(0))));
+        destrv = sv_2mortal(newRV_inc(sv_2mortal(newSViv(0))));
     }
-    if (dbd_st_blob_read(sth, imp_sth, field, offset, len, destrv, destoffset)) {
-         ST(0) = SvRV(destrv);
+    ST(0) = dbd_st_blob_read(sth, imp_sth, field, offset, len, destrv, destoffset) ? SvRV(destrv) : &sv_undef;
     }
-    else ST(0) = &sv_undef;
-    }
-
 
 void
 STORE(sth, keysv, valuesv)
@@ -437,9 +411,9 @@ STORE(sth, keysv, valuesv)
     D_imp_sth(sth);
     ST(0) = &sv_yes;
     if (!dbd_st_STORE_attrib(sth, imp_sth, keysv, valuesv)) {
-	if (!DBIS->set_attr(sth, keysv, valuesv)) {
-	    ST(0) = &sv_no;
-	}
+        if (!DBIS->set_attr(sth, keysv, valuesv)) {
+            ST(0) = &sv_no;
+        }
     }
 
 
@@ -454,7 +428,7 @@ FETCH_attrib(sth, keysv)
     D_imp_sth(sth);
     SV *valuesv = dbd_st_FETCH_attrib(sth, imp_sth, keysv);
     if (!valuesv) {
-	valuesv = DBIS->get_attr(sth, keysv);
+        valuesv = DBIS->get_attr(sth, keysv);
     }
     ST(0) = valuesv;	/* dbd_st_FETCH_attrib did sv_2mortal	*/
 
@@ -466,18 +440,18 @@ DESTROY(sth)
     D_imp_sth(sth);
     ST(0) = &sv_yes;
     if (!DBIc_IMPSET(imp_sth)) {	/* was never fully set up	*/
-	if (DBIc_WARN(imp_sth) && !dirty && dbis->debug >= 2) {
-	    warn("Statement handle %s DESTROY ignored - never set up", SvPV(sth,na));
-	}
+        if (DBIc_WARN(imp_sth) && !dirty && dbis->debug >= 2) {
+            warn("Statement handle %s DESTROY ignored - never set up", SvPV(sth,na));
+        }
     }
     else {
         if (DBIc_IADESTROY(imp_sth)) { /* want's ineffective destroy    */
             DBIc_ACTIVE_off(imp_sth);
         }
-	if (DBIc_ACTIVE(imp_sth)) {
-	    dbd_st_finish(sth, imp_sth);
-	}
-	dbd_st_destroy(sth, imp_sth);
+        if (DBIc_ACTIVE(imp_sth)) {
+            dbd_st_finish(sth, imp_sth);
+        }
+        dbd_st_destroy(sth, imp_sth);
     }
 
 

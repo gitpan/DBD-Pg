@@ -1,6 +1,75 @@
 Revision history for Perl extension DBD-Pg.
 
-0.73 Jun 03, 1998
+0.89 Nov 05, 1998
+	- bug-fix from Jan Iven <j.iven@rz.uni-sb.de>:
+	  fix problem with quoting Null in bind variables.
+
+0.88 Oct 10, 1998
+	- fixed blob_read
+	- suppressed warning when testing DBI::errstr
+
+0.87 Sep 05, 1998
+	- Pg.xs adapted to Driver.xst from DBI-1.0
+	- major rewrite of module documentation 
+	- major rewrite of the test script
+	- use built-in DBI method for $dbh->do 
+	- add macro dHTR in order to avoid compile errors 
+	  with threaded perl5.005
+	- renamed attribute AutoEscape to pg_auto_escape
+	- renamed attribute SIZE to pg_size
+	- new attribute pg_type
+	- added support for DBI->data_sources($driver)
+	- added support for $dbh->table_info
+	- blob_read documented and added to test.pl 
+	- added support for attr parameter in bind_param()
+
+0.86 Aug 21, 1998
+	- added /usr/lib/ to search path for libpq.
+	- added ChopBlanks, patch from 
+          Victor Krasinsky <victor@rdovira.lviv.ua>
+	- changed test.pl to test multiple database handles 
+
+0.85 July 19, 1998
+	- non-printable characters in parameters will not be 
+	  converted to '.'. They are passed unchanged to the 
+	  database. 
+
+0.84 July 18, 1998
+	- bug-fix from Max Cohan <mcohan@adnc.net>:
+	  check for \xxx presentation before escaping backslash
+	  in parameters. 
+	- introduce new database handle attribute AutoEscape, which 
+	  controls escaping of quotes and backslashes in parameters. 
+	  When set to on, all quotes except at the beginning and 
+	  at the end of a line will be escaped and all backslashes 
+	  except when used to indicate an octal presentation (\xxx) 
+	  will be escaped. Default of AutoEscape is on. 
+
+0.83 July 10, 1998
+	- bug-fix from Max Cohan <mcohan@adnc.net>:
+	  using traces together with undef in place-holders dumped 
+	  core. 
+
+0.82 June 20, 1998
+	- bug-fix from Matthew Lenz <matthew@nocturnal.org>:
+	  corrected include path in Makefile.PL .
+	- added 'use strict;' to test.pl
+
+0.81 June 13, 1998
+	- bug-fix from Rolf Grossmann <grossman@securitas.net>:
+	  undefined parameters in an execute statement will be 
+	  translated from 'undef' to 'NULL'. Also every parameter 
+	  for bind_param() will be quoted by default (escape quote 
+	  and backslash). Appropriate tests have been added to test.pl. 
+	- change ping method to use libpq-interface.
+
+0.80 June 07, 1998
+	- adapted to postgresql-6.4:
+	  the backend protocol has changed, which needs an adapted
+	  ping method. A ping-test has been added to the test-script.
+	  Also some type identifiers have changed. 
+
+0.73 June 03, 1998
 	- changed include directives in Makefile.PL from 
 	  archlib to installarchlib and from sitearch to
 	  installsitearch (Tony.Curtis@vcpc.univie.ac.at).
@@ -48,7 +117,7 @@ Revision history for Perl extension DBD-Pg.
         - changed syntax of data_source (ODBC-conformant): 
           'dbi:Pg:dbname=dbname;host=host;port=port'
           !!! PLEASE ADAPT YOUR SCRIPTS !!!
-        - implemented placeholders 
+        - implemented place-holders 
         - implemented ping-method
         - added support for $dbh->{RaiseError} and $dbh->{PrintError},
           note: DBI-default for PrintError is on !
@@ -56,7 +125,7 @@ Revision history for Perl extension DBD-Pg.
         - added documentation for $dbh->tables;
         - new method to get meta-information about a given table:
           $dbh->DBD::Pg::db::attributes($table);
-        - host-parameter in test.pl is set explicitely to localhost
+        - host-parameter in test.pl is set explicitly to localhost
 
 0.63  October 05, 1997
 	- adapted to PostgreSQL-6.2:

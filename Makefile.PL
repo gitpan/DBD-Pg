@@ -1,18 +1,11 @@
-#---------------------------------------------------------
-#
-# $Id: Makefile.PL,v 1.14 1998/06/03 03:59:43 mergl Exp $
-#
-# Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
-# Portions Copyright (c) 1997,1998           Edmund Mergl
-#
-#---------------------------------------------------------
+
+# $Id: Makefile.PL,v 1.18 1998/10/27 19:56:35 mergl Exp $
 
 use ExtUtils::MakeMaker;
 use Config;
 use strict;
-use DBI 0.91;
+use DBI 1.00;
 use DBI::DBD;
-
 
 print "\nConfiguring Pg\n";
 print "Remember to actually read the README file !\n";
@@ -38,11 +31,22 @@ if (-d "$ENV{POSTGRES_HOME}/lib") {
 my %opts = (
     NAME         => 'DBD::Pg',
     VERSION_FROM => 'Pg.pm',
-    INC          => "-I$ENV{POSTGRES_HOME}/include -I/usr/local/include/pgsql -I/usr/include/pgsql -I$Config{installarchlib}/DBI -I$Config{installsitearch}/auto/DBI",
+    INC          => "-I$ENV{POSTGRES_HOME}/include -I/usr/local/include/pgsql -I/usr/include/pgsql -I\$(INSTALLSITEARCH)/auto/DBI -I\$(INSTALLARCHLIB)/DBI -I\$(SITEARCH)/auto/DBI -I\$(ARCHLIB)/DBI",
     OBJECT       => "Pg\$(OBJ_EXT) dbdimp\$(OBJ_EXT)",
-    LIBS         => ["-L$ENV{POSTGRES_HOME}/lib -lpq"],
+    LIBS         => ["-L$ENV{POSTGRES_HOME}/lib -lpq -L/usr/lib -lpq"],
 
 );
+
+#if ($os eq 'hpux') {
+#    if ($osvers < 10) {
+#        print "Warning: Forced to build static not dynamic on $os $osvers.\a\n"
+#        $opts{LINKTYPE} = 'static';
+#    }
+#}
+
+if ($Config{dlsrc} =~ /dl_none/) {
+    $opts{LINKTYPE} = 'static';
+}
 
 
 WriteMakefile(%opts);

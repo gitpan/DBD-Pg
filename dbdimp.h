@@ -1,12 +1,15 @@
-/*---------------------------------------------------------
- *
- * $Id: dbdimp.h,v 1.11 1998/02/19 20:28:54 mergl Exp $
- *
- * Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
- * Portions Copyright (c) 1997,1998           Edmund Mergl
- *
- *---------------------------------------------------------
- */
+/*
+   $Id: dbdimp.h,v 1.13 1998/09/11 18:12:01 mergl Exp $
+
+   Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
+   Portions Copyright (c) 1997,1998           Edmund Mergl
+
+   You may distribute under the terms of either the GNU General Public
+   License or the Artistic License, as specified in the Perl README file,
+   with the exception that it cannot be placed on a CD-ROM or similar media
+   for commercial distribution without the prior approval of the author.
+
+*/
 
 
 /* Define drh implementor data structure */
@@ -19,7 +22,8 @@ struct imp_dbh_st {
     dbih_dbc_t com;		/* MUST be first element in structure	*/
 
     PGconn    * conn;		/* connection structure */
-    int         init_auto;	/* initialize AutoCommit */
+    int         init_commit;	/* initialize AutoCommit */
+    int         pg_auto_escape;	/* initialize AutoEscape */
 };
 
 /* Define sth implementor data structure */
@@ -34,14 +38,11 @@ struct imp_sth_st {
     char      *statement;	/* sql (see sth_scan)		*/
     HV        *all_params_hv;	/* all params, keyed by name	*/
     AV        *out_params_av;	/* quick access to inout params	*/
-    int        dbd_pad_empty;	/* convert ""->" " when binding	*/
+    int        pg_pad_empty;	/* convert ""->" " when binding	*/
     int        all_params_len;  /* length-sum of all params     */
 
     /* (In/)Out Parameter Details */
     bool  has_inout_params;
-
-    /* needed by conversion of datatype bool */
-    char *is_bool;
 };
 
 

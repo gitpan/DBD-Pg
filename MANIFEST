@@ -5,12 +5,7 @@ Pg.h
 Pg.pm
 Pg.xs
 README
-blobs/README
-blobs/test.pl
 dbdimp.c
 dbdimp.h
-pg_type/README
-pg_type/pg_type.pl
-pg_type/pg_type.pm
-pg_type/test.pl
+eg/ApacheDBI.pl
 test.pl

@@ -1,61 +1,84 @@
-#!/usr/local/bin/perl
+#!/usr/local/bin/perl -w
 
-#---------------------------------------------------------
-#
-# $Id: test.pl,v 1.14 1998/03/03 21:04:53 mergl Exp $
-#
-# Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
-# Portions Copyright (c) 1997,1998           Edmund Mergl
-#
-#---------------------------------------------------------
+# $Id: test.pl,v 1.20 1998/10/11 17:40:37 mergl Exp $
 
 # Before `make install' is performed this script should be runnable with
 # `make test'. After `make install' it should work as `perl test.pl'
 
+######################### not tested explicitly
+#
+# AutoCommit
+# commit
+# rollback
+# Active
+# Statement
+# attributes
+# err
+# pg_auto_escape
+# quote
+# type_info_all
+#
 ######################### We start with some black magic to print on failure.
 
-BEGIN { $| = 1; print "1..26\n"; }
-END {print "not ok 1\n" unless $loaded;}
-use DBI;
+BEGIN { $| = 1; }
+END {print "test failed\n" unless $loaded;}
+use DBI ':sql_types';
 $loaded = 1;
-print "ok 1\n";
-
-$| = 1;
+use strict;
 
 ######################### End of black magic.
 
-# supply userid and password below, if access to 
-# your databases is protected in pgsql/data/pg_hba.conf.
-
-$dbmain = 'template1';
-$dbname = 'pgperltest';
-$dbuser = '';
-$dbpass = '';
+my $dbmain = 'template1';
+my $dbname = 'pgperltest';
+my ($dbh0, $dbh, $sth);
 
 #DBI->trace(2); # make your choice
 
-######################### create test database
+######################### drop, create and connect to test database
 
-$dbh = DBI->connect("dbi:Pg:dbname=$dbmain", $dbuser, $dbpass, {PrintError => 0}) or die $DBI::errstr;
+my $data_sources = join(" ", DBI->data_sources('Pg'));
+( $data_sources =~ "dbi:Pg:dbname=$dbmain" )
+    and print "DBI->data_sources ........ ok\n"
+    or  print "DBI->data_sources ........ not ok: $data_sources\n";
 
-$dbh->do("DROP DATABASE $dbname");
-$dbh->do("CREATE DATABASE $dbname");
+open(OLDERR, ">&STDERR");
+open(STDERR, ">/dev/null"); # keep the backend quiet
+DBI->connect("dbi:Pg:dbname=rumpumpel");
+open(STDERR, ">&OLDERR");
+close(OLDERR);
+( $DBI::errstr =~ 'Database rumpumpel does not exist' )
+    and print "DBI::errstr .............. ok\n"
+    or  print "DBI::errstr .............. not ok: ", $DBI::errstr;
 
-$dbh->disconnect;
+( $dbh0 = DBI->connect("dbi:Pg:dbname=$dbmain") )
+    and print "DBI->connect ............. ok\n"
+    or  die   "DBI->connect ............. not ok: ", $DBI::errstr;
 
-######################### create, insert, update, delete, drop
+my $Name = $dbh0->{Name};
+( $dbmain eq $Name )
+    and print "\$dbh->{Name} ............. ok\n"
+    or  print "\$dbh->{Name} ............. not ok: $Name\n";
 
-# connect to database and create table
+( 1 == $dbh0->ping )
+    and print "\$dbh->ping ............... ok\n"
+    or  die   "\$dbh->ping ............... not ok: ", $DBI::errstr;
 
-( $dbh = DBI->connect("dbi:Pg:dbname=$dbname", $dbuser, $dbpass) )
-    and print "ok 2\n"
-    or  die $DBI::errstr;
+$dbh0->{PrintError} = 0; # do not complain when dropping $dbname
+$dbh0->do("DROP DATABASE $dbname");
 
-( $dbh->do( "CREATE TABLE builtin ( 
+( $dbh0->do("CREATE DATABASE $dbname") )
+    and print "\$dbh->do ................. ok\n"
+    or  die   "\$dbh->do ................. not ok: ", $DBI::errstr;
+
+$dbh = DBI->connect("dbi:Pg:dbname=$dbname") or die $DBI::errstr;
+
+######################### create table
+
+$dbh->do("CREATE TABLE builtin ( 
   bool_      bool,
   char_      char,
-  char16_    char16,
   char12_    char(12),
+  char16_    char(16),
   varchar12_ varchar(12),
   text_      text,
   date_      date,
@@ -65,17 +88,29 @@ $dbh->disconnect;
   point_     point,
   lseg_      lseg,
   box_       box
-  )" ) )
-    and print "ok 3\n"
-    or  die $DBI::errstr;
+  )");
 
-# insert into table with $dbh->do(), and then using placeholders
+$sth = $dbh->table_info;
+my @infos = $sth->fetchrow_array;
+$sth->finish;
+( join(" ", @infos[2,3]) eq q{builtin TABLE} ) 
+    and print "\$dbh->table_info ......... ok\n"
+    or  print "\$dbh->table_info ......... not ok: ", join(" ", @infos), "\n";
 
-( 1 == $dbh->do( "INSERT INTO builtin VALUES(
+my @names = $dbh->tables;
+( join(" ", @names) eq q{builtin} ) 
+    and print "\$dbh->tables ............. ok\n"
+    or  print "\$dbh->tables ............. not ok: ", join(" ", @names), "\n";
+
+######################### test various insert methods
+
+# insert into table with $dbh->do($stmt)
+
+$dbh->do("INSERT INTO builtin VALUES(
   't',
   'a',
   'Edmund Mergl',
-  'Edmund Mergl',
+  'quote \\\\ \'\' this',
   'Edmund Mergl',
   'Edmund Mergl',
   '08-03-1997',
@@ -85,22 +120,22 @@ $dbh->disconnect;
   '(1.0,2.0)',
   '((1.0,2.0),(3.0,4.0))',
   '((1.0,2.0),(3.0,4.0))'
-  )" ) )
-    and print "ok 4\n"
-    or  die $DBI::errstr;
+  )") or die $DBI::errstr;
+
+# insert into table with $dbh->prepare() with placeholders and $dbh->execute(@bind_values)
 
 ( $sth = $dbh->prepare( "INSERT INTO builtin 
-  ( bool_, char_, char16_, char12_, varchar12_, text_, date_, int4_, int4a_, float8_, point_, lseg_, box_ )
+  ( bool_, char_, char12_, char16_, varchar12_, text_, date_, int4_, int4a_, float8_, point_, lseg_, box_ )
   VALUES ( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )
   " ) )
-    and print "ok 5\n"
-    or  die $DBI::errstr;
+    and print "\$dbh->prepare ............ ok\n"
+    or  die   "\$dbh->prepare ............ not ok: ", $DBI::errstr;
 
 ( $sth->execute (
   'f',
   'b',
   'Halli  Hallo',
-  'Halli  Hallo',
+  'but  not  \164\150\151\163',
   'Halli  Hallo',
   'Halli  Hallo',
   '06-01-1995',
@@ -111,10 +146,10 @@ $dbh->disconnect;
   '((4.0,5.0),(6.0,7.0))',
   '((4.0,5.0),(6.0,7.0))'
   ) )
-    and print "ok 6\n"
-    or die $DBI::errstr;
+    and print "\$dbh->execute ............ ok\n"
+    or  die   "\$dbh->execute ............ not ok: ", $DBI::errstr;
 
-( $sth->execute (
+$sth->execute (
   'f',
   'c',
   'Potz   Blitz',
@@ -128,113 +163,179 @@ $dbh->disconnect;
   '(2.0,7.0)',
   '((2.0,7.0),(8.0,3.0))',
   '((2.0,7.0),(8.0,3.0))'
-  ) )
-    and print "ok 7\n"
-    or  die $DBI::errstr;
+   ) or die $DBI::errstr;
 
-# test pgsql-specific stuff
+# insert into table with $dbh->do($stmt, @bind_values)
 
-$oid_status = $sth->{'pg_oid_status'};
-( $oid_status ne '' )
-    and print "ok 8\n"
-    or  print "not ok 8: oid_status = >$oid_status<\n";
+$dbh->do( "INSERT INTO builtin 
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )",
+   {},
+   'y',
+   'z',
+   'Ene Mene  Mu',
+   'Ene Mene  Mu',
+   'Ene Mene  Mu',
+   'Ene Mene  Mu',
+   '14-10-1957',
+   5432,
+   '{6,7,8}',
+   6.789,
+   '(5.0,6.0)',
+   '((5.0,6.0),(7.0,8.0))',
+   '((5.0,6.0),(7.0,8.0))'
+   ) or die $DBI::errstr;
 
-$cmd_status = $sth->{'pg_cmd_status'};
-( $cmd_status =~ /^INSERT/ )
-    and print "ok 9\n"
-    or  print "not ok 9: cmd_status = >$cmd_status<\n";
+my $pg_oid_status = $sth->{pg_oid_status};
+( $pg_oid_status ne '' )
+    and print "\$sth->{pg_oid_status} .... ok\n"
+    or  print "\$sth->{pg_oid_status} .... not ok: $pg_oid_status";
+
+my $pg_cmd_status = $sth->{pg_cmd_status};
+( $pg_cmd_status =~ /^INSERT/ )
+    and print "\$sth->{pg_cmd_status} .... ok\n"
+    or  print "\$sth->{pg_cmd_status} .... not ok: $pg_cmd_status";
 
 ( $sth->finish )
-    and print "ok 10\n"
-    or  die $DBI::errstr;
+    and print "\$sth->finish ............. ok\n"
+    or  die   "\$sth->finish ............. not ok: ", $DBI::errstr;
 
-# select from table using input parameters and test various fetch methods
+######################### test various select methods
 
-( $sth = $dbh->prepare( "SELECT * FROM builtin where int4_ < ?" ) )
-    and print "ok 11\n"
-    or  die $DBI::errstr;
+# select from table using input parameters and and various fetchrow methods
 
-( $sth->bind_param(1, 10000) )
-    and print "ok 12\n"
-    or  die $DBI::errstr;
+$sth = $dbh->prepare("SELECT * FROM builtin where int4_ < ?") or die $DBI::errstr;
 
-( $sth->execute )
-    and print "ok 13\n"
-    or  die $DBI::errstr;
+my $number = '10000';
+( $sth->bind_param(1, $number, SQL_INTEGER) ) # needs use DBI ':sql_types';
+    and print "\$sth->bind_param ......... ok\n"
+    or  die   "\$sth->bind_param ......... not ok: ", $DBI::errstr;
 
-@row_ary = $sth->fetchrow_array;
-( join(" ", @row_ary) eq '1 a Edmund Mergl Edmund Mergl Edmund Mergl Edmund Mergl 08-03-1997 1234 {1,2,3} 1.234 (1,2) [(1,2),(3,4)] (3,4),(1,2)' ) 
-    and print "ok 14\n"
-    or  print "not ok 14: row = ", join(" ", @row_ary), "\n";
+$sth->execute or die $DBI::errstr;
 
-$ary_ref = $sth->fetchrow_arrayref;
-( join(" ", @$ary_ref) eq '0 b Halli  Hallo Halli  Hallo Halli  Hallo Halli  Hallo 06-01-1995 5678 {5,6,7} 5.678 (4,5) [(4,5),(6,7)] (6,7),(4,5)' )
-    and print "ok 15\n"
-    or  print "not ok 15: ary_ref = ", join(" ", @$ary_ref), "\n";
+my @row_ary = $sth->fetchrow_array;
+( join(" ", @row_ary) eq q{1 a Edmund Mergl quote \ ' this   Edmund Mergl Edmund Mergl 08-03-1997 1234 {1,2,3} 1.234 (1,2) [(1,2),(3,4)] (3,4),(1,2)} ) 
+    and print "\$sth->fetchrow_array ..... ok\n"
+    or  print "\$sth->fetchrow_array ..... not ok: ", join(" ", @row_ary), "\n";
 
-$hash_ref = $sth->fetchrow_hashref;
-( join(" ", (($key,$val) = each %$hash_ref)) eq 'char12_ Potz   Blitz' )
-    and print "ok 16\n"
-    or  print "not ok 16: key = $key, val = $val\n";
+my $ary_ref = $sth->fetchrow_arrayref;
+( join(" ", @$ary_ref) eq q{0 b Halli  Hallo but  not  this   Halli  Hallo Halli  Hallo 06-01-1995 5678 {5,6,7} 5.678 (4,5) [(4,5),(6,7)] (6,7),(4,5)} )
+    and print "\$sth->fetchrow_arrayref .. ok\n"
+    or  print "\$sth->fetchrow_arrayref .. not ok: ", join(" ", @$ary_ref), "\n";
+
+my ($key, $val);
+my $hash_ref = $sth->fetchrow_hashref;
+( join(" ", (($key,$val) = each %$hash_ref)) eq q{char12_ Potz   Blitz} )
+    and print "\$sth->fetchrow_hashref ... ok\n"
+    or  print "\$sth->fetchrow_hashref ... not ok:  key = $key, val = $val\n";
 
 # test various attributes
 
-@name = @{$sth->{'NAME'}};
-( join(" ", @name) eq 'bool_ char_ char16_ char12_ varchar12_ text_ date_ int4_ int4a_ float8_ point_ lseg_ box_' )
-    and print "ok 17\n"
-    or  print "not ok 17: name = ", join(" ", @name), "\n";
+my @name = @{$sth->{NAME}};
+( join(" ", @name) eq q{bool_ char_ char12_ char16_ varchar12_ text_ date_ int4_ int4a_ float8_ point_ lseg_ box_} )
+    and print "\$sth->{NAME} ............. ok\n"
+    or  print "\$sth->{NAME} ............. not ok: ", join(" ", @name), "\n";
 
-@type = @{$sth->{'TYPE'}};
-( join(" ", @type) eq '16 18 20 1042 1043 25 1082 23 1007 701 600 601 603' )
-    and print "ok 18\n"
-    or  print "not ok 18: type = ", join(" ", @type), "\n";
+my @type = @{$sth->{TYPE}};
+( join(" ", @type) eq q{16 1042 1042 1042 1043 25 1082 23 1007 701 600 601 603} )
+    and print "\$sth->{TYPE} ............. ok\n"
+    or  print "\$sth->{TYPE} ............. not ok: ", join(" ", @type), "\n";
 
-@size = @{$sth->{'SIZE'}};
-( join(" ", @size) eq '1 1 16 -1 -1 -1 4 4 -1 8 16 32 32' )
-    and print "ok 19\n"
-    or  print "not ok 19: size = ", join(" ", @size), "\n";
+my @pg_size = @{$sth->{pg_size}};
+( join(" ", @pg_size) eq q{1 -1 -1 -1 -1 -1 4 4 -1 8 16 32 32} )
+    and print "\$sth->{pg_size} .......... ok\n"
+    or  print "\$sth->{pg_size} .......... not ok: ", join(" ", @pg_size), "\n";
 
-print "not " if $sth->rows != 3;
-print "ok 20\n";
-
-print "not " if $DBI::rows != 3;
-print "ok 21\n";
+my @pg_type = @{$sth->{pg_type}};
+( join(" ", @pg_type) eq q{bool bpchar bpchar bpchar varchar text date int4 _int4 float8 point lseg box} )
+    and print "\$sth->{pg_type} .......... ok\n"
+    or  print "\$sth->{pg_type} .......... not ok: ", join(" ", @pg_type), "\n";
 
 # test binding of output columns
 
-( $sth->execute )
-    and print "ok 22\n"
-    or die $DBI::errstr;
+$sth->execute or die $DBI::errstr;
 
-( $sth->bind_columns(undef, \$bool, \$char, \$char16, \$char12, \$vchar12, \$text, \$date, \$int4, \$int4a, \$float8, \$point, \$lseg, \$box) )
-    and print "ok 23\n"
-    or die $DBI::errstr;
+my ($bool, $char, $char12, $char16, $vchar12, $text, $date, $int4, $int4a, $float8, $point, $lseg, $box);
+( $sth->bind_columns(undef, \$bool, \$char, \$char12, \$char16, \$vchar12, \$text, \$date, \$int4, \$int4a, \$float8, \$point, \$lseg, \$box) )
+    and print "\$sth->bind_columns ....... ok\n"
+    or  print "\$sth->bind_columns ....... not ok: ", $DBI::errstr;
 
-$sth->fetch;
-( "$bool, $char, $char16, $char12, $vchar12, $text, $date, $int4, $int4a, $float8, $point, $lseg, $box" eq 
-  '1, a, Edmund Mergl, Edmund Mergl, Edmund Mergl, Edmund Mergl, 08-03-1997, 1234, {1,2,3}, 1.234, (1,2), [(1,2),(3,4)], (3,4),(1,2)' )
-    and print "ok 24\n"
-    or  print "not ok 24: $bool, $char, $char16, $text, $date, $int4, $int4a, $float8, $point, $lseg, $box\n";
+$sth->fetch or die $DBI::errstr;
+( "$bool, $char, $char12, $char16, $vchar12, $text, $date, $int4, $int4a, $float8, $point, $lseg, $box" eq 
+  q{1, a, Edmund Mergl, quote \ ' this  , Edmund Mergl, Edmund Mergl, 08-03-1997, 1234, {1,2,3}, 1.234, (1,2), [(1,2),(3,4)], (3,4),(1,2)} )
+    and print "\$sth->fetch .............. ok\n"
+    or  print "\$sth->fetch .............. not ok:  $bool, $char, $char12, $char16, $vchar12, $text, $date, $int4, $int4a, $float8, $point, $lseg, $box\n";
 
-( $sth->finish )
-    and print "ok 25\n"
-    or  die $DBI::errstr;
+my $gaga;
+( $sth->bind_col(5, \$gaga) )
+    and print "\$sth->bind_col ........... ok\n"
+    or  print "\$sth->bind_col ........... not ok: ", $DBI::errstr;
+
+$sth->fetch or die $DBI::errstr;
+( $gaga eq q{Halli  Hallo} )
+    and print "\$sth->fetch .............. ok\n"
+    or  print "\$sth->fetch .............. not ok: $gaga\n";
+
+$sth->finish or die $DBI::errstr;
+
+# select from table using input parameters
+
+$sth = $dbh->prepare( "SELECT * FROM builtin where char16_ = ?" ) or die $DBI::errstr;
+
+my $string = q{quote \ ' this};
+$sth->bind_param(1, $string) or die $DBI::errstr;
+
+# $dbh->{pg_auto_escape} = 1;
+# is needed for $string above and is on by default
+$sth->execute or die $DBI::errstr;
+
+$sth->{ChopBlanks} = 1;
+@row_ary = $sth->fetchrow_array;
+( join(" ", @row_ary) eq q{1 a Edmund Mergl quote \ ' this Edmund Mergl Edmund Mergl 08-03-1997 1234 {1,2,3} 1.234 (1,2) [(1,2),(3,4)] (3,4),(1,2)} ) 
+    and print "\$sth->{ChopBlanks} ....... ok\n"
+    or  print "\$sth->{ChopBlanks} ....... not ok: ", join(" ", @row_ary), "\n";
+
+my $rows = $sth->rows;
+( 1 == $rows )
+    and print "\$sth->rows ............... ok\n"
+    or  print "\$sth->rows ............... not ok: $rows\n";
+
+$sth->finish or die $DBI::errstr;
+
+######################### test blobs
+
+my $lobject = '/tmp/gaga';
+
+my $data = "testing large objects using blob_read";
+open(FD, ">$lobject") or die "can not open $lobject";
+print(FD $data);
+close(FD);
+
+$dbh->do("CREATE TABLE lobject ( id int4, loid oid )") or die $DBI::errstr;
+$dbh->do("INSERT INTO lobject (id, loid) VALUES (1, lo_import('$lobject') )") or die $DBI::errstr;
+
+unlink $lobject;
+
+$sth = $dbh->prepare("SELECT loid FROM lobject WHERE id = 1") or die $DBI::errstr;
+$sth->execute or die $DBI::errstr;
+my $lobj_id = $sth->fetchrow_array;
+my $blob = $sth->blob_read($lobj_id, 0, 0);
+( $data eq $blob )
+    and print "\$sth->blob_read .......... ok\n"
+    or  print "\$sth->blob_read .......... not ok: >$blob<\n";
+
+$sth->finish or die $DBI::errstr;
+
+######################### disconnect and drop test database
 
 # disconnect
 
 ( $dbh->disconnect )
-    and print "ok 26\n"
-    or  die $DBI::errstr;
+    and print "\$dbh->disconnect ......... ok\n"
+    or  die   "\$dbh->disconnect ......... not ok: ", $DBI::errstr;
 
-######################### disconnect and drop test database
-
-$dbh = DBI->connect("dbi:Pg:dbname=$dbmain", $dbuser, $dbpass) or die $DBI::errstr;
-
-$dbh->do("DROP DATABASE $dbname");
-
-$dbh->disconnect;
+$dbh0->do("DROP DATABASE $dbname");
+$dbh0->disconnect;
 
 print "test sequence finished.\n";
-
 
 ######################### EOF
