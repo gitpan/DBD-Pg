@@ -3,9 +3,9 @@ use DBI;
 use Test::More;
 
 if (defined $ENV{DBI_DSN}) {
-  plan tests => 9;
+    plan tests => 9;
 } else {
-  plan skip_all => 'cannot test without DB info';
+    plan skip_all => "DBI_DSN must be set: see the README file";
 }
 
 my $dbh = DBI->connect($ENV{DBI_DSN}, $ENV{DBI_USER}, $ENV{DBI_PASS},
@@ -31,11 +31,8 @@ foreach my $test (keys %tests) {
   $ref = $tests{$test}->[1];
   $quo = $dbh->quote($unq);
 
-  ok($quo eq $ref,
-     "$test: $unq -> expected " .
-     (defined $ref ? $ref : '[undef]') .
-     " got " . defined $quo ? $quo : '[undef]'
-    );
+  # If the test fails, Test::More will print out what was compared to what.
+  is($quo, $ref, "Compare quote $test");
 }
 
 # Make sure that SQL_BINARY doesn't work.
