@@ -1,5 +1,5 @@
 
-#  $Id: Pg.pm,v 1.33 1999/02/14 20:33:24 mergl Exp $
+#  $Id: Pg.pm,v 1.34 1999/06/16 18:55:30 mergl Exp $
 #
 #  Copyright (c) 1997,1998,1999 Edmund Mergl
 #  Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -10,7 +10,7 @@
 
 require 5.003;
 
-$DBD::Pg::VERSION = '0.91';
+$DBD::Pg::VERSION = '0.92';
 
 {
     package DBD::Pg;
@@ -245,7 +245,7 @@ $DBD::Pg::VERSION = '0.91';
           [ 'varchar',    1043, 4096,  '\'',  '\'',    'max length', 1, '1', 3, undef, '0', '0',   'VARCHAR', undef, undef ],
           [ 'date',       1082,   10,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',      'DATE', undef, undef ],
           [ 'time',       1083,   16,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',      'TIME', undef, undef ],
-          [ 'datetime',   1084,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',  'DATETIME', undef, undef ],
+          [ 'datetime',   1184,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',  'DATETIME', undef, undef ],
           [ 'timespan',   1186,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',  'INTERVAL', undef, undef ],
           [ 'timestamp',  1296,   19,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0', 'TIMESTAMP', undef, undef ]
           #
@@ -286,7 +286,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
   use DBI;
 
-  $dbh = DBI->connect("dbi:Pg:dbname=$dbname");
+  $dbh = DBI->connect("dbi:Pg:dbname=$dbname", "", "");
 
   # See the DBI module documentation for full details
 
@@ -315,7 +315,7 @@ case consult the DBI documentation first !
 To connect to a database with a minimum of parameters, use the 
 following syntax: 
 
-   $dbh = DBI->connect("dbi:Pg:dbname=$dbname");
+   $dbh = DBI->connect("dbi:Pg:dbname=$dbname", "", "");
 
 This connects to the database $dbname at localhost without any user 
 authentication. This is sufficient for the defaults of PostgreSQL. 

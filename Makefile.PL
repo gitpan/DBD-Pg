@@ -1,5 +1,5 @@
 
-# $Id: Makefile.PL,v 1.20 1999/02/14 20:33:24 mergl Exp $
+# $Id: Makefile.PL,v 1.21 1999/06/16 18:55:29 mergl Exp $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -21,7 +21,7 @@ if (! $ENV{POSTGRES_HOME}) {
     }
 }
 
-if (-d "$ENV{POSTGRES_HOME}/lib") {
+if (defined($ENV{POSTGRES_HOME}) && -d "$ENV{POSTGRES_HOME}/lib") {
     print "Found PostgreSQL in $ENV{POSTGRES_HOME}\n";
 } else {
     die "Unable to find PostgreSQL\nplease set environment variable POSTGRES_HOME\n";
@@ -37,12 +37,15 @@ my %opts = (
 
 );
 
-#if ($os eq 'hpux') {
-#    if ($osvers < 10) {
-#        print "Warning: Forced to build static not dynamic on $os $osvers.\a\n"
-#        $opts{LINKTYPE} = 'static';
-#    }
-#}
+my $os = $^O;
+print $os, "\n";
+my $osvers = $Config{osvers};
+if ($os eq 'hpux') {
+    if ($osvers < 10) {
+        print "Warning: Forced to build static not dynamic on $os $osvers.\a\n";
+        $opts{LINKTYPE} = 'static';
+    }
+}
 
 if ($Config{dlsrc} =~ /dl_none/) {
     $opts{LINKTYPE} = 'static';

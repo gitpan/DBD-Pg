@@ -1,5 +1,5 @@
 /*
-   $Id: Pg.h,v 1.16 1999/02/14 20:33:24 mergl Exp $
+   $Id: Pg.h,v 1.17 1999/06/16 18:55:29 mergl Exp $
 
    Copyright (c) 1997,1998,1999 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -20,9 +20,11 @@
 #define INV_READ 0x00040000
 #endif
 
-#ifndef BUFSIZ
-#define BUFSIZ 1024
+#ifdef BUFSIZ
+#undef BUFSIZ
 #endif
+/* this should improve I/O performance for large objects */
+#define BUFSIZ 32768
 
 
 #define NEED_DBIXS_VERSION 9

@@ -1,5 +1,5 @@
 /*
-   $Id: dbdimp.c,v 1.29 1999/02/14 20:33:24 mergl Exp $
+   $Id: dbdimp.c,v 1.30 1999/06/16 18:55:30 mergl Exp $
 
    Copyright (c) 1997,1998,1999 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -471,6 +471,10 @@ dbd_preparse(imp_sth, statement)
         if (*src == '\'') {
             in_literal = ~in_literal;
         }
+        /* keep quotes */
+        if (in_literal && *src == '\\') { 
+          *dest++ = *src++;
+        }
         /* check for placeholders but take care of cast operator */
         if ((*src != ':' && *src != '?') || (*src == ':' && (*(src-1) == ':' || *(src+1) == ':')) || in_literal) {
             *dest++ = *src++;
@@ -797,6 +801,9 @@ dbd_st_execute(sth, imp_sth)        /* <= -2:error, >=0:ok row count, (-1=unknow
         while(*src) {
             if (*src == '\'') {
                 in_literal = ~in_literal;
+            }
+            if(in_literal && *src == '\\') {
+              *dest++ = *src++;
             }
             if (*src != ':' || in_literal) {
                 *dest++ = *src++;

@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl,v 1.21 1999/02/14 20:33:25 mergl Exp $
+# $Id: test.pl,v 1.23 1999/06/16 19:01:28 mergl Exp $
 
 # Before `make install' is performed this script should be runnable with
 # `make test'. After `make install' it should work as `perl test.pl'
@@ -46,16 +46,7 @@ my $data_sources = join(" ", DBI->data_sources('Pg'));
     and print "DBI->data_sources ........ ok\n"
     or  print "DBI->data_sources ........ not ok: $data_sources\n";
 
-open(OLDERR, ">&STDERR");
-open(STDERR, ">/dev/null"); # keep the backend quiet
-DBI->connect("dbi:Pg:dbname=rumpumpel");
-open(STDERR, ">&OLDERR");
-close(OLDERR);
-( $DBI::errstr =~ 'Database rumpumpel does not exist' )
-    and print "DBI::errstr .............. ok\n"
-    or  print "DBI::errstr .............. not ok: ", $DBI::errstr;
-
-( $dbh0 = DBI->connect("dbi:Pg:dbname=$dbmain") )
+( $dbh0 = DBI->connect("dbi:Pg:dbname=$dbmain", "", "") )
     and print "DBI->connect ............. ok\n"
     or  die   "DBI->connect ............. not ok: ", $DBI::errstr;
 
@@ -75,7 +66,7 @@ $dbh0->do("DROP DATABASE $dbname");
     and print "\$dbh->do ................. ok\n"
     or  die   "\$dbh->do ................. not ok: ", $DBI::errstr;
 
-$dbh = DBI->connect("dbi:Pg:dbname=$dbname") or die $DBI::errstr;
+$dbh = DBI->connect("dbi:Pg:dbname=$dbname", "", "") or die $DBI::errstr;
 
 ######################### create table
 
@@ -308,27 +299,27 @@ $sth->finish or die $DBI::errstr;
 
 ######################### test blobs
 
-my $lobject = '/tmp/gaga';
-
-my $data = "testing large objects using blob_read";
-open(FD, ">$lobject") or die "can not open $lobject";
-print(FD $data);
-close(FD);
-
-$dbh->do("CREATE TABLE lobject ( id int4, loid oid )") or die $DBI::errstr;
-$dbh->do("INSERT INTO lobject (id, loid) VALUES (1, lo_import('$lobject') )") or die $DBI::errstr;
-
-unlink $lobject;
-
-$sth = $dbh->prepare("SELECT loid FROM lobject WHERE id = 1") or die $DBI::errstr;
-$sth->execute or die $DBI::errstr;
-my $lobj_id = $sth->fetchrow_array;
-my $blob = $sth->blob_read($lobj_id, 0, 0);
-( $data eq $blob )
-    and print "\$sth->blob_read .......... ok\n"
-    or  print "\$sth->blob_read .......... not ok: >$blob<\n";
-
-$sth->finish or die $DBI::errstr;
+#my $lobject = '/tmp/gaga';
+#
+#my $data = "testing large objects using blob_read";
+#open(FD, ">$lobject") or die "can not open $lobject";
+#print(FD $data);
+#close(FD);
+#
+#$dbh->do("CREATE TABLE lobject ( id int4, loid oid )") or die $DBI::errstr;
+#$dbh->do("INSERT INTO lobject (id, loid) VALUES (1, lo_import('$lobject') )") or die $DBI::errstr;
+#
+#unlink $lobject;
+#
+#$sth = $dbh->prepare("SELECT loid FROM lobject WHERE id = 1") or die $DBI::errstr;
+#$sth->execute or die $DBI::errstr;
+#my $lobj_id = $sth->fetchrow_array;
+#my $blob = $sth->blob_read($lobj_id, 0, 0);
+#( $data eq $blob )
+#    and print "\$sth->blob_read .......... ok\n"
+#    or  print "\$sth->blob_read .......... not ok: >$blob<\n";
+#
+#$sth->finish or die $DBI::errstr;
 
 ######################### disconnect and drop test database
 
