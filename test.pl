@@ -2,7 +2,7 @@
 
 #---------------------------------------------------------
 #
-# $Id: test.pl,v 1.4 1997/08/16 16:14:04 mergl Exp $
+# $Id: test.pl,v 1.6 1997/08/23 06:01:20 mergl Exp $
 #
 # Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 # Portions Copyright (c) 1997                Edmund Mergl

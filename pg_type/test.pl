@@ -2,7 +2,7 @@
 
 #---------------------------------------------------------
 #
-# $Id: test.pl,v 1.1 1997/08/16 16:14:10 mergl Exp $
+# $Id: test.pl,v 1.2 1997/08/23 05:59:24 mergl Exp $
 #
 #---------------------------------------------------------
 
@@ -76,4 +76,4 @@ $dbh = DBI->connect("dbi:Pg:$dbmain", $dbuser, $dbpass);
 $dbh->do( "DROP DATABASE $dbname" );
 $dbh->disconnect;
 
-# EOF
+# end of test.pl

@@ -1,6 +1,6 @@
 /*---------------------------------------------------------
  *
- * $Id: dbdimp.h,v 1.2 1997/08/09 16:01:15 mergl Exp $
+ * $Id: dbdimp.h,v 1.3 1997/08/23 05:59:18 mergl Exp $
  *
  * Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
  * Portions Copyright (c) 1997                Edmund Mergl
@@ -64,4 +64,4 @@ struct phs_st {  	/* scalar placeholder EXPERIMENTAL	*/
 };
 
 
-/* EOF */
+/* end of dbdimp.h */

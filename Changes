@@ -1,5 +1,9 @@
 Revision history for Perl extension DBD-Pg.
 
+0.61  August 23, 1997
+        - adapted to DBI-0.89/Driver.xst
+	- added support for blob_read
+
 0.52  August 15, 1997
         - added support for literal $sth->{'TYPE'},
           pg_type.pl / pg_type.pm.

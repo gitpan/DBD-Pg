@@ -1,6 +1,6 @@
 #---------------------------------------------------------
 #
-# $Id: README,v 1.5 1997/08/16 16:14:03 mergl Exp $
+# $Id: README,v 1.9 1997/08/23 06:10:55 mergl Exp $
 #
 # Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 # Portions Copyright (c) 1997                Edmund Mergl
@@ -11,7 +11,7 @@
 DESCRIPTION:
 ------------
 
-This is version 0.52 of DBD-Pg.
+This is version 0.61 of DBD-Pg.
 DBD-Pg is a PostgreSQL interface for Perl 5 using DBI.
 
 For further information about DBI look at:
@@ -43,7 +43,7 @@ REQUIREMENTS:
 -------------
 
   - build, test and install Perl 5         (at least 5.002)
-  - build, test and install the DBI module (at least 0.85)
+  - build, test and install the DBI module (at least 0.89)
   - build, test and install PostgreSQL     (at least 6.1.1)
 
 
@@ -58,7 +58,7 @@ PLATFORMS:
 INSTALLATION:
 -------------
 
-The Makefile checks the environment variable POSTGRESHOME as well 
+The Makefile checks the environment variable POSTGRES_HOME as well 
 some standard locations, to find the root directory of your Postgres 
 installation.
  
@@ -96,6 +96,6 @@ SGI users: if you get segmentation faults make sure, you use the malloc which
 
 ---------------------------------------------------------------------------
 
-   Edmund Mergl <E.Mergl@bawue.de>                     August 15, 1997
+   Edmund Mergl <E.Mergl@bawue.de>                     August 20, 1997
 
 ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 /*---------------------------------------------------------
  *
- * $Id: dbdimp.c,v 1.3 1997/08/12 02:43:39 mergl Exp $
+ * $Id: dbdimp.c,v 1.4 1997/08/23 05:59:18 mergl Exp $
  *
  * Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
  * Portions Copyright (c) 1997                Edmund Mergl
@@ -10,6 +10,8 @@
 
 
 #include "Pg.h"
+
+#define BUFSIZE 1024
 
 
 DBISTATE_DECLARE;
@@ -44,14 +46,23 @@ dbd_error(h, error_num, error_msg)
 /* ================================================================== */
 
 int
-dbd_db_login(dbh, dbname, uid, pwd)
+dbd_discon_all(drh, imp_drh)
+    SV *drh;
+    imp_drh_t *imp_drh;
+{
+    return FALSE;
+}
+
+
+int
+dbd_db_login(dbh, imp_dbh, dbname, uid, pwd)
     SV *dbh;
+    imp_dbh_t *imp_dbh;
     char *dbname;
     char *uid;
     char *pwd;
 {
     char *conn_str;
-    D_imp_dbh(dbh);
 
 #ifdef PGDEBUG
     fprintf(stderr, "dbd_db_login\n");
@@ -86,11 +97,11 @@ dbd_db_login(dbh, dbname, uid, pwd)
 
 
 int
-dbd_db_do(dbh, statement, attribs)
+dbd_db_do(dbh, statement)
     SV * dbh;
-    char * statement;
-    SV * attribs;
+    char *statement;
 {
+    /* imp_dbh should be propagated by Pg.xs, but then it needs to be declared in dbd_xsh.h */
     D_imp_dbh(dbh);
     PGresult* result = 0;
     ExecStatusType status;
@@ -104,7 +115,8 @@ dbd_db_do(dbh, statement, attribs)
     status = result ? PQresultStatus(result) : -1;
     PQclear(result);
 
-    if (status != PGRES_COMMAND_OK) {
+    /* check also for PGRES_TUPLES_OK in case of 'SELECT INTO TABLE' */
+    if (status != PGRES_COMMAND_OK && status != PGRES_TUPLES_OK) {
         dbd_error(dbh, status, PQerrorMessage(imp_dbh->conn));
         return 0;
     }
@@ -114,10 +126,10 @@ dbd_db_do(dbh, statement, attribs)
 
 
 int
-dbd_db_commit(dbh)
+dbd_db_commit(dbh, imp_dbh)
     SV *dbh;
+    imp_dbh_t *imp_dbh;
 {
-    D_imp_dbh(dbh);
     PGresult* result = 0;
     ExecStatusType status;
 
@@ -135,10 +147,10 @@ dbd_db_commit(dbh)
 }
 
 int
-dbd_db_rollback(dbh)
+dbd_db_rollback(dbh, imp_dbh)
     SV *dbh;
+    imp_dbh_t *imp_dbh;
 {
-    D_imp_dbh(dbh);
     PGresult* result = 0;
     ExecStatusType status;
 
@@ -157,11 +169,10 @@ dbd_db_rollback(dbh)
 
 
 int
-dbd_db_disconnect(dbh)
+dbd_db_disconnect(dbh, imp_dbh)
     SV *dbh;
+    imp_dbh_t *imp_dbh;
 {
-    D_imp_dbh(dbh);
-
     /* We assume that disconnect will always work	*/
     /* since most errors imply already disconnected.	*/
     DBIc_ACTIVE_off(imp_dbh);
@@ -176,12 +187,12 @@ dbd_db_disconnect(dbh)
 
 
 void
-dbd_db_destroy(dbh)
+dbd_db_destroy(dbh, imp_dbh)
     SV *dbh;
+    imp_dbh_t *imp_dbh;
 {
-    D_imp_dbh(dbh);
     if (DBIc_ACTIVE(imp_dbh)) {
-	dbd_db_disconnect(dbh);
+	dbd_db_disconnect(dbh, imp_dbh);
     }
 
 #ifdef PGDEBUG
@@ -194,8 +205,9 @@ dbd_db_destroy(dbh)
 
 
 int
-dbd_db_STORE(dbh, keysv, valuesv)
+dbd_db_STORE_attrib(dbh, imp_dbh, keysv, valuesv)
     SV *dbh;
+    imp_dbh_t *imp_dbh;
     SV *keysv;
     SV *valuesv;
 {
@@ -204,11 +216,11 @@ dbd_db_STORE(dbh, keysv, valuesv)
 
 
 SV *
-dbd_db_FETCH(dbh, keysv)
+dbd_db_FETCH_attrib(dbh, imp_dbh, keysv)
     SV *dbh;
+    imp_dbh_t *imp_dbh;
     SV *keysv;
 {
-    D_imp_dbh(dbh);
     STRLEN kl;
     char *key = SvPV(keysv,kl);
     SV *retsv = NULL;
@@ -221,13 +233,12 @@ dbd_db_FETCH(dbh, keysv)
 
 
 int
-dbd_st_prepare(sth, statement, attribs)
+dbd_st_prepare(sth, imp_sth, statement, attribs)
     SV *sth;
+    imp_sth_t *imp_sth;
     char *statement;
     SV *attribs;
 {
-    D_imp_sth(sth);
-
 #ifdef PGDEBUG
     fprintf(stderr, "dbd_st_prepare\n");
 #endif
@@ -239,6 +250,313 @@ dbd_st_prepare(sth, statement, attribs)
 
     DBIc_IMPSET_on(imp_sth);
     return 1;
+}
+
+
+int
+dbd_st_rows(sth, imp_sth)
+    SV *sth;
+    imp_sth_t *imp_sth;
+{
+    return PQntuples(imp_sth->result);
+}
+
+
+int
+dbd_st_execute(sth, imp_sth)	/* <= -2:error, >=0:ok row count, (-1=unknown count) */
+    SV *sth;
+    imp_sth_t *imp_sth;
+{
+    D_imp_dbh_from_sth;
+    ExecStatusType status = -1;
+    int ret = -2;
+
+    SV** svp = hv_fetch((HV *)SvRV(sth), "Statement", 9, FALSE);
+    char *statement = SvPV(*svp, na);
+
+#ifdef PGDEBUG
+    fprintf(stderr, "dbd_st_execute\n");
+#endif
+
+    if (! statement) {
+        /* are we prepared ? */
+        dbd_error(sth, -1, "statement not prepared\n");
+    } else {
+        /* execute statement if not already done */
+        if (! imp_sth->result) {
+            imp_sth->result = PQexec(imp_dbh->conn, statement);
+        }
+        /* check status */
+        status = imp_sth->result ? PQresultStatus(imp_sth->result) : -1;
+    }
+
+    if (PGRES_TUPLES_OK == status) {
+        /* select statement */
+        imp_sth->cur_tuple = 0;
+        DBIc_NUM_FIELDS(imp_sth) = PQnfields(imp_sth->result);
+        DBIc_ACTIVE_on(imp_sth);
+        ret = PQntuples(imp_sth->result);
+    } else if (PGRES_COMMAND_OK == status) {
+        /* non-select statement */
+        ret = -1;
+    } else {
+        dbd_error(sth, status, PQerrorMessage(imp_dbh->conn));
+        ret = -2;
+    }
+
+    return ret;
+}
+
+
+AV *
+dbd_st_fetch(sth, imp_sth)
+    SV *	sth;
+    imp_sth_t *imp_sth;
+{
+    D_imp_dbh_from_sth;
+    int num_fields;
+    int i;
+    AV *av;
+
+#ifdef PGDEBUG
+    fprintf(stderr, "dbd_st_fetch\n");
+#endif
+
+    /* Check that execute() was executed sucessfully */
+    if ( !DBIc_ACTIVE(imp_sth) ) {
+	dbd_error(sth, 1, "no statement executing\n");
+	return Nullav;
+    }
+
+    if ( imp_sth->cur_tuple == PQntuples(imp_sth->result) ) {
+        imp_sth->cur_tuple = 0;
+        return Nullav; /* we reached the last tuple */
+    }
+
+    av = DBIS->get_fbav(imp_sth);
+    num_fields = AvFILL(av)+1;
+
+    for(i = 0; i < num_fields; ++i) {
+
+	SV *sv = AvARRAY(av)[i];
+	sv_setpv(sv, (char*)PQgetvalue(imp_sth->result, imp_sth->cur_tuple, i));
+    }
+
+    imp_sth->cur_tuple += 1;
+
+    return av;
+}
+
+
+int
+dbd_st_finish(sth, imp_sth)
+    SV *sth;
+    imp_sth_t *imp_sth;
+{
+#ifdef PGDEBUG
+    fprintf(stderr, "dbd_st_finish\n");
+#endif
+
+    if (imp_sth->result) {
+	PQclear(imp_sth->result);
+        imp_sth->result = 0;
+    }
+
+    DBIc_ACTIVE_off(imp_sth);
+    return 1;
+}
+
+
+void
+dbd_st_destroy(sth, imp_sth)
+    SV *sth;
+    imp_sth_t *imp_sth;
+{
+#ifdef PGDEBUG
+    fprintf(stderr, "dbd_st_destroy\n");
+#endif
+
+    /* Free off contents of imp_sth	*/
+
+    if (imp_sth->out_params_av)
+	sv_free((SV*)imp_sth->out_params_av);
+
+    if (imp_sth->all_params_hv) {
+	HV *hv = imp_sth->all_params_hv;
+	SV *sv;
+	char *key;
+	I32 retlen;
+	hv_iterinit(hv);
+	while( (sv = hv_iternextsv(hv, &key, &retlen)) != NULL ) {
+	    if (sv != &sv_undef) {
+		phs_t *phs_tpl = (phs_t*)(void*)SvPVX(sv);
+		sv_free(phs_tpl->sv);
+	    }
+	}
+	sv_free((SV*)imp_sth->all_params_hv);
+    }
+
+    DBIc_IMPSET_off(imp_sth); /* let DBI know we've done it */
+}
+
+
+int
+dbd_st_blob_read (sth, imp_sth, lobjId, offset, len, destrv, destoffset)
+    SV *sth;
+    imp_sth_t *imp_sth;
+    int lobjId;
+    long offset;
+    long len;
+    SV *destrv;
+    long destoffset;
+{
+    D_imp_dbh_from_sth;
+    char err[64];
+    int ret, lobj_fd, nbytes, nread;
+    PGresult* result;
+    ExecStatusType status;
+    SV *bufsv;
+
+    /* safety check */
+    if (! SvROK(destrv)) {
+        dbd_error(sth, -1, "dbd_st_blob_read: destrv not a reference");
+        return 0;
+    }
+    bufsv = SvRV(destrv);	       	/* dereference destination	*/
+    if (! destoffset) {
+        sv_setpvn(bufsv, "", 0);	/* ensure it's writable string	*/
+    }
+
+    /* execute begin */
+    result = PQexec(imp_dbh->conn, "begin");
+    status = result ? PQresultStatus(result) : -1;
+    PQclear(result);
+    if (status != PGRES_COMMAND_OK) {
+        dbd_error(sth, status, PQerrorMessage(imp_dbh->conn));
+        return 0;
+    }
+
+    /* open large object */
+    lobj_fd = lo_open(imp_dbh->conn, lobjId, INV_READ);
+    if (lobj_fd < 0) {
+	sprintf(&err[0], "lo_open: can't open large object %d", lobjId);
+        dbd_error(sth, -1, err);
+        return 0;
+    }
+
+    /* seek on large object */
+    if (offset > 0) {
+        ret = lo_lseek(imp_dbh->conn, lobj_fd, offset, SEEK_SET);
+        if (ret < 0) {
+	    sprintf(&err[0], "lo_seek: can't seek large object %d", lobjId);
+            dbd_error(sth, -1, err);
+            return 0;
+        }
+    }
+
+    /* read from large object */
+    nread  = 0;
+    nbytes = 1;
+    while (nbytes > 0) {
+        SvGROW(bufsv, destoffset + nread + BUFSIZE + 1);	/* SvGROW doesn't do +1	*/
+        nbytes = lo_read(imp_dbh->conn, lobj_fd, ((char*)SvPVX(bufsv)) + destoffset + nread, BUFSIZE);
+        if (nbytes < 0) {
+	    sprintf(&err[0], "lo_read: can't read from large object %d", lobjId);
+            dbd_error(sth, -1, err);
+            return 0;
+        }
+	nread += nbytes;
+        /* break if user wants only a specified chunk */
+        if (len && nread > len) {
+            break;
+        }
+    }
+
+    /* close large object */
+    ret = lo_close(imp_dbh->conn, lobj_fd);
+    if (ret < 0) {
+	sprintf(&err[0], "lo_close: can't close large object %d", lobjId);
+        dbd_error(sth, -1, err);
+        return 0;
+    }
+
+    /* execute end */
+    result = PQexec(imp_dbh->conn, "end");
+    status = result ? PQresultStatus(result) : -1;
+    PQclear(result);
+    if (status != PGRES_COMMAND_OK) {
+        dbd_error(sth, status, PQerrorMessage(imp_dbh->conn));
+        return 0;
+    }
+
+    /* terminate string */
+    if (len && nread > len) {
+        nread = len;
+    }
+    SvCUR_set(bufsv, destoffset + nread);
+    *SvEND(bufsv) = '\0';
+
+    return nread;
+}
+
+
+int
+dbd_st_STORE_attrib(sth, imp_sth, keysv, valuesv)
+    SV *sth;
+    imp_sth_t *imp_sth;
+    SV *keysv;
+    SV *valuesv;
+{
+    return FALSE;
+}
+
+
+SV *
+dbd_st_FETCH_attrib(sth, imp_sth, keysv)
+    SV *sth;
+    imp_sth_t *imp_sth;
+    SV *keysv;
+{
+    STRLEN kl;
+    char *key = SvPV(keysv,kl);
+    SV *retsv = NULL;
+    int i;
+
+    if (kl==13 && strEQ(key, "NUM_OF_PARAMS")) { /* handled by DBI */
+	return Nullsv;	
+    }
+
+    if (! imp_sth->result) {
+	return Nullsv;	
+    }
+
+    if (kl == 4 && strEQ(key, "NAME")) {
+	AV *av = newAV();
+	retsv = newRV(sv_2mortal((SV*)av));
+	for (i = 0; i < DBIc_NUM_FIELDS(imp_sth); i++) {
+	    av_store(av, i, newSVpv(PQfname(imp_sth->result, i),0));
+        }
+    } else if ( kl== 4 && strEQ(key, "TYPE")) {
+	AV *av = newAV();
+	retsv = newRV(sv_2mortal((SV*)av));
+	for (i = 0; i < DBIc_NUM_FIELDS(imp_sth); i++) {
+	    av_store(av, i, newSViv(PQftype(imp_sth->result, i)));
+        }
+    } else if (kl==4 && strEQ(key, "SIZE")) {
+	AV *av = newAV();
+	retsv = newRV(sv_2mortal((SV*)av));
+	for (i = 0; i < DBIc_NUM_FIELDS(imp_sth); i++) {
+	    av_store(av, i, newSViv(PQfsize(imp_sth->result, i)));
+        }
+    } else if (kl==13 && strEQ(key, "pg_oid_status")) {
+        retsv = newSVpv((char *)PQoidStatus(imp_sth->result), 0);
+    } else if (kl==13 && strEQ(key, "pg_cmd_status")) {
+        retsv = newSVpv((char *)PQcmdStatus(imp_sth->result), 0);
+    } else {
+	return Nullsv;
+    }
+
+    return sv_2mortal(retsv);
 }
 
 
@@ -306,15 +624,16 @@ _dbd_rebind_ph(sth, imp_sth, phs)
 
 
 int
-dbd_bind_ph(sth, ph_namesv, newvalue, attribs, is_inout, maxlen)
+dbd_bind_ph(sth, imp_sth, param, value, sql_type, attribs, is_inout, maxlen)
     SV *sth;
-    SV *ph_namesv;
-    SV *newvalue;
+    imp_sth_t *imp_sth;
+    SV *param;
+    SV *value;
+    IV sql_type;
     SV *attribs;
     int is_inout;
     IV maxlen;
 {
-    D_imp_sth(sth);
     SV **phs_svp;
     STRLEN name_len;
     char *name;
@@ -322,21 +641,21 @@ dbd_bind_ph(sth, ph_namesv, newvalue, attribs, is_inout, maxlen)
     phs_t *phs;
 
     /* check if placeholder was passed as a number	*/
-    if (SvNIOK(ph_namesv) || (SvPOK(ph_namesv) && isDIGIT(*SvPVX(ph_namesv)))) {
+    if (SvNIOK(param) || (SvPOK(param) && isDIGIT(*SvPVX(param)))) {
 	name = namebuf;
-	sprintf(name, ":p%d", (int)SvIV(ph_namesv));
+	sprintf(name, ":p%d", (int)SvIV(param));
 	name_len = strlen(name);
     }
     else {		/* use the supplied placeholder name directly */
-	name = SvPV(ph_namesv, name_len);
+	name = SvPV(param, name_len);
     }
 
-    if (SvTYPE(newvalue) > SVt_PVMG)	/* hook for later array logic	*/
+    if (SvTYPE(value) > SVt_PVMG)	/* hook for later array logic	*/
 	croak("Can't bind non-scalar value (currently)");
 
     if (dbis->debug >= 2)
 	fprintf(DBILOGFP, "bind %s <== %s (attribs: %s)\n",
-		name, neatsvpv(newvalue,0), attribs ? SvPV(attribs,na) : "" );
+		name, neatsvpv(value,0), attribs ? SvPV(attribs,na) : "" );
 
     phs_svp = hv_fetch(imp_sth->all_params_hv, name, name_len, 0);
     if (phs_svp == NULL)
@@ -348,7 +667,7 @@ dbd_bind_ph(sth, ph_namesv, newvalue, attribs, is_inout, maxlen)
 	phs->maxlen   = maxlen;		/* 0 if not inout		*/
 	phs->is_inout = is_inout;
 	if (is_inout) {
-	    phs->sv = SvREFCNT_inc(newvalue);	/* point to live var	*/
+	    phs->sv = SvREFCNT_inc(value);	/* point to live var	*/
 	    ++imp_sth->has_inout_params;
 	    /* build array of phs's so we can deal with out vars fast	*/
 	    if (!imp_sth->out_params_av)
@@ -368,222 +687,11 @@ dbd_bind_ph(sth, ph_namesv, newvalue, attribs, is_inout, maxlen)
     if (!is_inout) {	/* normal bind to take a (new) copy of current value	*/
 	if (phs->sv == &sv_undef)	/* (first time bind) */
 	    phs->sv = newSV(0);
-	sv_setsv(phs->sv, newvalue);
+	sv_setsv(phs->sv, value);
     }
 
     return _dbd_rebind_ph(sth, imp_sth, phs);
 }
 
 
-int
-dbd_st_execute(sth)	/* <= -2:error, >=0:ok row count, (-1=unknown count) */
-    SV *sth;
-{
-    D_imp_sth(sth);
-    D_imp_dbh_from_sth;
-    ExecStatusType status = -1;
-    int ret = -2;
-
-    SV** svp = hv_fetch((HV *)SvRV(sth), "Statement", 9, FALSE);
-    char *statement = SvPV(*svp, na);
-
-#ifdef PGDEBUG
-    fprintf(stderr, "dbd_st_execute\n");
-#endif
-
-    if (! statement) {
-        /* are we prepared ? */
-        dbd_error(sth, -1, "statement not prepared\n");
-    } else {
-        /* execute statement if not already done */
-        if (! imp_sth->result) {
-            imp_sth->result = PQexec(imp_dbh->conn, statement);
-        }
-        /* check status */
-        status = imp_sth->result ? PQresultStatus(imp_sth->result) : -1;
-    }
-
-    if (PGRES_TUPLES_OK == status) {
-        /* select statement */
-        imp_sth->cur_tuple = 0;
-        DBIc_NUM_FIELDS(imp_sth) = PQnfields(imp_sth->result);
-        DBIc_ACTIVE_on(imp_sth);
-        ret = PQntuples(imp_sth->result);
-    } else if (PGRES_COMMAND_OK == status) {
-        /* non-select statement */
-        ret = -1;
-    } else {
-        dbd_error(sth, status, PQerrorMessage(imp_dbh->conn));
-        ret = -2;
-    }
-
-    return ret;
-}
-
-
-
-AV *
-dbd_st_fetch(sth)
-    SV *	sth;
-{
-    D_imp_sth(sth);
-    D_imp_dbh_from_sth;
-    int num_fields;
-    int i;
-    AV *av;
-
-#ifdef PGDEBUG
-    fprintf(stderr, "dbd_st_fetch\n");
-#endif
-
-    /* Check that execute() was executed sucessfully */
-    if ( !DBIc_ACTIVE(imp_sth) ) {
-	dbd_error(sth, 1, "no statement executing\n");
-	return Nullav;
-    }
-
-    if ( imp_sth->cur_tuple == PQntuples(imp_sth->result) ) {
-        imp_sth->cur_tuple = 0;
-        return Nullav; /* we reached the last tuple */
-    }
-
-    av = DBIS->get_fbav(imp_sth);
-    num_fields = AvFILL(av)+1;
-
-    for(i = 0; i < num_fields; ++i) {
-
-	SV *sv = AvARRAY(av)[i];
-	sv_setpv(sv, (char*)PQgetvalue(imp_sth->result, imp_sth->cur_tuple, i));
-    }
-
-    imp_sth->cur_tuple += 1;
-
-    return av;
-}
-
-
-int
-dbd_st_rows(sth)
-    SV *sth;
-{
-    D_imp_sth(sth);
-
-    return PQntuples(imp_sth->result);
-}
-
-
-int
-dbd_st_finish(sth)
-    SV *sth;
-{
-    D_imp_sth(sth);
-
-#ifdef PGDEBUG
-    fprintf(stderr, "dbd_st_finish\n");
-#endif
-
-    if (imp_sth->result) {
-	PQclear(imp_sth->result);
-        imp_sth->result = 0;
-    }
-
-    DBIc_ACTIVE_off(imp_sth);
-    return 1;
-}
-
-
-void
-dbd_st_destroy(sth)
-    SV *sth;
-{
-    D_imp_sth(sth);
-
-#ifdef PGDEBUG
-    fprintf(stderr, "dbd_st_destroy\n");
-#endif
-
-    /* Free off contents of imp_sth	*/
-
-    if (imp_sth->out_params_av)
-	sv_free((SV*)imp_sth->out_params_av);
-
-    if (imp_sth->all_params_hv) {
-	HV *hv = imp_sth->all_params_hv;
-	SV *sv;
-	char *key;
-	I32 retlen;
-	hv_iterinit(hv);
-	while( (sv = hv_iternextsv(hv, &key, &retlen)) != NULL ) {
-	    if (sv != &sv_undef) {
-		phs_t *phs_tpl = (phs_t*)(void*)SvPVX(sv);
-		sv_free(phs_tpl->sv);
-	    }
-	}
-	sv_free((SV*)imp_sth->all_params_hv);
-    }
-
-    DBIc_IMPSET_off(imp_sth); /* let DBI know we've done it */
-}
-
-
-int
-dbd_st_STORE(sth, keysv, valuesv)
-    SV *sth;
-    SV *keysv;
-    SV *valuesv;
-{
-    return FALSE;
-}
-
-
-SV *
-dbd_st_FETCH(sth, keysv)
-    SV *sth;
-    SV *keysv;
-{
-    D_imp_sth(sth);
-    STRLEN kl;
-    char *key = SvPV(keysv,kl);
-    SV *retsv = NULL;
-    int i;
-
-    if (kl==13 && strEQ(key, "NUM_OF_PARAMS")) { /* handled by DBI */
-	return Nullsv;	
-    }
-
-    if (! imp_sth->result) {
-	return Nullsv;	
-    }
-
-    if (kl == 4 && strEQ(key, "NAME")) {
-	AV *av = newAV();
-	retsv = newRV(sv_2mortal((SV*)av));
-	for (i = 0; i < DBIc_NUM_FIELDS(imp_sth); i++) {
-	    av_store(av, i, newSVpv(PQfname(imp_sth->result, i),0));
-        }
-    } else if ( kl== 4 && strEQ(key, "TYPE")) {
-	AV *av = newAV();
-	retsv = newRV(sv_2mortal((SV*)av));
-	for (i = 0; i < DBIc_NUM_FIELDS(imp_sth); i++) {
-	    av_store(av, i, newSViv(PQftype(imp_sth->result, i)));
-        }
-    } else if (kl==4 && strEQ(key, "SIZE")) {
-	AV *av = newAV();
-	retsv = newRV(sv_2mortal((SV*)av));
-	for (i = 0; i < DBIc_NUM_FIELDS(imp_sth); i++) {
-	    av_store(av, i, newSViv(PQfsize(imp_sth->result, i)));
-        }
-    } else if (kl==13 && strEQ(key, "pg_oid_status")) {
-        retsv = newSVpv((char *)PQoidStatus(imp_sth->result), 0);
-    } else if (kl==13 && strEQ(key, "pg_cmd_status")) {
-        retsv = newSVpv((char *)PQcmdStatus(imp_sth->result), 0);
-    } else {
-	return Nullsv;
-    }
-
-    return sv_2mortal(retsv);
-}
-
-
-
-/* EOF */
+/* end of dbdimp.c */

@@ -1,15 +1,18 @@
 #---------------------------------------------------------
 #
-# $Id: Makefile.PL,v 1.3 1997/08/16 16:14:02 mergl Exp $
+# $Id: Makefile.PL,v 1.4 1997/08/23 05:59:15 mergl Exp $
 #
 # Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 # Portions Copyright (c) 1997                Edmund Mergl
 #
 #---------------------------------------------------------
 
+use 5.004;
 use ExtUtils::MakeMaker;
 use Config;
 use strict;
+use DBI 0.89;
+use DBI::DBD;
 
 
 if (! $ENV{POSTGRES_HOME}) {
@@ -29,12 +32,20 @@ if (-d "$ENV{POSTGRES_HOME}/lib") {
 }
 
 
-WriteMakefile (
-    'NAME'         => 'DBD::Pg',
-    'VERSION_FROM' => 'Pg.pm',
-    'LIBS'	   => ["-L$ENV{POSTGRES_HOME}/lib -lpq"],
-    'INC'	   =>  "-I$ENV{POSTGRES_HOME}/include -I$Config{archlib}/DBI -I$Config{sitearch}/auto/DBI",
-    'OBJECT'       => 'Pg$(OBJ_EXT) dbdimp$(OBJ_EXT)',
+my %opts = (
+    NAME         => 'DBD::Pg',
+    VERSION_FROM => 'Pg.pm',
+    clean        => { FILES => 'Pg.xsi' },
+    dist         => { DIST_DEFAULT => 'clean distcheck disttest ci tardist',
+                      PREOP        => '$(MAKE) -f Makefile.old distdir' },
+    INC          =>  "-I$ENV{POSTGRES_HOME}/include -I$Config{archlib}/DBI -I$Config{sitearch}/auto/DBI",
+    LIBS         => ["-L$ENV{POSTGRES_HOME}/lib -lpq"],
+    OBJECT       => 'Pg$(OBJ_EXT) dbdimp$(OBJ_EXT)',
 );
 
-# EOF
+
+WriteMakefile(%opts);
+
+exit(0);
+
+# end of Makefile.PL

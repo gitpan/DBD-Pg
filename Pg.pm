@@ -1,6 +1,6 @@
 #---------------------------------------------------------
 #
-# $Id: Pg.pm,v 1.4 1997/08/16 16:14:03 mergl Exp $
+# $Id: Pg.pm,v 1.7 1997/08/23 06:10:54 mergl Exp $
 #
 #  Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 #  Portions Copyright (c) 1997                Edmund Mergl
@@ -16,9 +16,9 @@ require 5.002;
     use DynaLoader ();
     @ISA = qw(DynaLoader);
 
-    $VERSION = '0.52';
+    $VERSION = '0.61';
 
-    require_version DBI 0.85;
+    require_version DBI 0.89;
 
     bootstrap DBD::Pg $VERSION;
 
@@ -29,19 +29,15 @@ require 5.002;
     sub driver{
 	return $drh if $drh;
 	my($class, $attr) = @_;
-
 	$class .= "::dr";
-
 	# not a 'my' since we use it above to prevent multiple drivers
-
-	$drh = DBI::_new_drh($class, {
+	($drh) = DBI::_new_drh($class, {
 	    'Name' => 'Pg',
 	    'Version' => $VERSION,
 	    'Err'    => \$DBD::Pg::err,
 	    'Errstr' => \$DBD::Pg::errstr,
 	    'Attribution' => 'PostgreSQL DBD by Edmund Mergl',
 	});
-
 	$drh;
     }
 
@@ -60,8 +56,7 @@ require 5.002;
 	my($drh, $dbname, $user, $auth)= @_;
 
 	# create a 'blank' dbh
-
-	my $this = DBI::_new_dbh($drh, {
+	my($this) = DBI::_new_dbh($drh, {
 	    'Name' => $dbname,
 	    'User' => $user,
 	});
@@ -93,7 +88,6 @@ require 5.002;
 	my($dbh, $statement, @attribs)= @_;
 
 	# create a 'blank' sth
-
 	my $sth = DBI::_new_sth($dbh, {
 	    'Statement' => $statement,
 	});
@@ -119,6 +113,26 @@ require 5.002;
 	$sth;
     }
 
+    sub FETCH {
+	my ($dbh, $attrib) = @_;
+	# In reality this would interrogate the database engine to
+	# either return dynamic values that cannot be precomputed
+	# or fetch and cache attribute values too expensive to prefetch.
+	return 1 if $attrib eq 'AutoCommit';
+	# else pass up to DBI to handle
+	return $dbh->DBD::_::st::FETCH($attrib);
+    }
+
+    sub STORE {
+	my ($dbh, $attrib, $value) = @_;
+	# would normally validate and only store known attributes
+	# else pass up to DBI to handle
+	if ($attrib eq 'AutoCommit') {
+	    return 1 if $value;	# is already set
+	    croak("Can't disable AutoCommit");
+	}
+	return $dbh->DBD::_::st::STORE($attrib, $value);
+    }
 }
 
 
@@ -129,6 +143,10 @@ require 5.002;
 	return $DBD::Pg::errstr;
     }
 
+    sub bind_param {
+	my($sth, $param, $value, $attribs) = @_;
+	$sth->{'param'}->[$param] = $value;
+    }
 }
 
 1;
@@ -274,10 +292,13 @@ Note that the following functions can also be used:
 
 =head1 BLOBS
 
-Blobs are not fully supported. The only way is 
-to use the two registered built-in functions 
-lo_import() and lo_export(). See the large_objects 
-man page for further information. 
+Support for blob_read is provided. For further 
+information and examples please read the files 
+in the blobs subdirectory.
+In addition you can use the two registered built-in 
+functions lo_import() and lo_export(). See the 
+L<large_objects> for further information and 
+examples. 
 
 
 =head1 KNOWN RESTRICTIONS
@@ -307,9 +328,6 @@ when selecting large amounts of data !
 
 =item *
 $DBI::state is not supported.
-
-=item *
-$sth->bind_param() is not supported.
 
 =item *
 Some statement handle attributes are not supported.
