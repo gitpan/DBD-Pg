@@ -1,6 +1,5 @@
-
 /*
-   $Id: dbdimp.c,v 1.10 2003/01/08 22:08:17 bmomjian Exp $
+   $Id: dbdimp.c,v 1.18 2003/03/27 03:14:19 bmomjian Exp $
 
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Copyright (c) 2002 Jeffrey W. Baker
@@ -27,6 +26,8 @@
 
 DBISTATE_DECLARE;
 
+/* hard-coded array delimiter */
+static char* array_delimiter = ",";
 
 static void dbd_preparse  (imp_sth_t *imp_sth, char *statement);
 
@@ -234,6 +235,8 @@ dbd_db_pg_notifies (dbh, imp_dbh)
 
     av_push(ret, newSVpv(notify->relname,0) );
     av_push(ret, newSViv(notify->be_pid) );
+
+    /* Should free notify memory with PQfreemem() */
  
     retsv = newRV(sv_2mortal((SV*)ret));
 
@@ -470,6 +473,10 @@ dbd_db_STORE_attrib (dbh, imp_dbh, keysv, valuesv)
         imp_dbh->pg_auto_escape = newval;
     } else if (kl==10 && strEQ(key, "pg_bool_tf")) {
 	imp_dbh->pg_bool_tf = newval;
+#ifdef SvUTF8_off
+    } else if (kl==14 && strEQ(key, "pg_enable_utf8")) {
+        imp_dbh->pg_enable_utf8 = newval;
+#endif
     } else {
         return 0;
     }
@@ -494,6 +501,10 @@ dbd_db_FETCH_attrib (dbh, imp_dbh, keysv)
         retsv = newSViv((IV)imp_dbh->pg_auto_escape);
     } else if (kl==10 && strEQ(key, "pg_bool_tf")) {
 	retsv = newSViv((IV)imp_dbh->pg_bool_tf);
+#ifdef SvUTF8_off
+    } else if (kl==14 && strEQ(key, "pg_enable_utf8")) {
+        retsv = newSViv((IV)imp_dbh->pg_enable_utf8);
+#endif
     } else if (kl==11 && strEQ(key, "pg_INV_READ")) {
         retsv = newSViv((IV)INV_READ);
     } else if (kl==12 && strEQ(key, "pg_INV_WRITE")) {
@@ -693,6 +704,11 @@ dbd_preparse (imp_sth, statement)
 
     /* allocate room for copy of statement with spare capacity	*/
     /* for editing '?' or ':1' into ':p1'.			*/
+    /*								*/
+    /* Note: the calculated length used here for the safemalloc	*/
+    /* isn't related in any way to the actual worst case length	*/
+    /* of the translated statement, but allowing for 3 times	*/
+    /* the length of the original statement should be safe...	*/
     imp_sth->statement = (char*)safemalloc(strlen(statement) * 3 + 1);
 
     /* initialise phs ready to be cloned per placeholder	*/
@@ -815,7 +831,7 @@ dbd_preparse (imp_sth, statement)
 static int pg_sql_needquote (sql_type)
     int sql_type;
 {
-    if (sql_type > 1000 || sql_type == 17 ) { 
+    if (sql_type > 1000 || sql_type == 17 || sql_type == 25 ) { 
         return 1;
     }
     return 0;
@@ -978,6 +994,43 @@ dbd_rebind_ph (sth, imp_sth, phs)
 }
 
 
+void dereference(value)
+SV** value;
+{
+       AV* buf;
+       SV* val;
+          char *src;
+       int is_ref;
+          STRLEN len;
+
+       if (SvTYPE(SvRV(*value)) != SVt_PVAV)
+               croak("Not an array reference (%s)", neatsvpv(*value,0));
+
+       buf = (AV *) SvRV(*value);
+       sv_setpv(*value, "{");
+               while ( SvOK(val = av_shift(buf)) ) {
+                       is_ref = SvROK(val);
+                       if (is_ref)
+                               dereference(&val);
+                       else
+                               sv_catpv(*value, "\"");
+                       /* Quote */
+                       src = SvPV(val, len);
+                       while (len--) {
+                               if (!is_ref && *src == '\"')
+                                       sv_catpv(*value, "\\");
+                               sv_catpvn(*value, src++, 1);
+                       }
+                       /* End of quote */
+                       if (!is_ref)
+                               sv_catpv(*value, "\"");
+                       if (av_len(buf) > -1)
+                                       sv_catpv(*value, array_delimiter);
+               }
+       sv_catpv(*value, "}");
+       av_clear(buf);
+}
+
 int
 dbd_bind_ph (sth, imp_sth, ph_namesv, newvalue, sql_type, attribs, is_inout, maxlen)
     SV *sth;
@@ -1017,7 +1070,7 @@ dbd_bind_ph (sth, imp_sth, ph_namesv, newvalue, sql_type, attribs, is_inout, max
     }
     if (SvROK(newvalue) && !IS_DBI_HANDLE(newvalue)) {
         /* dbi handle allowed for cursor variables */
-        croak("Can't bind a reference (%s)", neatsvpv(newvalue,0));
+               dereference(&newvalue);
     }
     if (SvTYPE(newvalue) == SVt_PVLV && is_inout) {	/* may allow later */
         croak("Can't bind ``lvalue'' mode scalar as inout parameter (currently)");
@@ -1151,10 +1204,19 @@ dbd_st_execute (sth, imp_sth)   /* <= -2:error, >=0:ok row count, (-1=unknown co
 
     /* do we have input parameters ? */
     if ((int)DBIc_NUM_PARAMS(imp_sth) > 0) {
-        /* we have to allocate some additional memory for possible escaping quotes and backslashes */
-        /* Worst case is all character must be binary-escaped (\xxx) */
-        int max_len = imp_sth->all_params_len * 4 + DBIc_NUM_PARAMS(imp_sth) * 2 + 1;
-        statement = (char*)safemalloc(strlen(imp_sth->statement) + max_len );
+	/*
+	we have to allocate some additional memory for possible escaping
+	quotes and backslashes:
+	   max_len = length of statement
+	   + total length of all params allowing for worst case all
+	     characters binary-escaped (\\xxx)
+	   + null terminator
+	Note: parameters look like :p1 at this point, so there's no
+	need to explicitly allow for surrounding quotes because '' is
+	shorter than :p1
+	*/
+        int max_len = strlen(imp_sth->statement) + imp_sth->all_params_len * 5 + 1;
+        statement = (char*)safemalloc( max_len );
         dest = statement;
         src  = imp_sth->statement;
         /* scan statement for ':p1' style placeholders */
@@ -1253,7 +1315,11 @@ dbd_st_execute (sth, imp_sth)   /* <= -2:error, >=0:ok row count, (-1=unknown co
                 if (imp_dbh->pg_auto_escape) {
                     /* if the parameter was bound as PG_BYTEA, escape nonprintables */
                     if (phs->ftype == 17 && !isPRINT(*val)) { /* escape null character */
-                        dest+=snprintf(dest, strlen(imp_sth->statement) + max_len + (statement - dest), "\\\\%03o", *((unsigned char *)val));
+                        dest+=snprintf(dest, (statement + max_len) - dest, "\\\\%03o", *((unsigned char *)val));
+			if (dest > statement + max_len) {
+			    pg_error(sth, -1, "statement buffer overrun\n");
+			    return -2;
+			}
                         val++;
                         continue; /* do not copy the null */
                     }
@@ -1332,6 +1398,15 @@ dbd_st_execute (sth, imp_sth)   /* <= -2:error, >=0:ok row count, (-1=unknown co
 }
 
 
+int
+is_high_bit_set(val)
+    char *val;
+{
+    while (*val++)
+	if (*val & 0x80) return 1;
+    return 0;
+}
+
 AV *
 dbd_st_fetch (sth, imp_sth)
     SV *sth;
@@ -1403,6 +1478,16 @@ dbd_st_fetch (sth, imp_sth)
                 val[val_len] = '\0';
             }
             sv_setpvn(sv, val, val_len);
+#ifdef SvUTF8_off
+	    if (imp_dbh->pg_enable_utf8) {
+		SvUTF8_off(sv);
+		/* XXX Is this all the character data types? */
+		if (18 == type || 25 == type || 1042 ==type || 1043 == type) {
+		    if (is_high_bit_set(val) && is_utf8_string(val, val_len))
+			SvUTF8_on(sv);
+		}
+	    }
+#endif
         }
     }
 

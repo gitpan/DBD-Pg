@@ -1,14 +1,16 @@
 /*
-   $Id: dbdimp.h,v 1.4 2003/01/08 22:08:17 bmomjian Exp $
+   $Id: dbdimp.h,v 1.7 2003/03/25 22:17:00 bmomjian Exp $
 
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 
    You may distribute under the terms of either the GNU General Public
    License or the Artistic License, as specified in the Perl README file.
-
 */
 
+#ifdef WIN32
+#define snprintf _snprintf
+#endif
 
 /* Define drh implementor data structure */
 struct imp_drh_st {
@@ -23,6 +25,9 @@ struct imp_dbh_st {
     int         init_commit;	/* initialize AutoCommit */
     int         pg_auto_escape;	/* initialize AutoEscape */
     int         pg_bool_tf;     /* do bools return 't'/'f' */
+#ifdef SvUTF8_off
+    int         pg_enable_utf8;	/* should we attempt to make utf8 strings? */
+#endif
 };
 
 /* Define sth implementor data structure */
