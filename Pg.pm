@@ -1,5 +1,5 @@
 # -*-cperl-*-
-#  $Id: Pg.pm,v 1.138 2005/02/06 19:07:44 theory Exp $
+#  $Id: Pg.pm,v 1.139 2005/02/22 06:01:34 theory Exp $
 #
 #  Copyright (c) 2002-2005 PostgreSQL Global Development Group
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -15,7 +15,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	our $VERSION = '1.39_02';
+	our $VERSION = '1.40';
 
 	use DBI ();
 	use DynaLoader ();
