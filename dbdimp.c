@@ -1,8 +1,8 @@
 /*
 
-   $Id: dbdimp.c,v 1.32 2003/10/27 19:57:02 rlippan Exp $
+   $Id: dbdimp.c,v 1.41 2004/02/03 19:50:22 rlippan Exp $
 
-   Copyright (c) 2002,2003 PostgreSQL Global Development Group
+   Copyright (c) 2002-2004 PostgreSQL Global Development Group
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Copyright (c) 2002 Jeffrey W. Baker
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -60,10 +60,6 @@ dbd_discon_all (drh, imp_drh)
 						 (char*)"disconnect_all not implemented");
 		DBIh_EVENT2(drh, ERROR_event,
 								DBIc_ERR(imp_drh), DBIc_ERRSTR(imp_drh));
-		return FALSE;
-	}
-	if (perl_destruct_level) {
-		perl_destruct_level = 0;
 	}
 	return FALSE;
 }
@@ -154,12 +150,13 @@ dbd_db_login (dbh, imp_dbh, dbname, uid, pwd)
 	dest = conn_str;
 	/* Change all semi-colons to a space, unless quoted */
 	while (*src) {
-		if (*src == '"')
-			inquote = ! inquote;
-		else if (*src == ';' && !inquote)
+		if (*src == ';' && !inquote)
 			*dest++ = ' ';
-		else
+		else {
+			if (*src == '\'')
+				inquote = ! inquote;
 			*dest++ = *src;
+		}
 		src++;
 	}
 	*dest = '\0';
@@ -176,6 +173,7 @@ dbd_db_login (dbh, imp_dbh, dbname, uid, pwd)
 	if (dbis->debug >= 2) { PerlIO_printf(DBILOGFP, "pg_db_login: conn_str = >%s<\n", conn_str); }
 	
 	/* make a connection to the database */
+
 	imp_dbh->conn = PQconnectdb(conn_str);
 	safefree(conn_str);
 	
@@ -248,10 +246,15 @@ dbd_db_pg_notifies (dbh, imp_dbh)
 	PGnotify* notify;
 	AV* ret;
 	SV* retsv;
-	
+	int status;
+
 	if (dbis->debug >= 1) { PerlIO_printf(DBILOGFP, "dbd_db_pg_notifies\n"); }
 	
-	PQconsumeInput(imp_dbh->conn);
+	status = PQconsumeInput(imp_dbh->conn);
+	if (status == 0) { 
+		pg_error(dbh, PQstatus(imp_dbh->conn), PQerrorMessage(imp_dbh->conn));
+		return 0;
+	}
 	
 	notify = PQnotifies(imp_dbh->conn);
 	
@@ -308,44 +311,29 @@ dbd_db_commit (dbh, imp_dbh)
 		return 0;
 	}
 	
+	/* Commit only if we have a connection and done_begin is true */
 	if (NULL != imp_dbh->conn) {
 		PGresult* result = 0;
-		ExecStatusType commitstatus, beginstatus;
+		ExecStatusType status;
 		
-		/* execute commit */
-		result = PQexec(imp_dbh->conn, "commit");
-		commitstatus = result ? PQresultStatus(result) : -1;
-		PQclear(result);
-		
-		/* check result */
-		if (commitstatus != PGRES_COMMAND_OK) {
-			/* Only put the error message in DBH->errstr */
-			pg_error(dbh, commitstatus, PQerrorMessage(imp_dbh->conn));
+		if (imp_dbh->done_begin) {
+			result = PQexec(imp_dbh->conn, "commit");
+			status = result ? PQresultStatus(result) : -1;
+			PQclear(result);
+
+			/* check result */
+			if (status != PGRES_COMMAND_OK) {
+				pg_error(dbh, status, "commit failed\n");
+				return 0;
+			}
+			imp_dbh->done_begin = 0;
 		}
-		
-		/* start new transaction. AutoCommit must be FALSE, ref. 20 lines up */
-		result = PQexec(imp_dbh->conn, "begin");
-		beginstatus = result ? PQresultStatus(result) : -1;
-		PQclear(result);
-		if (beginstatus != PGRES_COMMAND_OK) {
-			/* Maybe add some loud barf here? Raising some very high error? */
-			pg_error(dbh, beginstatus, "begin failed\n");
-			return 0;
-		}
-		
-		/* if the initial COMMIT failed, return 0 now */
-		if (commitstatus != PGRES_COMMAND_OK) {
-			return 0;
-		}
-		
 		return 1;
 	}
-	
 	return 0;
 }
 
 
-/* TODO: Tx fix that was done to commit needs to be done here also. #rl */
 int
 dbd_db_rollback (dbh, imp_dbh)
 		 SV *dbh;
@@ -358,35 +346,26 @@ dbd_db_rollback (dbh, imp_dbh)
 		return 0;
 	}
 	
+	/* Rollback only if we have a connection and done_begin is true */
 	if (NULL != imp_dbh->conn) {
 		PGresult* result = 0;
 		ExecStatusType status;
 		
 		/* execute rollback */
-		result = PQexec(imp_dbh->conn, "rollback");
-		status = result ? PQresultStatus(result) : -1;
-		PQclear(result);
-		
-		/*TODO Correct error message. If returning on error 
-			will screw up transaction state? Begin will not get called! */
-		/* check result */
-		if (status != PGRES_COMMAND_OK) {
-			pg_error(dbh, status, "rollback failed\n");
-			return 0;
+		if (imp_dbh->done_begin) {
+			result = PQexec(imp_dbh->conn, "rollback");
+			status = result ? PQresultStatus(result) : -1;
+			PQclear(result);
+			
+			/* check result */
+			if (status != PGRES_COMMAND_OK) {
+				pg_error(dbh, status, "rollback failed\n");
+				return 0;
+			}
+			imp_dbh->done_begin = 0;
 		}
-		
-		/* start new transaction. AutoCommit must be FALSE, ref. 20 lines up */
-		result = PQexec(imp_dbh->conn, "begin");
-		status = result ? PQresultStatus(result) : -1;
-		PQclear(result);
-		if (status != PGRES_COMMAND_OK) {
-			pg_error(dbh, status, "begin failed\n");
-			return 0;
-		}
-		
 		return 1;
 	}
-	
 	return 0;
 }
 
@@ -408,8 +387,9 @@ dbd_db_disconnect (dbh, imp_dbh)
 	DBIc_ACTIVE_off(imp_dbh);
 	
 	if (NULL != imp_dbh->conn) {
-		/* rollback if AutoCommit = off */
-		if (DBIc_has(imp_dbh, DBIcf_AutoCommit) == FALSE) {
+		/* rollback if AutoCommit = off and we are in a transaction */
+		if (DBIc_has(imp_dbh, DBIcf_AutoCommit) == FALSE
+				&& imp_dbh->done_begin) {
 			PGresult* result = 0;
 			ExecStatusType status;
 			result = PQexec(imp_dbh->conn, "rollback");
@@ -472,30 +452,22 @@ dbd_db_STORE_attrib (dbh, imp_dbh, keysv, valuesv)
 		} else if (oldval == FALSE && newval != FALSE) {
 			if (NULL != imp_dbh->conn) {
 				/* commit any outstanding changes */
-				PGresult* result = 0;
-				ExecStatusType status;
-				result = PQexec(imp_dbh->conn, "commit");
-				status = result ? PQresultStatus(result) : -1;
-				PQclear(result);
-				if (status != PGRES_COMMAND_OK) {
-					pg_error(dbh, status, "commit failed\n");
-					return 0;
+
+				if (imp_dbh->done_begin) {
+					PGresult* result = 0;
+					ExecStatusType status;
+					result = PQexec(imp_dbh->conn, "commit");
+					status = result ? PQresultStatus(result) : -1;
+					PQclear(result);
+					if (status != PGRES_COMMAND_OK) {
+						pg_error(dbh, status, "commit failed\n");
+						return 0;
+					}
 				}
 			}			
 			if (dbis->debug >= 2) { PerlIO_printf(DBILOGFP, "dbd_db_STORE: switch AutoCommit to on: commit\n"); }
 		} else if ((oldval != FALSE && newval == FALSE) || (oldval == FALSE && newval == FALSE && imp_dbh->init_commit)) {
-			if (NULL != imp_dbh->conn) {
-				/* start new transaction */
-				PGresult* result = 0;
-				ExecStatusType status;
-				result = PQexec(imp_dbh->conn, "begin");
-				status = result ? PQresultStatus(result) : -1;
-				PQclear(result);
-				if (status != PGRES_COMMAND_OK) {
-					pg_error(dbh, status, "begin failed\n");
-					return 0;
-				}
-			}
+			imp_dbh->done_begin = 0;
 			if (dbis->debug >= 2) { PerlIO_printf(DBILOGFP, "dbd_db_STORE: switch AutoCommit to off: begin\n"); }
 		}
 		/* only needed once */
@@ -739,7 +711,8 @@ dbd_bind_ph (sth, imp_sth, ph_namesv, newvalue, sql_type, attribs, is_inout, max
 	char namebuf[30];
 	phs_t *phs;
 	sql_type_info_t *sql_type_info;
-	int pg_type, bind_type;
+	int pg_type = 0;
+	int bind_type;
 	char *value_string;
 	STRLEN value_len;
 
@@ -789,38 +762,38 @@ dbd_bind_ph (sth, imp_sth, ph_namesv, newvalue, sql_type, attribs, is_inout, max
 	}
 	
 	
-  /* // XXX this is broken: bind_param(1,1,{TYPE=>SQL_INTEGER}); */
-	if (attribs) {
-		if (sql_type)
-			croak ("Cannot specify both sql_type and pg_type");
-		
-		if ((svp = hv_fetch((HV*)SvRV(attribs),"pg_type", 7, 0))==NULL)
-			croak("DBD::ChurlPg only knows about the pg_type attribute");
-		
-		pg_type = SvIV(*svp);
-		
-		
+	if (attribs)
+		if((svp = hv_fetch((HV*)SvRV(attribs),"pg_type", 7, 0)) != NULL)
+	    		pg_type = SvIV(*svp);
+
+	if (sql_type && pg_type)
+		croak ("Cannot specify both sql_type and pg_type");
+
+
+	if (pg_type) {
 		if ((sql_type_info = pg_type_data(pg_type))) {
 			if (!sql_type_info->bind_ok) {
-				croak("Can't bind %s, pg_type %s not supported"
-							"by DBD::ChurlPg",
-							name, sql_type_info->type_name);
+				croak("Can't bind %s, sql_type %s not supported"
+						"by DBD::Pg",
+						name, sql_type_info->type_name);
 			}
 		} else {
-			croak("Cannot bind %s unknown sql_type %i",	name, sql_type);
+			croak("Cannot bind %s unknown pg_type %i",
+				name, pg_type);
 		}
 		bind_type = sql_type_info->type_id;
 		
 	} else if (sql_type) {
-		
 		if ((sql_type_info = sql_type_data(sql_type))) {
-			/* always bind as pg_type, because we know we are inserting
-				 into a pg database... It would make no sense to quote
-				 something to sql semantics and break the insert.
-			*/
+			/* always bind as pg_type, because we know we are 
+			   inserting into a pg database... It would make no 
+			   sense to quote something to sql semantics and break
+			   the insert.
+		 	*/
 			bind_type = sql_type_info->type.pg;
 		} else {
-			croak("Cannot bind %s unknown sql_type %i",	name, sql_type);
+			croak("Cannot bind %s unknown sql_type %i",
+				name, sql_type);
 		}
 		
 	} else {
@@ -856,10 +829,14 @@ dbd_bind_ph (sth, imp_sth, ph_namesv, newvalue, sql_type, attribs, is_inout, max
 	(void)SvUPGRADE(newvalue, SVt_PV);
 	
 
+	if (phs->quoted)
+		Safefree(phs->quoted);
+
 	if (!SvOK(newvalue)) {
-		phs->quoted = strdup("NULL");
+		phs->quoted = safemalloc(sizeof("NULL"));
 		if (NULL == phs->quoted)
 			croak("No memory");
+		strcpy(phs->quoted, "NULL");
 		phs->quoted_len = strlen(phs->quoted);
 	} else {
 		value_string = SvPV(newvalue, value_len);
@@ -941,7 +918,21 @@ dbd_st_execute (sth, imp_sth)  /* <= -2:error, >=0:ok row count, (-1=unknown cou
 	if (imp_sth->result) {
 		PQclear(imp_sth->result);
 	}
-	
+
+	/* start new transaction if necessary */
+	if (!imp_dbh->done_begin && DBIc_has(imp_dbh, DBIcf_AutoCommit) == FALSE) {
+		PGresult* result = 0;
+		ExecStatusType status;
+		result = PQexec(imp_dbh->conn, "begin");
+		status = result ? PQresultStatus(result) : -1;
+		PQclear(result);
+		if (status != PGRES_COMMAND_OK) {
+			pg_error(sth, status, "begin failed\n");
+			return -2;
+		}
+		imp_dbh->done_begin = 1;
+	}
+
 	/* execute statement */
 	imp_sth->result = PQexec(imp_dbh->conn, statement);
 	
@@ -1034,9 +1025,17 @@ dbd_st_fetch (sth, imp_sth)
 			else
 				value_len = strlen(value);
 			
+			if (type_info && (type_info->type_id == BOOLOID) &&
+					imp_dbh->pg_bool_tf)
+				{
+					*value = (*value == '1') ? 't' : 'f';
+				}
+
 			sv_setpvn(sv, value, value_len);
 			
-			if ((type_info->type_id == BPCHAROID) && chopblanks) {
+			if (type_info && (type_info->type_id == BPCHAROID) && 
+				chopblanks)
+			{
 				p = SvEND(sv);
 				len = SvCUR(sv);
 				while(len && *--p == ' ')

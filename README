@@ -1,12 +1,12 @@
 
 DBD::Pg  --  the DBI PostgreSQL interface for Perl
 
-# $Id: README,v 1.20 2003/11/03 15:24:36 theory Exp $
+# $Id: README,v 1.27 2004/02/13 17:44:22 rlippan Exp $
 
 DESCRIPTION:
 ------------
 
-This is version 1.30 of DBD-Pg.  The web site for this interface is at:
+This is version 1.32 of DBD-Pg.  The web site for this interface is at:
 
 	http://gborg.postgresql.org/project/dbdpg/projdisplay.php
 
@@ -48,7 +48,7 @@ nearest CPAN site.
 IF YOU HAVE PROBLEMS:
 ---------------------
 
-Please send comments and bug-reports to <dbd-general@gborg.postgresql.org>
+Please send comments and bug-reports to <dbdpg-general@gborg.postgresql.org>
 
 Please include the output of perl -v and perl -V, the version of PostgreSQL,
 the version of DBD-Pg, the version of DBI, and details about your platform
@@ -71,7 +71,7 @@ PostgreSQL library and include directories.  However, if you want to
 control it yourself, define the environment variables POSTGRES_INCLUDE 
 and POSTGRES_LIB, or POSTGRES_HOME. Note that if you've compiled
 PostgreSQL with SSL support, you must define the POSTGRES_LIB
-environment varable and add "-lssl" to it, like this:
+environment variable and add "-lssl" to it, like this:
 
 	export POSTGRES_LIB="/usr/local/pgsql/lib -lssl"
 
@@ -100,7 +100,8 @@ to the DBI_DSN variable like this:
 
 	DBI_DSN='dbi:Pg:dbname=<database>;port=<port#>'
 
-Put double quotes around the dbname if it has a semicolon in it:
+Put double quotes around the dbname if it has a semicolon 
+or a space inside of it:
 
 	DBI_DSN='dbi:Pg:dbname="<data;base>"'
 
@@ -182,3 +183,18 @@ on the server side:
       (eg Administrator)
     o make sure, that your pg_hba.conf on the server is configured,
       such that a connection from another host will be accepted
+
+OS X Users: You may need to add "-lssl" and "-lcrypto" to your LIB 
+variable before compiling. <rob at cabrion dot com>
+
+SCO Users: If the 'make test' gives an error about a symbol not being 
+found, you can correct the problem by manually running ld after the 
+'make' command:
+
+LD_RUN_PATH="/usr/local/pgsql/lib" ld -G -L/usr/local/lib Pg.o \
+dbdimp.o -o blib/arch/auto/DBD/Pg/Pg.so -L/usr/local/pgsql/lib -lpq \
+-L/opt/K/SKUNK2000/Gcc/2.95.2pl1/usr/local/lib/gcc-lib/i386-pc-sco3.2v5.0.5/2.95.2/ \
+-lgcc
+
+Once this is done, 'make test' succeeds properly. <jmore at remote-print.com>
+

@@ -1,9 +1,9 @@
 
-#  $Id: Pg.pm,v 1.74 2003/11/17 21:22:25 rlippan Exp $
+#  $Id: Pg.pm,v 1.88 2004/02/13 17:44:22 rlippan Exp $
 #
 #  Copyright (c) 1997,1998,1999,2000 Edmund Mergl
 #  Copyright (c) 2002 Jeffrey W. Baker
-#  Copyright (c) 2002,2003 PostgreSQL Global Development Group
+#  Copyright (c) 2002-2004 PostgreSQL Global Development Group
 #  Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 #
 #  You may distribute under the terms of either the GNU General Public
@@ -12,7 +12,7 @@
 
 use 5.006001;
 
-$DBD::Pg::VERSION = '1.31';
+$DBD::Pg::VERSION = '1.32_1';
 
 {
 	package DBD::Pg;
@@ -61,10 +61,10 @@ $DBD::Pg::VERSION = '1.31';
 	## Used by both the dr and db packages
 	sub _pg_server_version {
 		my $dbh = shift;
-		return $dbh->{private_dbdpg}->{server_version} if defined $dbh->{private_dbdpg}->{server_version};
+		return $dbh->{private_dbdpg}{server_version} if defined $dbh->{private_dbdpg}{server_version};
 		my ($version) = $dbh->selectrow_array("SELECT version();");
-		$dbh->{private_dbdpg}->{server_version} = ($version =~ /^PostgreSQL ([\d\.]+)/) ? $1 : 0;
-		return $dbh->{private_dbdpg}->{server_version};
+		$dbh->{private_dbdpg}{server_version} = ($version =~ /^PostgreSQL ([\d\.]+)/) ? $1 : 0;
+		return $dbh->{private_dbdpg}{server_version};
 	}
 
 	## Is the second version greater than or equal to the first?
@@ -88,10 +88,10 @@ $DBD::Pg::VERSION = '1.31';
 	## Version 7.3 and up uses schemas, so add a "pg_catalog." to system tables
 	sub _pg_use_catalog {
 		my $dbh = shift;
-		return $dbh->{pg_use_catalog} if defined $dbh->{pg_use_catalog};
+		return $dbh->{private_dbdpg}{pg_use_catalog} if defined $dbh->{private_dbdpg}{pg_use_catalog};
 		my $version = DBD::Pg::_pg_server_version($dbh);
-		$dbh->{pg_use_catalog} = DBD::Pg::_pg_check_version(7.3, $version) ? "pg_catalog." : "";
-		return $dbh->{pg_use_catalog};
+		$dbh->{private_dbdpg}{pg_use_catalog} = DBD::Pg::_pg_check_version(7.3, $version) ? "pg_catalog." : "";
+		return $dbh->{private_dbdpg}{pg_use_catalog};
 	}
 
 	1;
@@ -105,15 +105,12 @@ $DBD::Pg::VERSION = '1.31';
 	sub data_sources {
 		my $drh = shift;
 		my $dbh = DBD::Pg::dr::connect($drh, 'dbname=template1') or return undef;
-		$dbh->{AutoCommit} = 1;
+		$dbh->{AutoCommit}=1;
 		my $CATALOG = DBD::Pg::_pg_use_catalog($dbh);
-		my $sth = $dbh->prepare("SELECT datname FROM ${CATALOG}pg_database ORDER BY datname");
-		$sth->execute or return undef;
-		my (@sources, @datname);
-		while (@datname = $sth->fetchrow_array) {
-			push @sources, "dbi:Pg:dbname=$datname[0]";
-		}
-		$sth->finish;
+		my $SQL = "SELECT ${CATALOG}quote_ident(datname) FROM ${CATALOG}pg_database ORDER BY 1";
+		my $sth = $dbh->prepare($SQL);
+		$sth->execute();
+		my @sources = map { "dbi:Pg:dbname=$_->[0]" } @{$sth->fetchall_arrayref()};
 		$dbh->disconnect;
 		return @sources;
 	}
@@ -125,7 +122,11 @@ $DBD::Pg::VERSION = '1.31';
 		# create a 'blank' dbh
 
 		my $Name = $dbname;
-    if ($dbname =~ m#dbname\s*=\s*\"([^\"]+)\"# or $dbname =~ m#dbname\s*=\s*([^;]+)#) {
+    if ($dbname =~ m#dbname\s*=\s*[\"\']([^\"\']+)#) {
+      $Name = "'$1'";
+			$dbname =~ s/"/'/g;
+		}			
+		elsif ($dbname =~ m#dbname\s*=\s*([^;]+)#) {
       $Name = $1;
     }
 
@@ -225,12 +226,10 @@ $DBD::Pg::VERSION = '1.31';
 		my $schemajoin = DBD::Pg::_pg_check_version(7.3, $version) ? 
 			"JOIN pg_catalog.pg_namespace n ON (n.oid = c.relnamespace)" : "";
 
-        # Create a join to get the correct description (for Pg < 7.2 or >= 7.2)                                                              
-       my $pg_description_join = DBD::Pg::_pg_check_version(7.2, $version)                                                                  
-            ? "LEFT JOIN ${CATALOG}pg_description d  ON (a.attnum = d.objsubid)\n".                                                      
-              "\t\t\t\tLEFT JOIN ${CATALOG}pg_class       dc ON (dc.oid = d.objoid )"                                                    
-            : "LEFT JOIN ${CATALOG}pg_description d ON (a.oid = d.objoid )";                                                             
-                                                                                                                                                    
+		# col_description is not available for Pg < 7.2
+		my $remarks = DBD::Pg::_pg_check_version(7.2, $version) ?
+            "${CATALOG}col_description(a.attrelid, a.attnum)" : "NULL::text";
+
 		my $col_info_sql = qq!
 			SELECT
 				NULL::text AS "TABLE_CAT"
@@ -244,7 +243,7 @@ $DBD::Pg::VERSION = '1.31';
 				, NULL::text AS "DECIMAL_DIGITS"
 				, NULL::text AS "NUM_PREC_RADIX"
 				, CASE a.attnotnull WHEN 't' THEN 0 ELSE 1 END AS "NULLABLE"
-				, d.description AS "REMARKS"
+				, $remarks AS "REMARKS"
 				, af.adsrc AS "COLUMN_DEF"
 				, NULL::text AS "SQL_DATA_TYPE"
 				, NULL::text AS "SQL_DATETIME_SUB"
@@ -260,7 +259,6 @@ $DBD::Pg::VERSION = '1.31';
 				JOIN ${CATALOG}pg_class c ON (a.attrelid = c.oid)
 				LEFT JOIN ${CATALOG}pg_attrdef af ON (a.attnum = af.adnum AND a.attrelid = af.adrelid)
 				$schemajoin
-                $pg_description_join  
 			WHERE
 				a.attnum >= 0
 				AND c.relkind IN ('r','v')
@@ -338,340 +336,352 @@ $DBD::Pg::VERSION = '1.31';
 		return $sth;
 	}
 
-
-
 	sub primary_key_info {
+
 		my $dbh = shift;
-		my ($catalog, $schema, $table) = @_;
-		my @attrs = @_;
+		my ($catalog, $schema, $table, $attr) = @_;
+
+		## Catalog is ignored, but table is mandatory
+		return undef unless defined $table and length $table;
+
+		my $whereclause = "AND c.relname = " . $dbh->quote($table);
+
 		my $CATALOG = DBD::Pg::_pg_use_catalog($dbh);
+		my $gotschema = DBD::Pg::_pg_check_version
+			(7.3, DBD::Pg::_pg_server_version($dbh)) ? 1 : 0;
+		if (defined $schema and length $schema and $gotschema) {
+			$whereclause .= "\n\t\t\tAND n.nspname = " . $dbh->quote($schema);
+		}
+		my $showschema = $gotschema ? "quote_ident(n.nspname)" : "NULL::text";
+		my $schemajoin = $gotschema ? 
+			"LEFT JOIN pg_catalog.pg_namespace n ON (n.oid = c.relnamespace)" : "";
+		my $pri_key_sql = qq{
+			SELECT
+				  c.oid
+				, $showschema
+				, quote_ident(c.relname)
+				, quote_ident(c2.relname)
+				, i.indkey
+			FROM
+				${CATALOG}pg_class c
+				JOIN ${CATALOG}pg_index i ON (i.indrelid = c.oid)
+				JOIN ${CATALOG}pg_class c2 ON (c2.oid = i.indexrelid)
+				$schemajoin
+			WHERE
+				i.indisprimary IS TRUE
+			$whereclause
+		};
 
-		# TABLE_CAT:, TABLE_SCHEM:, TABLE_NAME:, COLUMN_NAME:, KEY_SEQ:
-		# , PK_NAME:
+		my $sth = $dbh->prepare($pri_key_sql) or return undef;
+		$sth->execute();
+		my $info = $sth->fetchall_arrayref()->[0];
+		return undef if ! defined $info;
 
-		my @wh = (); my @dat = (); # Used to hold data for the attributes.
+		# Get the attribute information
+		my $indkey = join ',', split /\s+/, $info->[4];
+		my $sql = qq{
+			SELECT a.attnum, ${CATALOG}quote_ident(a.attname) AS colname,
+				${CATALOG}quote_ident(t.typname) AS typename
+			FROM ${CATALOG}pg_attribute a, ${CATALOG}pg_type t
+			WHERE a.attrelid = '$info->[0]'
+			AND a.atttypid = t.oid
+			AND attnum IN ($indkey);
+		};
+		$sth = $dbh->prepare($sql) or return undef;
+		$sth->execute();
+		my $attribs = $sth->fetchall_hashref('attnum');
 
+		my $pkinfo = [];
+
+		## Normal way: complete "row" per column in the primary key
+		if (!exists $attr->{'onerow'}) {
+			my $x=0;
+			my @key_seq = split/\s+/, $info->[4];
+			for (@key_seq) {
+				# TABLE_CAT
+				$pkinfo->[$x][0] = undef;
+				# SCHEMA_NAME
+				$pkinfo->[$x][1] = $info->[1];
+				# TABLE_NAME
+				$pkinfo->[$x][2] = $info->[2];
+				# COLUMN_NAME
+				$pkinfo->[$x][3] = $attribs->{$_}{colname};
+				# KEY_SEQ
+				$pkinfo->[$x][4] = $_;
+				# PK_NAME
+				$pkinfo->[$x][5] = $info->[3];
+				# DATA_TYPE
+				$pkinfo->[$x][6] = $attribs->{$_}{typename};
+				$x++;
+			}
+		}
+		else { ## Nicer way: return only one row
+
+			# TABLE_CAT
+			$info->[0] = undef;
+			# PK_NAME
+			$info->[5] = $info->[3];
+			# COLUMN_NAME
+			$info->[3] = $attr->{'onerow'} == 2 ? 
+				[ map { $attribs->{$_}{colname} } split /\s+/, $info->[4] ] :
+					join ', ', map { $attribs->{$_}{colname} } split /\s+/, $info->[4]; 
+			# DATA_TYPE
+			$info->[6] = $attr->{'onerow'} == 2 ? 
+				[ map { $attribs->{$_}{typename} } split /\s+/, $info->[4] ] : 
+					join ', ', map { $attribs->{$_}{typename} } split /\s+/, $info->[4];
+			# KEY_SEQ
+			$info->[4] = $attr->{'onerow'} == 2 ? 
+				[ split /\s+/, $info->[4] ] :
+					join ', ', split /\s+/, $info->[4];
+			$pkinfo = [$info];
+		}
+
+		my @cols = (qw(TABLE_CAT TABLE_SCHEM TABLE_NAME COLUMN_NAME
+									 KEY_SEQ PK_NAME DATA_TYPE));
+
+		return _prepare_from_data('primary_key_info', $pkinfo, \@cols);
+
+	}
+
+	sub primary_key {
+		my $sth = primary_key_info(@_[0..3], {onerow => 2});
+		return defined $sth ? @{$sth->fetchall_arrayref()->[0][3]} : undef;
+	}
+
+
+	sub foreign_key_info {
+
+		my $dbh = shift;
+
+		## PK: catalog, schema, table, FK: catalog, schema, table, attr
+
+		## Each of these may be undef or empty
+		my $pschema = $_[1] || '';
+		my $ptable = $_[2] || '';
+		my $fschema = $_[4] || '';
+		my $ftable = $_[5] || '';
+		my $args = $_[6];
+
+		## No way to currently specify it, but we are ready when there is
+		my $odbc = 0;
+
+		## Must have at least one named table
+		return undef if !$ptable and !$ftable;
+
+		## Versions 7.2 or less have no pg_constraint table, so we cannot support
 		my $version = DBD::Pg::_pg_server_version($dbh);
+		return undef unless DBD::Pg::_pg_check_version(7.3, $version);
 
-		my @flds = qw/catname n.nspname bc.relname/;
+		my $C = 'pg_catalog.';
 
-		for my $idx (0 .. $#attrs) {
-			next if $flds[$idx] eq 'catname'; # Skip catalog
-			next if $flds[$idx] eq 'n.nspname' and ! DBD::Pg::_pg_check_version(7.3, $version);
-			if(defined $attrs[$idx] and length $attrs[$idx]) {
-				push( @dat, $attrs[$idx] );
-				push( @wh, qq{$flds[$idx] = ? } );
+		## If only the primary table is given, we return only those columns 
+		## that are used as foreign keys, even if that means that we return 
+		## unique keys but not primary one. We also return all the foreign 
+		## tables/columns that are referencing them, of course.
+
+		## The first step is to find the oid of each specific table in the args:
+		## Return undef if no matching relation found
+		my %oid;
+		for ([$ptable, $pschema, 'P'], [$ftable, $fschema, 'F']) {
+			if (length $_->[0]) {
+				my $SQL = "SELECT c.oid AS schema FROM ${C}pg_class c, ${C}pg_namespace n\n".
+					"WHERE c.relnamespace = n.oid AND c.relname = " . $dbh->quote($_->[0]);
+				if (length $_->[1]) {
+					$SQL .= " AND n.nspname = " . $dbh->quote($_->[1]);
+				}
+				my $info = $dbh->selectall_arrayref($SQL);
+				return undef if ! @$info;
+				$oid{$_->[2]} = $info->[0][0];
 			}
 		}
 
-		my $wh = '';
-		$wh = join( " AND ", '', @wh ) if (@wh);
-
-		# Base primary key selection query borrowed from phpPgAdmin.
-		my $showschema = DBD::Pg::_pg_check_version(7.3, $version) ? 
-			"n.nspname" : "NULL::text";
-		my $schemajoin = DBD::Pg::_pg_check_version(7.3, $version) ? 
-			"LEFT JOIN pg_catalog.pg_namespace n ON (n.oid = bc.relnamespace)" : "";
-		my $indexjoin = DBD::Pg::_pg_check_version(7.4, $version) ?
-			"i.indexprs IS NULL" : "i.indproc = '0'::oid";
-		my $pri_key_sql = qq{
-			SELECT
-				NULL::text    AS "TABLE_CAT"
-				, $showschema AS "TABLE_SCHEM"
-				, bc.relname  AS "TABLE_NAME"
-				, a.attname   AS "COLUMN_NAME"
-				, a.attnum    AS "KEY_SEQ"
-				, ic.relname  AS "PK_NAME"
-			FROM
-				${CATALOG}pg_index i
-				, ${CATALOG}pg_attribute a
-				, ${CATALOG}pg_class ic
-				, ${CATALOG}pg_class bc
-				$schemajoin
-			WHERE
-				i.indrelid = bc.oid
-			AND i.indexrelid = ic.oid
-			AND
-			(
-				i.indkey[0] = a.attnum
-				OR
-				i.indkey[1] = a.attnum
-				OR
-				i.indkey[2] = a.attnum
-				OR
-				i.indkey[3] = a.attnum
-				OR
-				i.indkey[4] = a.attnum
-				OR
-				i.indkey[5] = a.attnum
-				OR
-				i.indkey[6] = a.attnum
-				OR
-				i.indkey[7] = a.attnum
-				OR
-				i.indkey[8] = a.attnum
-				OR
-				i.indkey[9] = a.attnum
-				OR
-				i.indkey[10] = a.attnum
-				OR
-				i.indkey[11] = a.attnum
-				OR
-				i.indkey[12] = a.attnum
-			)
-			AND a.attrelid = bc.oid
-			AND $indexjoin
-			AND i.indisprimary = 't' 
-			$wh
-			ORDER BY 2, 3, 5
-		};
-
-		my $sth = $dbh->prepare( $pri_key_sql ) or return undef;
-		$sth->execute(@dat);
-
-		return $sth;
-	}
-
-	sub foreign_key_info {
-	# todo: verify schema work as expected
-	# add code to handle multiple-column keys correctly
-	# return something nicer for pre-7.3?
-	# try to clean up SQL, perl code
-	# create a test script?
-
-	my $dbh = shift;
-	my ($pk_catalog, $pk_schema, $pk_table,
-		$fk_catalog, $fk_schema, $fk_table) = @_;
-
-	# this query doesn't work for Postgres before 7.3
-	my $version = DBD::Pg::_pg_server_version($dbh);
-	return undef unless DBD::Pg::_pg_check_version(7.3, $version);
-
-	# Used to hold data for the attributes.
-	my @dat = ();
-
-	# SQL to find primary/unique keys of a table
-	my $pkey_sql = qq{
-	SELECT
-	NULL::text AS PKTABLE_CAT,
-	pknam.nspname AS PKTABLE_SCHEM,
-	pkc.relname AS PKTABLE_NAME,
-	pka.attname AS PKCOLUMN_NAME,
-	NULL::text AS FKTABLE_CAT,
-	NULL::text AS FKTABLE_SCHEM,
-	NULL::text AS FKTABLE_NAME,
-	NULL::text AS FKCOLUMN_NAME,
-	pkcon.conkey[1] AS KEY_SEQ,
-	CASE
-		WHEN pkcon.confupdtype = 'c' THEN 0
-		WHEN pkcon.confupdtype = 'r' THEN 1
-		WHEN pkcon.confupdtype = 'n' THEN 2
-		WHEN pkcon.confupdtype = 'a' THEN 3
-		WHEN pkcon.confupdtype = 'd' THEN 4
-	END AS UPDATE_RULE,
-	CASE
-		WHEN pkcon.confdeltype = 'c' THEN 0
-		WHEN pkcon.confdeltype = 'r' THEN 1
-		WHEN pkcon.confdeltype = 'n' THEN 2
-		WHEN pkcon.confdeltype = 'a' THEN 3
-		WHEN pkcon.confdeltype = 'd' THEN 4
-	END AS DELETE_RULE,
-	NULL::text AS FK_NAME,
-	pkcon.conname AS PK_NAME,
-	CASE
-		WHEN pkcon.condeferrable = 'f' THEN 7
-		WHEN pkcon.condeferred = 't' THEN 6
-		WHEN pkcon.condeferred = 'f' THEN 5
-	END AS DEFERRABILITY,
-	CASE
-		WHEN pkcon.contype = 'p' THEN 'PRIMARY'
-		WHEN pkcon.contype = 'u' THEN 'UNIQUE'
-	END AS UNIQUE_OR_PRIMARY
-	FROM
-		pg_constraint AS pkcon
-	JOIN
-		pg_class pkc ON pkc.oid=pkcon.conrelid
-	JOIN
-		pg_namespace pknam ON pkcon.connamespace=pknam.oid
-	JOIN
-		pg_attribute pka ON pka.attnum=pkcon.conkey[1] AND pka.attrelid=pkc.oid
-	};
-
-	# SQL to find foreign keys of a table
-	my $fkey_sql = qq{
-	SELECT
-	NULL::text AS PKTABLE_CAT,
-	pknam.nspname AS PKTABLE_SCHEM,
-	pkc.relname AS PKTABLE_NAME,
-	pka.attname AS PKCOLUMN_NAME,
-	NULL::text AS FKTABLE_CAT,
-	fknam.nspname AS FKTABLE_SCHEM,
-	fkc.relname AS FKTABLE_NAME,
-	fka.attname AS FKCOLUMN_NAME,
-	fkcon.conkey[1] AS KEY_SEQ,
-	CASE
-		WHEN fkcon.confupdtype = 'c' THEN 0
-		WHEN fkcon.confupdtype = 'r' THEN 1
-		WHEN fkcon.confupdtype = 'n' THEN 2
-		WHEN fkcon.confupdtype = 'a' THEN 3
-		WHEN fkcon.confupdtype = 'd' THEN 4
-	END AS UPDATE_RULE,
-	CASE
-		WHEN fkcon.confdeltype = 'c' THEN 0
-		WHEN fkcon.confdeltype = 'r' THEN 1
-		WHEN fkcon.confdeltype = 'n' THEN 2
-		WHEN fkcon.confdeltype = 'a' THEN 3
-		WHEN fkcon.confdeltype = 'd' THEN 4
-	END AS DELETE_RULE,
-	fkcon.conname AS FK_NAME,
-	pkcon.conname AS PK_NAME,
-	CASE
-		WHEN fkcon.condeferrable = 'f' THEN 7
-		WHEN fkcon.condeferred = 't' THEN 6
-		WHEN fkcon.condeferred = 'f' THEN 5
-	END AS DEFERRABILITY,
-	CASE
-		WHEN pkcon.contype = 'p' THEN 'PRIMARY'
-		WHEN pkcon.contype = 'u' THEN 'UNIQUE'
-	END AS UNIQUE_OR_PRIMARY
-	FROM
-		pg_constraint AS fkcon
-	JOIN
-		pg_constraint AS pkcon ON fkcon.confrelid=pkcon.conrelid
-			AND fkcon.confkey=pkcon.conkey
-	JOIN
-		pg_class fkc ON fkc.oid=fkcon.conrelid
-	JOIN
-		pg_class pkc ON pkc.oid=fkcon.confrelid
-	JOIN
-		pg_namespace pknam ON pkcon.connamespace=pknam.oid
-	JOIN
-		pg_namespace fknam ON fkcon.connamespace=fknam.oid
-	JOIN
-		pg_attribute fka ON fka.attnum=fkcon.conkey[1] AND fka.attrelid=fkc.oid
-	JOIN
-		pg_attribute pka ON pka.attnum=pkcon.conkey[1] AND pka.attrelid=pkc.oid
-	};
-
-	# if schema are provided, use this SQL
-	my $pk_schema_sql = " AND pknam.nspname = ? ";
-	my $fk_schema_sql = " AND fknam.nspname = ? ";
-
-	my $key_sql;
-
-	# if $fk_table: generate SQL stub, which will be same
-	# whether or not $pk_table supplied
-	if ($fk_table)
-	{
-		$key_sql = $fkey_sql . qq{
-		WHERE
-			fkc.relname = ?
-		};
-		push @dat, $fk_table;
-
-		if ($fk_schema)
-		{
-			$key_sql .= $fk_schema_sql;
-			push @dat,$fk_schema;
+		## We now need information about each constraint we care about.
+		## Foreign table: only 'f' / Primary table: only 'p' or 'u'
+		my $WHERE = $odbc ? "((contype  = 'p'" : "((contype IN ('p','u')";
+		if (length $ptable) {
+			$WHERE .= " AND conrelid=$oid{'P'}::oid";
 		}
-	}
-
-	# if $fk_table and $pk_table: (defined by DBI, not SQL/CLI)
-	# return foreign key of $fk_table that refers to $pk_table
-	# (if any)
-	if ($pk_table and $fk_table)
-	{
-		$key_sql .= qq{
-		AND
-			pkc.relname = ?
-		};
-		push @dat, $pk_table;
-
-		if ($pk_schema)
-		{
-			$key_sql .= $pk_schema_sql;
-			push @dat,$pk_schema;
-		}
-	}
-
-	# if $fk_table but no $pk_table:
-	# return all foreign keys of $fk_table, and all
-	# primary keys of tables to which $fk_table refers
-	if (!$pk_table and $fk_table)
-	{
-		# find primary/unique keys referenced by $fk_table
-		# (this one is a little tricky)
-		$key_sql .= ' UNION ' . $pkey_sql . qq{
-		WHERE
-			pkcon.conname IN
-		(
-		SELECT
-			pkcon.conname
-		FROM
-			pg_constraint AS fkcon
-		JOIN
-			pg_constraint AS pkcon ON 
-				fkcon.confrelid=pkcon.conrelid AND fkcon.confkey=pkcon.conkey
-		JOIN
-			pg_class fkc ON fkc.oid=fkcon.conrelid
-		WHERE
-			fkc.relname = ?
-		)	
-		};
-		push @dat, $fk_table;
-
-		if ($fk_schema)
-		{
-			$key_sql .= $pk_schema_sql;
-			push @dat,$fk_schema;
-		}
-	}
-
-	# if $pk_table but no $fk_table:
-	# return primary key of $pk_table and all foreign keys
-	# that reference $pk_table
-	# question: what about unique keys?
-	# (DBI and SQL/CLI both state to omit unique keys)
-
-	if ($pk_table and !$fk_table)
-	{
-		# find primary key (only!) of $pk_table
-		$key_sql = $pkey_sql . qq{
-		WHERE
-			pkc.relname = ?
-		AND
-			pkcon.contype = 'p'
-		};
-		@dat = ($pk_table);
-
-		if ($pk_schema)
-		{
-			$key_sql .= $pk_schema_sql;
-			push @dat,$pk_schema;
+		else {
+			$WHERE .= " AND conrelid IN (SELECT DISTINCT confrelid FROM ${C}pg_constraint WHERE conrelid=$oid{'F'}::oid)";
+			if (length $pschema) {
+				$WHERE .= " AND n2.nspname = " . $dbh->quote($pschema);
+			}
 		}
 
-		# find all foreign keys that reference $pk_table
-		$key_sql .= 'UNION ' . $fkey_sql . qq{
-		WHERE
-			pkc.relname = ?
-		AND
-			pkcon.contype = 'p'
-		};
-		push @dat, $pk_table;
-
-		if ($pk_schema)
-		{
-			$key_sql .= $fk_schema_sql;
-			push @dat,$pk_schema;
+		$WHERE .= ")\n \t\t\t\tOR \n \t\t\t\t(contype = 'f'";
+		if (length $ftable) {
+			$WHERE .= " AND conrelid=$oid{'F'}::oid";
+			if (length $ptable) {
+				$WHERE .= " AND confrelid=$oid{'P'}::oid";
+			}
 		}
-	}
+		else {
+			$WHERE .= " AND confrelid = $oid{'P'}::oid";
+			if (length $fschema) {
+				$WHERE .= " AND n2.nspname = " . $dbh->quote($fschema);
+			}
+		}
+		$WHERE .= "))";
 
-	return undef unless $key_sql;
-	my $sth = $dbh->prepare( $key_sql ) or
-		return undef;
-	$sth->execute(@dat);
+		## Grab everything except specific column names:
+		my $fk_sql = qq{
+		SELECT conrelid, confrelid, contype, conkey, confkey,
+			${C}quote_ident(c.relname) AS t_name, ${C}quote_ident(n2.nspname) AS t_schema,
+			${C}quote_ident(n.nspname) AS c_schema, ${C}quote_ident(conname) AS c_name,
+			CASE
+				WHEN confupdtype = 'c' THEN 0
+				WHEN confupdtype = 'r' THEN 1
+				WHEN confupdtype = 'n' THEN 2
+				WHEN confupdtype = 'a' THEN 3
+				WHEN confupdtype = 'd' THEN 4
+				ELSE -1
+			END AS update,
+			CASE
+				WHEN confdeltype = 'c' THEN 0
+				WHEN confdeltype = 'r' THEN 1
+				WHEN confdeltype = 'n' THEN 2
+				WHEN confdeltype = 'a' THEN 3
+				WHEN confdeltype = 'd' THEN 4
+				ELSE -1
+			END AS delete,
+			CASE
+				WHEN condeferrable = 'f' THEN 7
+				WHEN condeferred = 't' THEN 6
+				WHEN condeferred = 'f' THEN 5
+				ELSE -1
+			END AS defer
+			FROM ${C}pg_constraint k, ${C}pg_class c, ${C}pg_namespace n, ${C}pg_namespace n2
+			WHERE $WHERE
+				AND k.connamespace = n.oid
+				AND k.conrelid = c.oid
+				AND c.relnamespace = n2.oid
+				ORDER BY conrelid ASC
+				};
+		my $sth = $dbh->prepare($fk_sql);
+		$sth->execute();
+		my $info = $sth->fetchall_arrayref({});
+		return undef if ! defined $info or ! @$info;
 
-	return $sth;
+		## Return undef if just ptable given but no fk found
+		return undef if ! length $ftable and ! grep { $_->{'contype'} eq 'f'} @$info;
+
+		## Figure out which columns we need information about
+		my %colnum;
+		for (@$info) {
+			$colnum{$_->{'conrelid'}}{$1}++ while $_->{'conkey'} =~ /(\d+)/go;
+			if ($_->{'contype'} eq 'f') {
+				$colnum{$_->{'confrelid'}}{$1}++ while $_->{'confkey'} =~ /(\d+)/go;
+			}				
+		}
+
+		## Get the information about the columns computed above
+		my $SQL = qq{
+			SELECT a.attrelid, a.attnum, ${C}quote_ident(a.attname) AS colname, 
+				${C}quote_ident(t.typname) AS typename
+			FROM ${C}pg_attribute a, ${C}pg_type t
+			WHERE a.atttypid = t.oid
+			AND (\n};
+
+		$SQL .= join "\n\t\t\t\tOR\n" => map {
+			my $cols = join ',' => keys %{$colnum{$_}};
+			"\t\t\t\t( a.attrelid = '$_' AND a.attnum IN ($cols) )"
+		} sort keys %colnum;
+
+		$sth = $dbh->prepare(qq{$SQL \)});
+		$sth->execute();
+		my $attribs = $sth->fetchall_arrayref({});
+
+		## Make a lookup hash
+		my %attinfo;
+		for (@$attribs) {
+			$attinfo{"$_->{'attrelid'}"}{"$_->{'attnum'}"} = $_;
+		}
+
+		## This is an array in case we have identical oid/column combos. Lowest oid wins
+		my %ukey;
+		for my $c (grep { $_->{'contype'} ne 'f' } @$info) {
+			## Munge multi-column keys into sequential order
+			my $multi = join ' ' => sort split/\s*/, $c->{'conkey'};
+			push @{$ukey{$c->{'conrelid'}}{$multi}}, $c;
+		}
+		
+		## Finally, return as a SQL/CLI structure:
+		my $fkinfo = [];
+		my $x=0;
+		for my $t (sort { $a->{'c_name'} cmp $b->{'c_name'} } grep { $_->{'contype'} eq 'f' } @$info) {
+
+			## We need to find which constraint row (if any) matches our confrelid-confkey combo
+			## by checking out ukey hash. We sort for proper matching of { 1 2 } vs. { 2 1 }
+			## No match means we have a pure index constraint
+			my $u;
+			my $multi = join ' ' => sort split/\s*/, $t->{'confkey'};
+			if (exists $ukey{$t->{'confrelid'}}{$multi}) {
+				$u = $ukey{$t->{'confrelid'}}{$multi}->[0];
+			}
+			else {
+				## Mark this as an index so we can fudge things later on
+				$multi = "index";
+				## Grab the first one found, modify later on as needed
+				$u = (values %{$ukey{$t->{'confrelid'}}})[0]->[0];
+			}
+
+			## ODBC is primary keys only
+			next if $odbc and ($u->{'contype'} ne 'p' or $multi eq 'index');
+
+			my (@conkey, @confkey);
+			push (@conkey, $1) while $t->{'conkey'} =~ /(\d+)/go;
+			push (@confkey, $1) while $t->{'confkey'} =~ /(\d+)/go;
+			for (my $y=0; $conkey[$y]; $y++) {
+				# UK_TABLE_CAT
+				$fkinfo->[$x][0] = undef;
+				# UK_TABLE_SCHEM
+				$fkinfo->[$x][1] = $u->{'t_schema'};
+				# UK_TABLE_NAME
+				$fkinfo->[$x][2] = $u->{'t_name'};
+				# UK_COLUMN_NAME
+				$fkinfo->[$x][3] = $attinfo{$t->{'confrelid'}}{$confkey[$y]}{'colname'};
+				# FK_TABLE_CAT
+				$fkinfo->[$x][4] = undef;
+				# FK_TABLE_SCHEM
+				$fkinfo->[$x][5] = $t->{'t_schema'};
+				# FK_TABLE_NAME
+				$fkinfo->[$x][6] = $t->{'t_name'};
+				# FK_COLUMN_NAME
+				$fkinfo->[$x][7] = $attinfo{$t->{'conrelid'}}{$conkey[$y]}{'colname'};
+				# ORDINAL_POSITION
+				$fkinfo->[$x][8] = $conkey[$y];
+				# UPDATE_RULE
+				$fkinfo->[$x][9] = "$t->{'update'}";
+				# DELETE_RULE
+				$fkinfo->[$x][10] = "$t->{'delete'}";
+				# FK_NAME
+				$fkinfo->[$x][11] = $t->{'c_name'};
+				# UK_NAME (may be undef if an index with no named constraint)
+				$fkinfo->[$x][12] = $multi eq 'index' ? undef : $u->{'c_name'};
+				# DEFERRABILITY
+				$fkinfo->[$x][13] = "$t->{'defer'}";
+				# UNIQUE_OR_PRIMARY
+				$fkinfo->[$x][14] = ($u->{'contype'} eq 'p' and $multi ne 'index') ? 'PRIMARY' : 'UNIQUE';
+				# UK_DATA_TYPE
+				$fkinfo->[$x][15] = $attinfo{$t->{'confrelid'}}{$confkey[$y]}{'typename'};
+				# FK_DATA_TYPE
+				$fkinfo->[$x][16] = $attinfo{$t->{'conrelid'}}{$conkey[$y]}{'typename'};
+				$x++;
+			} ## End each column in this foreign key
+		} ## End each foreign key
+
+		my @CLI_cols = (qw(UK_TABLE_CAT UK_TABLE_SCHEM UK_TABLE_NAME UK_COLUMN_NAME
+									 FK_TABLE_CAT FK_TABLE_SCHEM FK_TABLE_NAME FK_COLUMN_NAME
+									 ORDINAL_POSITION UPDATE_RULE DELETE_RULE FK_NAME UK_NAME 
+									 DEFERABILITY UNIQUE_OR_PRIMARY UK_DATA_TYPE FK_DATA_TYPE));
+
+		my @ODBC_cols = (qw(PKTABLE_CAT PKTABLE_SCHEM PKTABLE_NAME PKCOLUMN_NAME
+									 FKTABLE_CAT FKTABLE_SCHEM FKTABLE_NAME FKCOLUMN_NAME
+									 KEY_SEQ UPDATE_RULE DELETE_RULE FK_NAME PK_NAME 
+									 DEFERABILITY UNIQUE_OR_PRIMARY PK_DATA_TYPE FKDATA_TYPE));
+
+		return _prepare_from_data('foreign_key_info', $fkinfo, $odbc ? \@ODBC_cols : \@CLI_cols);
+
 	}
 
 
@@ -803,11 +813,13 @@ $DBD::Pg::VERSION = '1.31';
 
   sub tables {
 			my ($dbh, @args) = @_;
+			my $attr = $args[4];
 			my $sth = $dbh->table_info(@args) or return;
 			my $tables = $sth->fetchall_arrayref() or return;
 			my $version = DBD::Pg::_pg_server_version($dbh);
-			my @tables = map { DBD::Pg::_pg_check_version(7.3, $version) ? 
-														 "$_->[1].$_->[2]" : $_->[2] } @$tables;
+			my @tables = map { (DBD::Pg::_pg_check_version(7.3, $version) 
+					and (! (ref $attr eq "HASH" and $attr->{noprefix}))) ? 
+						"$_->[1].$_->[2]" : $_->[2] } @$tables;
 			return @tables;
 	}
 
@@ -820,7 +832,7 @@ $DBD::Pg::VERSION = '1.31';
 			COLUMN_NAME   => 'NAME',
 			DATA_TYPE     => 'TYPE',
 			COLUMN_SIZE   => 'SIZE',
-			NULLABLE 	  => 'NOTNULL',
+			NULLABLE 	    => 'NOTNULL',
 			REMARKS       => 'REMARKS',
 			COLUMN_DEF    => 'DEFAULT',
 			pg_constraint => 'CONSTRAINT',
@@ -833,8 +845,8 @@ $DBD::Pg::VERSION = '1.31';
 			for my $name (keys %$row) {
 				$row->{ $convert{$name} } = $row->{$name};
 
-				# The REMARKS column is an exception because the name is the same
-				delete $row->{$name} unless ($name eq 'REMARKS');
+				## Keep some original columns
+				delete $row->{$name} unless ($name eq 'REMARKS' or $name eq 'NULLABLE');
 
 			}
 			# Moved check outside of loop as it was inverting the NOTNULL value for
@@ -894,6 +906,9 @@ $DBD::Pg::VERSION = '1.31';
 		MINIMUM_SCALE     => 13,
 		MAXIMUM_SCALE     => 14,
 		NUM_PREC_RADIX    => 15,
+    SQL_DATA_TYPE     => 16,
+    SQL_DATETIME_SUB  => 17,
+    INTERVAL_PRECISION=> 18,
 	};
 
 
@@ -939,26 +954,26 @@ $DBD::Pg::VERSION = '1.31';
 		$names,
 		# name          type  prec  prefix suffix  create params null case se unsign mon  incr       local   min    max
 		#
-		[ 'bytea',        -2, 4096,  '\'',  '\'',           undef, 1, '1', 3, undef, '0', '0',     'BYTEA', undef, undef, undef ],
-		[ 'bool',          0,    1,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'BOOLEAN', undef, undef, undef ],
-		[ 'int8',          8,   20, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',   'LONGINT', undef, undef, undef ],
-		[ 'int2',          5,    5, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',  'SMALLINT', undef, undef, undef ],
-		[ 'int4',          4,   10, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',   'INTEGER', undef, undef, undef ],
-		[ 'text',         12, 4096,  '\'',  '\'',           undef, 1, '1', 3, undef, '0', '0',      'TEXT', undef, undef, undef ],
-		[ 'float4',        6,   12, undef, undef,     'precision', 1, '0', 2,   '0', '0', '0',     'FLOAT', undef, undef, undef ],
-		[ 'float8',        7,   24, undef, undef,     'precision', 1, '0', 2,   '0', '0', '0',      'REAL', undef, undef, undef ],
-		[ 'abstime',      10,   20,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'ABSTIME', undef, undef, undef ],
-		[ 'reltime',      10,   20,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'RELTIME', undef, undef, undef ],
-		[ 'tinterval',    11,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0', 'TINTERVAL', undef, undef, undef ],
-		[ 'money',         0,   24, undef, undef,           undef, 1, '0', 2, undef, '1', '0',     'MONEY', undef, undef, undef ],
-		[ 'bpchar',        1, 4096,  '\'',  '\'',    'max length', 1, '1', 3, undef, '0', '0', 'CHARACTER', undef, undef, undef ],
-		[ 'bpchar',       12, 4096,  '\'',  '\'',    'max length', 1, '1', 3, undef, '0', '0', 'CHARACTER', undef, undef, undef ],
-		[ 'varchar',      12, 4096,  '\'',  '\'',    'max length', 1, '1', 3, undef, '0', '0',   'VARCHAR', undef, undef, undef ],
-		[ 'date',          9,   10,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',      'DATE', undef, undef, undef ],
-		[ 'time',         10,   16,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',      'TIME', undef, undef, undef ],
-		[ 'datetime',     11,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',  'DATETIME', undef, undef, undef ],
-		[ 'timespan',     11,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',  'INTERVAL', undef, undef, undef ],
-		[ 'timestamp',    10,   19,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0', 'TIMESTAMP', undef, undef, undef ]
+		[ 'bytea',        -2, 4096,  '\'',  '\'',           undef, 1, '1', 3, undef, '0', '0',     'BYTEA', undef, undef, undef, undef, undef, undef ],
+		[ 'bool',          0,    1,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'BOOLEAN', undef, undef, undef, undef, undef, undef ],
+		[ 'int8',          8,   20, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',   'LONGINT', undef, undef, undef, undef, undef, undef ],
+		[ 'int2',          5,    5, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',  'SMALLINT', undef, undef, undef, undef, undef, undef ],
+		[ 'int4',          4,   10, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',   'INTEGER', undef, undef, undef, undef, undef, undef ],
+		[ 'text',         12, 4096,  '\'',  '\'',           undef, 1, '1', 3, undef, '0', '0',      'TEXT', undef, undef, undef, undef, undef, undef ],
+		[ 'float4',        6,   12, undef, undef,     'precision', 1, '0', 2,   '0', '0', '0',     'FLOAT', undef, undef, undef, undef, undef, undef ],
+		[ 'float8',        7,   24, undef, undef,     'precision', 1, '0', 2,   '0', '0', '0',      'REAL', undef, undef, undef, undef, undef, undef ],
+		[ 'abstime',      10,   20,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'ABSTIME', undef, undef, undef, undef, undef, undef ],
+		[ 'reltime',      10,   20,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'RELTIME', undef, undef, undef, undef, undef, undef ],
+		[ 'tinterval',    11,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0', 'TINTERVAL', undef, undef, undef, undef, undef, undef ],
+		[ 'money',         0,   24, undef, undef,           undef, 1, '0', 2, undef, '1', '0',     'MONEY', undef, undef, undef, undef, undef, undef ],
+		[ 'bpchar',        1, 4096,  '\'',  '\'',    'max length', 1, '1', 3, undef, '0', '0', 'CHARACTER', undef, undef, undef, undef, undef, undef ],
+		[ 'bpchar',       12, 4096,  '\'',  '\'',    'max length', 1, '1', 3, undef, '0', '0', 'CHARACTER', undef, undef, undef, undef, undef, undef ],
+		[ 'varchar',      12, 4096,  '\'',  '\'',    'max length', 1, '1', 3, undef, '0', '0',   'VARCHAR', undef, undef, undef, undef, undef, undef ],
+		[ 'date',          9,   10,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',      'DATE', undef, undef, undef, undef, undef, undef ],
+		[ 'time',         10,   16,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',      'TIME', undef, undef, undef, undef, undef, undef ],
+		[ 'datetime',     11,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',  'DATETIME', undef, undef, undef, undef, undef, undef ],
+		[ 'timespan',     11,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',  'INTERVAL', undef, undef, undef, undef, undef, undef ],
+		[ 'timestamp',    10,   19,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0', 'TIMESTAMP', undef, undef, undef, undef, undef, undef ]
 		#
 		# intentionally omitted: char, all geometric types, all array types
 		];
@@ -992,8 +1007,7 @@ $DBD::Pg::VERSION = '1.31';
     6  => ["SQL_DRIVER_NAME",                'DBD/Pg.pm',         ],
    17  => ["SQL_DBMS_NAME",                  'PostgreSQL'         ],
    18  => ["SQL_DBMS_VERSION",               'ODBCVERSION'        ],
-   29  => ["SQL_IDENTIFIER_QUOTE_CHAR",      '\"'                 ],
-   41  => ["SQL_CATALOG_NAME_SEPARATOR",     ''                   ],
+   29  => ["SQL_IDENTIFIER_QUOTE_CHAR",      '"'                  ],
    47  => ["SQL_USER_NAME",                  $dbh->{CURRENT_USER} ],
  
 ## Size limits
@@ -1047,7 +1061,6 @@ $DBD::Pg::VERSION = '1.31';
    14  => ["SQL_SEARCH_PATTERN_ESCAPE",      '\\'                 ],
    22  => ["SQL_CONCAT_NULL_BEHAVIOR",       0                    ], ## SQL_CB_NULL
    28  => ["SQL_IDENTIFIER_CASE",            4                    ], ## SQL_IC_MIXED 
-   29  => ["SQL_IDENTIFIER_QUOTE_CHAR",      '\"'                 ],
    40  => ["SQL_PROCEDURE_TERM",             'Function'           ],
    45  => ["SQL_TABLE_TERM",                 'Table'              ],
    46  => ["SQL_TXN_CAPABLE",                4                    ], ## SQL_TC_ALL
@@ -1113,19 +1126,13 @@ $DBD::Pg::VERSION = '1.31';
 			);
 			return 7; ## All of the above
 		 }
- 
 		 return $ans;
- 
 	} # end of get_info
- 
- 
-
 } # end of package DBD::Pg::db
 
 {  package DBD::Pg::st; # ====== STATEMENT ======
 
 	# all done in XS
-
 }
 
 1;
@@ -1180,7 +1187,7 @@ The following connect statement shows all possible parameters:
                       "options=$options;tty=$tty", "$username", "$password");
 
 If a parameter is undefined PostgreSQL first looks for specific environment
-variables and then it uses hard coded defaults:
+variables and then it uses hard-coded defaults:
 
   parameter  environment variable  hard coded default
   --------------------------------------------------
@@ -1221,7 +1228,7 @@ Implemented by DBI, no driver-specific impact.
 The driver supports this method. Note that the necessary database connection to
 the database template1 will be done on the localhost without any
 user-authentication. Other preferences can only be set with the environment
-variables PGHOST, DBI_USER and DBI_PASS.
+variables PGHOST, PGPORT, DBI_USER and DBI_PASS.
 
 =item B<trace>
 
@@ -1293,9 +1300,13 @@ This method returns for the given table a reference to an array of hashes:
   PRIMARY_KEY flag is_primary_key
   REMARKS     attribute description
 
+The REMARKS field will be returned as NULL for Postgres versions 7.1.x and
+older.
+
+
   $lobjId = $dbh->func($mode, 'lo_creat');
 
-Creates a new large object and returns the object-id. $mode is a bit-mask
+Creates a new large object and returns the object-id. $mode is a bitmask
 describing different attributes of the new object. Use the following
 constants:
 
@@ -1336,7 +1347,7 @@ undef upon failure.
 Closes an existing large object. Returns true upon success and false upon
 failure.
 
-  $lobj_fd = $dbh->func($lobj_fd, 'lo_unlink');
+  $ret = $dbh->func($lobjId, 'lo_unlink');
 
 Deletes an existing large object. Returns true upon success and false upon
 failure.
@@ -1437,10 +1448,6 @@ Implemented by DBI, not used by the driver.
 
 Implemented by DBI, no driver-specific impact.
 
-=item B<private_*>
-
-Implemented by DBI, no driver-specific impact.
-
 =back
 
 =head1 DBI DATABASE HANDLE OBJECTS
@@ -1531,8 +1538,8 @@ Supported by the driver as proposed by DBI.
 
   $rc = $dbh->ping;
 
-This driver supports the ping-method, which can be used to check the validity
-of a database-handle. The ping method issues an empty query and checks the
+This driver supports the ping method, which can be used to check the validity
+of a database handle. The ping method issues an empty query and checks the
 result status.
 
 =item B<column_info>
@@ -1557,6 +1564,9 @@ Also, four additional non-standard fields are returned:
   pg_attypmod
   pg_constraint - holds column constraint definition
 
+The REMARKS field will be returned as NULL for Postgres versions 7.1.x and
+older.
+
 =item B<table_info>
 
   $sth = $dbh->table_info( $catalog, $schema, $table, $type );
@@ -1568,33 +1578,73 @@ percent sign (%) or an underscore (_) are detected in the argument.
 The $type argument accepts a value of wither "TABLE" or "VIEW" 
 (using both is the default action).
 
+=item B<primary_key_info>
+
+  $sth = $dbh->primary_key_info( $catalog, $schema, $table, \%attr );
+
+Supported by the driver as proposed by DBI. The $catalog argument is 
+curently unused, and the $schema argument has no effect against 
+servers running version 7.2 or less. There are no search patterns allowed, 
+but leaving the $schema argument blank will cause the first table 
+found in the schema search path to be used. An additional field, DATA_TYPE, 
+is returned and shows the data type for each of the arguments in the 
+COLUMN_NAME field.
+
+In addition to the standard format of returning one row for each column 
+found for the primary key, you can pass the argument "onerow" to force 
+a single row to be used. If the primary key has multiple columns, the 
+KEY_SEQ, COLUMN_NAME, and DATA_TYPE fields will return a comma-delimited 
+string. If "onerow" is set to "2", the fields will be returned as an 
+arrayref, which can be useful when multiple columns are involved:
+
+  $sth = $dbh->primary_key_info('', '', 'dbd_pg_test', {onerow => 2});
+  if (defined $sth) {
+    my $pk = $sth->fetchall_arrayref()->[0];
+    print "Table $pk->[2] has a primary key on these columns:\n";
+    for (my $x=0; defined $pk->[3][$x]; $x++) {
+      print "Column: $pk->[3][$x]  (data type: $pk->[6][$x])\n";
+    }
+  }
+
+=item B<primary_key>
+
+Supported by the driver as proposed by DBI.
+
 
 =item B<foreign_key_info>
 
   $sth = $dbh->foreign_key_info( $pk_catalog, $pk_schema, $pk_table,
                                  $fk_catalog, $fk_schema, $fk_table );
 
-Supported by the driver as proposed by DBI. Unimplemented for Postgres
-servers before 7.3 (returns undef).  Currently only returns information
-about first column of any multiple-column keys.
+Supported by the driver as proposed by DBI, using the SQL/CLI variant. 
+This function returns undef for PostgreSQL servers earlier than version 
+7.3. There are no search patterns allowed, but leaving the $schema argument 
+blank will cause the first table found in the schema search path to be 
+used. Two additional fields, UK_DATA_TYPE and FK_DATA_TYPE, are returned 
+which show the data type for the unique and foreign key columns. Foreign 
+keys which have no named constraint (where the referenced column only has 
+an unique index) will return undef for the UK_NAME field.
 
 =item B<tables>
 
-  @names = $dbh->tables( $catalog, $schema, $table, $type );
+  @names = $dbh->tables( $catalog, $schema, $table, $type, \%attr );
 
-Supported by the driver as proposed by DBI. This method returns all tables and
-views which are visible to the current user. If the database is version 7.3 
-or higher, the name of the schema appears before the table or view name.
+Supported by the driver as proposed by DBI. This method returns all tables 
+and/or views which are visible to the current user: see the table_info() 
+for more information about the arguments. If the database is version 7.3 
+or higher, the name of the schema appears before the table or view name. This 
+can be turned off by adding in the "noprefix" attribute:
 
+  my @tables = $dbh->tables( '', '', 'dbd_pg_test', '', {noprefix => 1} );
 
 
 =item B<type_info_all>
 
   $type_info_all = $dbh->type_info_all;
 
-Supported by the driver as proposed by DBI. Only for SQL data-types and for
-frequently used data-types information is provided. The mapping between the
-PostgreSQL typename and the SQL92 data-type (if possible) has been done
+Supported by the driver as proposed by DBI. Information is only provided for 
+SQL datatypes and for frequently used datatypes. The mapping between the
+PostgreSQL typename and the SQL92 datatype (if possible) has been done
 according to the following table:
 
   +---------------+------------------------------------+
@@ -1620,7 +1670,7 @@ according to the following table:
   | timestamp     | TIMESTAMP                          |
   +---------------+------------------------------------+
 
-For further details concerning the PostgreSQL specific data-types please read
+For further details concerning the PostgreSQL specific datatypes please read
 the L<pgbuiltin>.
 
 =item B<type_info>
@@ -1703,6 +1753,11 @@ Constant to be used for the mode in lo_creat and lo_open.
 =item B<pg_INV_WRITE> (integer, read-only)
 
 Constant to be used for the mode in lo_creat and lo_open.
+
+=item B<pg_bool_tf> (boolean)
+
+PostgreSQL specific attribute. If true, boolean values will be returned 
+as the characters 't' and 'f' instead of '1' and '0'.
 
 =back
 
@@ -1801,7 +1856,7 @@ documented, so this method might change.
 This method seems to be heavily influenced by the current implementation of
 blobs in Oracle. Nevertheless we try to be as compatible as possible. Whereas
 Oracle suffers from the limitation that blobs are related to tables and every
-table can have only one blob (data-type LONG), PostgreSQL handles its blobs
+table can have only one blob (datatype LONG), PostgreSQL handles its blobs
 independent of any table by using so called object identifiers. This explains
 why the blob_read method is blessed into the STATEMENT package and not part of
 the DATABASE package. Here the field parameter has been used to handle this
@@ -1878,7 +1933,7 @@ PostgreSQL specific attribute. It returns a reference to an array of integer
 values for each column. The integer shows the size of the column in
 bytes. Variable length columns are indicated by -1.
 
-=item B<pg_type>  (hash-ref, read-only)
+=item B<pg_type>  (array-ref, read-only)
 
 PostgreSQL specific attribute. It returns a reference to an array of strings
 for each column. The string shows the name of the data_type.
@@ -1925,14 +1980,15 @@ the execute method fetches all data at once into data structures located in
 the frontend application. This has to be considered when selecting large
 amounts of data!
 
-=head2 Data-Type bool
+=head2 Datatype bool
 
 The current implementation of PostgreSQL returns 't' for true and 'f' for
 false. From the Perl point of view a rather unfortunate choice. The DBD::Pg
 module translates the result for the data-type bool in a perl-ish like manner:
 'f' -> '0' and 't' -> '1'. This way the application does not have to check the
 database-specific returned values for the data-type bool, because Perl treats
-'0' as false and '1' as true.
+'0' as false and '1' as true. You may set the pg_bool_tf attribute to change 
+the values back to 't' and 'f' if you wish.
 
 Boolean values can be passed to PostgreSQL as TRUE, 't', 'true', 'y', 'yes' or
 '1' for true and FALSE, 'f', 'false', 'n', 'no' or '0' for false.
@@ -1970,11 +2026,11 @@ Major parts of this package have been copied from DBI and DBD-Oracle.
 
 B<Mailing List>
 
-The current maintainers may be reached through the 'dbdpg-general' mailing list:
-http://gborg.postgresql.org/mailman/listinfo/dbdpg-general
+The current maintainers may be reached through the 'dbdpg-general' mailing
+list: L<http://gborg.postgresql.org/mailman/listinfo/dbdpg-general/>.
 
-This list is available through Gmane (http://www.gmane.org) as a newsgroup with the name:
-C<gmane.comp.db.postgresql.dbdpg>
+This list is available through Gmane (L<http://www.gmane.org/>) as a newsgroup
+with the name: C<gmane.comp.db.postgresql.dbdpg>
 
 =head1 COPYRIGHT
 
@@ -1987,5 +2043,4 @@ the Perl README file.
 See also B<DBI/ACKNOWLEDGMENTS>.
 
 =cut
-
 

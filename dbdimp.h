@@ -1,5 +1,5 @@
 /*
-   $Id: dbdimp.h,v 1.10 2003/03/31 17:52:39 bmomjian Exp $
+   $Id: dbdimp.h,v 1.11 2004/01/21 23:47:18 turnstep Exp $
 
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -25,6 +25,8 @@ struct imp_dbh_st {
     int         init_commit;	/* initialize AutoCommit */
     int         pg_auto_escape;	/* initialize AutoEscape */
     int         pg_bool_tf;     /* do bools return 't'/'f' */
+    int         done_begin;     /* Have we done a begin?
+                                 Only used if AutoCommit is off. */
 #ifdef is_utf8_string
     int         pg_enable_utf8;	/* should we attempt to make utf8 strings? */
 #endif

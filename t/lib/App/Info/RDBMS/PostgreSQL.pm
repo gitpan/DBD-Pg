@@ -1,6 +1,6 @@
 package App::Info::RDBMS::PostgreSQL;
 
-# $Id: PostgreSQL.pm,v 1.4 2003/08/15 00:08:05 turnstep Exp $
+# $Id: PostgreSQL.pm,v 1.5 2003/11/17 21:10:12 theory Exp $
 
 =head1 NAME
 
@@ -251,7 +251,7 @@ my $get_version = sub {
             @{$self}{qw(version major minor patch)} =
               ($version, $x, $y, $z);
 				## Beta/devel/release candidate versions are treated as patch level "0"
-        } elsif ($version =~ /(\d+)\.(\d+)\w+\d+/) {
+        } elsif ($version =~ /(\d+)\.(\d+)/) {
             @{$self}{qw(version major minor patch)} =
               ($version, $1, $2, 0);
         } else {

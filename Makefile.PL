@@ -1,10 +1,10 @@
 
-# $Id: Makefile.PL,v 1.18 2003/09/25 04:59:25 tlowery Exp $
+# $Id: Makefile.PL,v 1.20 2003/12/01 18:53:26 turnstep Exp $
 
 use ExtUtils::MakeMaker;
 use Config;
 use strict;
-use 5.006000;
+use 5.006001;
 use DBI 1.00;
 use DBI::DBD;
 
@@ -88,7 +88,9 @@ my %opts = (
     LIBS         => ["-L$POSTGRES_LIB -lpq"],
     AUTHOR       => 'http://gborg.postgresql.org/project/dbdpg/projdisplay.php',
     ABSTRACT     => 'PostgreSQL database driver for the DBI module',
-    PREREQ_PM    => { 'Test::Simple' => 0.17 }, # Need Test::More,
+    PREREQ_PM    => { 'Test::Simple' => '0.17',  # Need Test::More.
+                      'Test::Harness' => '2.03', # Need TODO tests.
+                    },
     CCFLAGS      => $comp_opts,
     PERL_MALLOC_OK => 1,
 );
