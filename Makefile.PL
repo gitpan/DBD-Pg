@@ -1,5 +1,5 @@
 
-# $Id: Makefile.PL,v 1.19 1999/01/16 05:56:31 mergl Exp $
+# $Id: Makefile.PL,v 1.20 1999/02/14 20:33:24 mergl Exp $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -9,7 +9,6 @@ use DBI::DBD;
 
 print "\nConfiguring Pg\n";
 print "Remember to actually read the README file !\n";
-print "For postgresql-v6.4 you need to apply a patch !\n";
 die "\nYou didn't read the README file !\n" unless ($] >= 5.002);
 
 if (! $ENV{POSTGRES_HOME}) {

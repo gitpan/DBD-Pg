@@ -1,21 +1,19 @@
 
 DBD::Pg  --  a PostgreSQL interface for Perl 5.
 
-   $Id: README,v 1.32 1999/01/16 05:57:43 mergl Exp $
+   $Id: README,v 1.33 1999/02/14 20:33:24 mergl Exp $
 
+   Copyright (c) 1997,1998,1999 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
-   Portions Copyright (c) 1997,1998           Edmund Mergl
 
    You may distribute under the terms of either the GNU General Public
-   License or the Artistic License, as specified in the Perl README file, 
-   with the exception that it cannot be placed on a CD-ROM or similar media
-   for commercial distribution without the prior approval of the author.
+   License or the Artistic License, as specified in the Perl README file.
 
 
 DESCRIPTION:
 ------------
 
-This is version 0.90 of DBD-Pg.
+This is version 0.91 of DBD-Pg.
 DBD-Pg is a PostgreSQL interface for Perl5 using DBI.
 
 For further information about DBI look at:
@@ -26,9 +24,8 @@ For further information about DBI look at:
 RECENT CHANGES:
 ---------------
 
- - discard parameter authtype from connect string
- - remove work-around for bug in the large object 
-   interface of postgresql 
+- removed restriction for commercial use in copyright
+- corrected DATA_TYPE in type_info_all()
 
 
 COPYRIGHT:
@@ -66,6 +63,7 @@ REQUIREMENTS:
 -------------
 
   - build, test and install Perl 5         (at least 5.003)
+      please do not use any version above 5.005_02 !
   - build, test and install the DBI module (at least 1.00)
   - build, test and install PostgreSQL     (at least 6.4.2)
 
@@ -144,6 +142,6 @@ Sun Users: if you get compile errors like:
 
 ---------------------------------------------------------------------------
 
-   Edmund Mergl <E.Mergl@bawue.de>                       January 15, 1999
+   Edmund Mergl <E.Mergl@bawue.de>                       February 14, 1999
 
 ---------------------------------------------------------------------------

@@ -1,5 +1,9 @@
 Revision history for Perl extension DBD-Pg.
 
+0.91 Feb 14, 1999
+	- removed restriction for commercial use in copyright
+	- corrected DATA_TYPE in type_info_all()
+
 0.90 Jan 15, 1998
 	- discard parameter authtype from connect string
 	- remove work-around for bug in the large object 

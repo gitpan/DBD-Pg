@@ -1,13 +1,11 @@
 /*
-   $Id: dbdimp.h,v 1.13 1998/09/11 18:12:01 mergl Exp $
+   $Id: dbdimp.h,v 1.14 1999/02/14 20:33:25 mergl Exp $
 
+   Copyright (c) 1997,1998,1999 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
-   Portions Copyright (c) 1997,1998           Edmund Mergl
 
    You may distribute under the terms of either the GNU General Public
-   License or the Artistic License, as specified in the Perl README file,
-   with the exception that it cannot be placed on a CD-ROM or similar media
-   for commercial distribution without the prior approval of the author.
+   License or the Artistic License, as specified in the Perl README file.
 
 */
 

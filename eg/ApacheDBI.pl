@@ -1,9 +1,12 @@
 #!/usr/local/bin/perl
 
-# $Id: ApacheDBI.pl,v 1.1 1998/09/11 18:13:15 mergl Exp $
+# $Id: ApacheDBI.pl,v 1.2 1999/02/14 20:33:29 mergl Exp $
 
+# don't forget to create in postgres the user who is running 
+# the httpd, eg 'createuser nobody' !
+#
 # demo script, tested with:
-#  - PostgreSQL-6.4
+#  - PostgreSQL-6.4.2
 #  - apache_1.3.1
 #  - mod_perl-1.15
 #  - perl5.005_02

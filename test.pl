@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl,v 1.20 1998/10/11 17:40:37 mergl Exp $
+# $Id: test.pl,v 1.21 1999/02/14 20:33:25 mergl Exp $
 
 # Before `make install' is performed this script should be runnable with
 # `make test'. After `make install' it should work as `perl test.pl'
@@ -28,8 +28,13 @@ use strict;
 
 ######################### End of black magic.
 
+# when your database is running on a remote host
+# just extend both database names below like:
+# $dbmain = 'template1 host=my_host port=my_port';
+
 my $dbmain = 'template1';
 my $dbname = 'pgperltest';
+
 my ($dbh0, $dbh, $sth);
 
 #DBI->trace(2); # make your choice

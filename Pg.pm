@@ -1,18 +1,16 @@
 
-#  $Id: Pg.pm,v 1.32 1999/01/16 05:56:32 mergl Exp $
+#  $Id: Pg.pm,v 1.33 1999/02/14 20:33:24 mergl Exp $
 #
+#  Copyright (c) 1997,1998,1999 Edmund Mergl
 #  Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
-#  Portions Copyright (c) 1997,1998           Edmund Mergl
 #
 #  You may distribute under the terms of either the GNU General Public
-#  License or the Artistic License, as specified in the Perl README file,
-#  with the exception that it cannot be placed on a CD-ROM or similar media
-#  for commercial distribution without the prior approval of the author.
+#  License or the Artistic License, as specified in the Perl README file.
 
 
 require 5.003;
 
-$DBD::Pg::VERSION = '0.90';
+$DBD::Pg::VERSION = '0.91';
 
 {
     package DBD::Pg;
@@ -208,33 +206,50 @@ $DBD::Pg::VERSION = '0.90';
 
 	#  typname       |typlen|typprtlen|    SQL92
 	#  --------------+------+---------+    -------
-	#  bool          |     1|        1|    BOOL
-	#  bpchar        |    -1|       -1|    CHAR(n)    bp=blank padded
+	#  bool          |     1|        1|    BOOLEAN
+	#  text          |    -1|       -1|    like VARCHAR, but automatic storage allocation
+	#  bpchar        |    -1|       -1|    CHARACTER(n)    bp=blank padded
 	#  varchar       |    -1|       -1|    VARCHAR(n)
 	#  int2          |     2|        5|    SMALLINT
-	#  int4          |     4|       10|    INT
+	#  int4          |     4|       10|    INTEGER
+	#  int8          |     8|       20|    /
+	#  money         |     4|       24|    /
 	#  float4        |     4|       12|    FLOAT(p)   for p<7=float4, for p<16=float8
 	#  float8        |     8|       24|    REAL
+	#  abstime       |     4|       20|    /
+	#  reltime       |     4|       20|    /
+	#  tinterval     |    12|       47|    /
 	#  date          |     4|       10|    /
 	#  time          |     8|       16|    /
-	#  timespan      |    12|       47|    TINTERVAL
+	#  datetime      |     8|       47|    /
+	#  timespan      |    12|       47|    INTERVAL
 	#  timestamp     |     4|       19|    TIMESTAMP
 	#  --------------+------+---------+
 
 	my $ti = [
 	  $names,
-          # name         type   prec  prefix suffix    create params null case se unsign mon  incr      local   min    max
-          [ 'BOOL',      undef,    1,  '\'',  '\'',             undef, 1, '0', 3, undef, '0', '0',      undef, undef, undef ],
-          [ 'CHAR',          1, 4096,  '\'',  '\'',      'max length', 1, '1', 3, undef, '0', '0',   'bpchar', undef, undef ],
-          [ 'VARCHAR',      12, 4096,  '\'',  '\'',      'max length', 1, '1', 3, undef, '0', '0',      undef, undef, undef ],
-          [ 'SMALLINT',  undef,    5, undef, undef,             undef, 1, '0', 3,   '0', '0', '0',     'int2', undef, undef ],
-          [ 'INT',       undef,   10, undef, undef,             undef, 1, '0', 3,   '0', '0', '0',     'int4', undef, undef ],
-          [ 'FLOAT',     undef,   12, undef, undef,       'precision', 1, '0', 3,   '0', '0', '0',   'float4', undef, undef ],
-          [ 'REAL',      undef,   24, undef, undef,             undef, 1, '0', 3,   '0', '0', '0',   'float8', undef, undef ],
-          [ 'DATE',      undef,   10,  '\'',  '\'',             undef, 1, '0', 3, undef, '0', '0',      undef,   '0',   '0' ],
-          [ 'TIME',      undef,   16,  '\'',  '\'',             undef, 1, '0', 3, undef, '0', '0',      undef,   '0',   '0' ],
-          [ 'TINTERVAL', undef,   47,  '\'',  '\'',             undef, 1, '0', 3, undef, '0', '0', 'timespan',   '0',   '0' ],
-          [ 'TIMESTAMP', undef,   19,  '\'',  '\'',             undef, 1, '0', 3, undef, '0', '0',      undef,   '0',   '0' ]
+          # name          type  prec  prefix suffix  create params null case se unsign mon  incr       local   min    max
+          #					     
+          [ 'bool',         16,    1,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'BOOLEAN', undef, undef ],
+          [ 'int8',         20,   20, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',   'LONGINT', undef, undef ],
+          [ 'int2',         21,    5, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',  'SMALLINT', undef, undef ],
+          [ 'int4',         23,   10, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',   'INTEGER', undef, undef ],
+          [ 'text',         25, 4096,  '\'',  '\'',           undef, 1, '1', 3, undef, '0', '0',      'TEXT', undef, undef ],
+          [ 'float4',      700,   12, undef, undef,     'precision', 1, '0', 2,   '0', '0', '0',     'FLOAT', undef, undef ],
+          [ 'float8',      701,   24, undef, undef,     'precision', 1, '0', 2,   '0', '0', '0',      'REAL', undef, undef ],
+          [ 'abstime',     702,   20,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'ABSTIME', undef, undef ],
+          [ 'reltime',     703,   20,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'RELTIME', undef, undef ],
+          [ 'tinterval',   704,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0', 'TINTERVAL', undef, undef ],
+          [ 'money',       790,   24, undef, undef,           undef, 1, '0', 2, undef, '1', '0',     'MONEY', undef, undef ],
+          [ 'bpchar',     1042, 4096,  '\'',  '\'',    'max length', 1, '1', 3, undef, '0', '0', 'CHARACTER', undef, undef ],
+          [ 'varchar',    1043, 4096,  '\'',  '\'',    'max length', 1, '1', 3, undef, '0', '0',   'VARCHAR', undef, undef ],
+          [ 'date',       1082,   10,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',      'DATE', undef, undef ],
+          [ 'time',       1083,   16,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',      'TIME', undef, undef ],
+          [ 'datetime',   1084,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',  'DATETIME', undef, undef ],
+          [ 'timespan',   1186,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',  'INTERVAL', undef, undef ],
+          [ 'timestamp',  1296,   19,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0', 'TIMESTAMP', undef, undef ]
+          #
+          # intentionally omitted: char, bytea, all geometric types, all array types
         ];
 	return $ti;
     }
@@ -579,21 +594,28 @@ complete name including the package.
 Supported by the driver as proposed by DBI. 
 Only for SQL data-types and for frequently used data-types 
 information is provided. The mapping between the PostgreSQL typename 
-and the SQL92 data-type has been done according to the following 
-table: 
+and the SQL92 data-type (if possible) has been done according to the 
+following table: 
 
 	+---------------+------------------------------------+
 	| typname       | SQL92                              |
 	|---------------+------------------------------------|
 	| bool          | BOOL                               |
+	| text          | /                                  |
 	| bpchar        | CHAR(n)                            |
 	| varchar       | VARCHAR(n)                         |
 	| int2          | SMALLINT                           |
 	| int4          | INT                                |
+	| int8          | /                                  |
+	| money         | /                                  |
 	| float4        | FLOAT(p)   p<7=float4, p<16=float8 |
 	| float8        | REAL                               |
+	| abstime       | /                                  |
+	| reltime       | /                                  |
+	| tinterval     | /                                  |
 	| date          | /                                  |
 	| time          | /                                  |
+	| datetime      | /                                  |
 	| timespan      | TINTERVAL                          |
 	| timestamp     | TIMESTAMP                          |
 	+---------------+------------------------------------+
@@ -786,7 +808,7 @@ Supported by the driver as proposed by DBI.
 Supported by the driver as proposed by DBI, with 
 the restriction, that the types are PostgreSQL 
 specific data-types which do not correspond to 
-international standards. 
+international standards.
 
 =item B<PRECISION>  (array-ref, read-only)
 
