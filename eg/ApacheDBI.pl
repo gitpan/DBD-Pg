@@ -1,16 +1,16 @@
 #!/usr/local/bin/perl
 
-# $Id: ApacheDBI.pl,v 1.2 1999/02/14 20:33:29 mergl Exp $
+# $Id: ApacheDBI.pl,v 1.3 1999/09/29 20:30:31 mergl Exp $
 
 # don't forget to create in postgres the user who is running 
 # the httpd, eg 'createuser nobody' !
 #
 # demo script, tested with:
-#  - PostgreSQL-6.4.2
-#  - apache_1.3.1
-#  - mod_perl-1.15
-#  - perl5.005_02
-#  - DBI-1.00
+#  - PostgreSQL-6.5.2
+#  - apache_1.3.9
+#  - mod_perl-1.21
+#  - perl5.005_03
+#  - DBI-1.13
 
 use CGI;
 use DBI;

@@ -1,0 +1,157 @@
+
+$Id: README.win32,v 1.1 1999/09/29 20:30:23 mergl Exp $
+
+
+######################################################################
+#                                                                    #
+#             a pre-compiled package is available at:                #
+#                                                                    #
+#           http://www.bawue.de/~mergl/export/DBD-Pg.zip             #
+#                                                                    #
+######################################################################
+
+
+Here is a step-by-step procedure for getting DBD-Pg to work on Windows NT.
+This Port has been done by Bob Kline <bkline@rksystems.com>. His original 
+mail is attached at the end. 
+Please note, that currently only the client part is available for Win32. 
+There is no complete postgresql-port for Win32 !
+
+
+prerequisites:    (older versions might also work, but these are the versions I used)
+--------------
+
+ - Windows NT4 SP4
+ - Visual Studio 6.0
+ - ActiveState perl 519 with DBI-1.13
+ - postgresql-6.5.2
+ - DBD-Pg-0.93
+
+Here we assume, that perl and postgresql have been installed in C:\
+Now perform the following steps:
+
+
+1. compile libpq
+----------------
+
+set POSTGRES_HOME=C:\postgresql-6.5.2
+cd postgresql-6.5.2
+mkdir lib
+mkdir include
+cd src
+copy include\port\win32.h include\os.h
+create and edit include\config.h and add the macro:  #define HAVE_MEMMOVE
+edit interfaces\libpq\fe-connect.c and add as first statement in connectDB() the following code:
+  #ifdef WIN32
+      static int WeHaveCalledWSAStartup;
+      if (!WeHaveCalledWSAStartup) {
+          WSADATA wsaData;
+          if (WSAStartup(MAKEWORD(1, 1), &wsaData)) {
+              sprintf(conn->errorMessage, "WSAStartup failed: errno=%d\n", h_errno);
+              goto connect_errReturn;
+          }
+          WeHaveCalledWSAStartup = 1;
+      }
+  #endif
+edit interfaces\libpq\libpq.rc and remove the first char 'v' !!!
+edit interfaces\libpq\win32.mak and change the flag /ML to /MD: CPP_PROJ=/nologo /MD ...
+nmake /f win32.mak
+cd ..
+cp src\interfaces\libpq\Release\libpq.lib  lib
+cp src\include\libpq-fe.h                  include
+cp src\include\postgres_ext.h              include
+cd ..
+
+
+2. build DBD-Pg
+---------------
+
+cd DBD-Pg
+perl Makefile.PL CAPI=TRUE
+nmake
+edit test.pl: add ";host=myhost" to $dsn_main and $dsn_test, where myhost is your postgresql server
+add on the server a postgres user with the same name as the NT-User (eg Administrator)
+make sure, that your pg_hba.conf on the server is configured, such that a connection from another host will be accepted
+mkdir C:\tmp
+nmake test   (expect to get errors concerning blobs)
+nmake install
+
+
+#########################################################################
+
+original Mail from Bob Kline Fri, 3 Sep 1999:
+
+Here's my own answer to a message I posted a while back about building
+DBD::Pg.  I've listed below the things which had to be done to get it
+working.  I've included the contacts for the module and for the Win32 port
+of PostgreSQL (inclusion of Dan Horak may be inappropriate, as he's only
+listed for the Cygwin library version, and I'm using the Microsoft tools;
+if so, my apologies, Dan and please ignore this message).  I'm sending it
+to the list as well, in the hope that others may benefit (I recall seeing
+messages from other people experiencing similar difficulties).
+
+1. When building many Perl modules for an ActiveState version of Perl, it
+is necessary to use the undocumented command-line argument CAPI=TRUE when
+invoking the 'perl Makefile.PL' step (this is necessary when the source
+code for the perl module uses K&R syntax which is not legal C++, since
+although perl itself does not use C++, the ActiveState version does; this
+option triggers the use of a "compatibility layer" between ActiveState's
+C++ interface and plain C compilation):
+
+F:\>zips\DBD-Pg-0.92>perl Makefile.PL CAPI=TRUE
+
+2. The source file Pg.xs has calls to a non-standard function
+(strncasecmp).  I worked around that with a mapping to another
+(non-standard) function for the MSC compiler (added immediately below the 
+"driver level interface" comment):
+
+#ifdef _MSC_VER
+#define strncasecmp(a,b,c) _strnicmp((a),(b),(c))
+#endif
+
+3. The Makefile for DBD::Pg links against the DLL version of the C
+run-time libraries.  The Win32 Makefiles for PostgreSQL (version 6.5) use
+the static version of those libraries.  Solution: change the flag /ML to
+/MD in the definition of CPP_PROJ in src/interfaces/libpq/win32.mak for
+the PostgreSQL 6.5 build.
+
+4. The DllMain function in src/interfaces/libpq/libpqdll.c of the
+PostgreSQL 6.5 sources, in which WSAStartup is invoked, is never called,
+which causes gethostbyname calls to fail.  Solution (more properly,
+"kludge" -- I know there's a cleaner fix somewhere, but this works for
+now): immediately after the local declarations for the connectDB function
+in src/interfaces/libpq/fe-connect.c:
+
+#ifdef WIN32
+    static int WeHaveCalledWSAStartup;
+
+    if (!WeHaveCalledWSAStartup) {
+        WSADATA wsaData;
+        if (WSAStartup(MAKEWORD(1, 1), &wsaData)) {
+            sprintf(conn->errorMessage,
+                    "WSAStartup failed: errno=%d\n", h_errno);
+            goto connect_errReturn;
+        }
+        WeHaveCalledWSAStartup = 1;
+    }
+#endif
+
+5. The DBD::Pg test.pl file and accompanying documentation give no clues
+for the permissions which will be needed when connecting from a remote
+client (in my case, the client code is on an NT server, and the PostgreSQL
+server is on a Linux host).  Solution: temporarily open up "all"
+permissions for the client machine in the pg_hba.conf file on the server.
+
+Once I took care of all of these I was able to get a fully working build
+of DBD::Pg and a clean test run with all tests passing.
+
+Hope this helps some of the others struggling with this maze of problems
+(and that later versions of the packages will correct some of them).
+
+-- 
+Bob Kline
+mailto:bkline@rksystems.com
+http://www.rksystems.com
+
+
+# EOF

@@ -1,5 +1,5 @@
 
-# $Id: Makefile.PL,v 1.21 1999/06/16 18:55:29 mergl Exp $
+# $Id: Makefile.PL,v 1.22 1999/09/29 20:30:23 mergl Exp $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -7,40 +7,44 @@ use strict;
 use DBI 1.00;
 use DBI::DBD;
 
-print "\nConfiguring Pg\n";
+print "Configuring Pg\n";
 print "Remember to actually read the README file !\n";
-die "\nYou didn't read the README file !\n" unless ($] >= 5.002);
 
-if (! $ENV{POSTGRES_HOME}) {
-    print "\$POSTGRES_HOME not defined. Searching for PostgreSQL...\n";
-    foreach(qw(/usr/local/pgsql /usr/lib/pgsql /usr/pgsql /home/pgsql /opt/pgsql /usr/local/postgres /usr/lib/postgres /usr/postgres /home/postgres /opt/postgres /usr/local/postgresql /usr/lib/postgresql /usr/postgresql /home/postgresql /opt/postgresql)) {
-        if (-d "$_/lib") {
-            $ENV{POSTGRES_HOME} = $_;
-            last;
-        }
-    }
-}
+my $POSTGRES_INCLUDE;
+my $POSTGRES_LIB;
 
-if (defined($ENV{POSTGRES_HOME}) && -d "$ENV{POSTGRES_HOME}/lib") {
-    print "Found PostgreSQL in $ENV{POSTGRES_HOME}\n";
+if ((!$ENV{POSTGRES_INCLUDE} or !$ENV{POSTGRES_LIB}) and !$ENV{POSTGRES_HOME}) {
+    die "please set environment variables POSTGRES_INCLUDE and POSTGRES_LIB !\n";
+} elsif ((!$ENV{POSTGRES_INCLUDE} or !$ENV{POSTGRES_LIB}) and $ENV{POSTGRES_HOME}) {
+    $POSTGRES_INCLUDE = "$ENV{POSTGRES_HOME}/include";
+    $POSTGRES_LIB     = "$ENV{POSTGRES_HOME}/lib";
 } else {
-    die "Unable to find PostgreSQL\nplease set environment variable POSTGRES_HOME\n";
+    $POSTGRES_INCLUDE = "$ENV{POSTGRES_INCLUDE}";
+    $POSTGRES_LIB     = "$ENV{POSTGRES_LIB}";
 }
 
+my $os = $^O;
+print "OS: $os\n";
+
+my $dbi_arch_dir;
+if ($os eq 'MSWin32') {
+    $dbi_arch_dir = "\$(INSTALLSITEARCH)/auto/DBI";
+} else {
+    $dbi_arch_dir = dbd_dbi_arch_dir();
+}
 
 my %opts = (
     NAME         => 'DBD::Pg',
     VERSION_FROM => 'Pg.pm',
-    INC          => "-I$ENV{POSTGRES_HOME}/include -I/usr/local/include/pgsql -I/usr/include/pgsql -I\$(INSTALLSITEARCH)/auto/DBI -I\$(INSTALLARCHLIB)/DBI -I\$(SITEARCH)/auto/DBI -I\$(ARCHLIB)/DBI",
+    INC          => "-I$POSTGRES_INCLUDE -I$dbi_arch_dir",
     OBJECT       => "Pg\$(OBJ_EXT) dbdimp\$(OBJ_EXT)",
-    LIBS         => ["-L$ENV{POSTGRES_HOME}/lib -lpq -L/usr/lib -lpq"],
-
+    LIBS         => ["-L$POSTGRES_LIB -lpq"],
+    AUTHOR       => 'Edmund Mergl (E.Mergl@bawue.de)',
+    ABSTRACT     => 'PostgreSQL database driver for the DBI module',
 );
 
-my $os = $^O;
-print $os, "\n";
-my $osvers = $Config{osvers};
 if ($os eq 'hpux') {
+    my $osvers = $Config{osvers};
     if ($osvers < 10) {
         print "Warning: Forced to build static not dynamic on $os $osvers.\a\n";
         $opts{LINKTYPE} = 'static';

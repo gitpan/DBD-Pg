@@ -1,5 +1,5 @@
 
-#  $Id: Pg.pm,v 1.34 1999/06/16 18:55:30 mergl Exp $
+#  $Id: Pg.pm,v 1.35 1999/09/29 20:30:23 mergl Exp $
 #
 #  Copyright (c) 1997,1998,1999 Edmund Mergl
 #  Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -10,12 +10,13 @@
 
 require 5.003;
 
-$DBD::Pg::VERSION = '0.92';
+$DBD::Pg::VERSION = '0.93';
 
 {
     package DBD::Pg;
 
     use DBI ();
+    use DynaLoader ();
     use Exporter ();
     @ISA = qw(DynaLoader Exporter);
 
@@ -35,7 +36,7 @@ $DBD::Pg::VERSION = '0.92';
 
 	# not a 'my' since we use it above to prevent multiple drivers
 
-	($drh) = DBI::_new_drh($class, {
+	$drh = DBI::_new_drh($class, {
 	    'Name' => 'Pg',
 	    'Version' => $VERSION,
 	    'Err'    => \$DBD::Pg::err,
@@ -67,6 +68,7 @@ $DBD::Pg::VERSION = '0.92';
         $dbh->disconnect;
         return @sources;
     }
+
 
     sub connect {
         my($drh, $dbname, $user, $auth)= @_;
@@ -111,16 +113,19 @@ $DBD::Pg::VERSION = '0.92';
         $sth;
     }
 
+
     sub ping {
         my($dbh) = @_;
 
+	local $SIG{__WARN__} = sub { } if $dbh->{PrintError};
         local $dbh->{RaiseError} = 0 if $dbh->{RaiseError};
         my $ret = DBD::Pg::db::_ping($dbh);
 
         return $ret;
     }
 
-    sub table_info {
+
+    sub table_info {         # DBI spec: TABLE_CAT, TABLE_SCHEM, TABLE_NAME, TABLE_TYPE, REMARKS
         my($dbh) = @_;
 
         my $sth = $dbh->prepare("
@@ -146,6 +151,7 @@ $DBD::Pg::VERSION = '0.92';
         $sth;
     }
 
+
     sub tables {
         my($dbh) = @_;
 
@@ -167,22 +173,50 @@ $DBD::Pg::VERSION = '0.92';
         return @tables;
     }
 
-    sub attributes {
-        my($dbh, $table) = @_;
 
-        my $sth = $dbh->prepare("
-            select a.attnum, a.attname, t.typname, a.attlen 
-            from pg_class c, pg_attribute a, pg_type t 
-            where c.relname = '$table' 
-            and a.attnum > 0 
-            and a.attrelid = c.oid 
-            and a.atttypid = t.oid 
-            ORDER BY attnum 
-        ");
-        $sth->execute or return undef;
+    sub table_attributes {
+        my ($dbh, $table) = @_;
+        my $result = [];    
+        my $attrs  = $dbh->selectall_arrayref(
+             "select a.attname, t.typname, a.attlen, a.atttypmod, a.attnotnull
+              from pg_attribute a,
+                   pg_class     c,
+                   pg_type      t
+              where c.relname  = '$table'
+                and a.attrelid = c.oid
+                and a.attnum  >= 0
+                and t.oid      = a.atttypid
+             ");
+    
+        return $result unless scalar(@$attrs);
 
-        $sth;
+        foreach my $attr (reverse @$attrs) {
+            my ($col_name, $col_type, $size, $mod, $notnull) = @$attr;
+            my $col_size =
+                do { if ($size > 0) {
+                         $size;
+                     } elsif ($mod > 0xffff) {
+                         my $prec = ($mod & 0xffff) - 4;
+                         $mod >>= 16;
+                         my $dig = $mod;
+                         $dig;
+                     } elsif ($mod >= 4) {
+                       $mod - 4;
+                     } else {
+                       $mod;
+                     }
+                   };
+            push @$result,
+                { NAME     => $col_name,
+                  TYPE     => $col_type,
+                  SIZE     => $col_size,
+                  NOTNULL  => $notnull,
+                };
+        }
+
+        return $result;
     }
+
 
     sub type_info_all {
         my ($dbh) = @_;
@@ -226,43 +260,83 @@ $DBD::Pg::VERSION = '0.92';
 	#  timestamp     |     4|       19|    TIMESTAMP
 	#  --------------+------+---------+
 
+        # DBI type definitions / PostgreSQL definitions     # type needs to be DBI-specific (not pg_type)
+        #
+        # SQL_ALL_TYPES  0	
+        # SQL_CHAR       1	1042 bpchar
+        # SQL_NUMERIC    2	 700 float4
+        # SQL_DECIMAL    3	 700 float4
+        # SQL_INTEGER    4	  23 int4
+        # SQL_SMALLINT   5	  21 int2
+        # SQL_FLOAT      6	 700 float4
+        # SQL_REAL       7	 701 float8
+        # SQL_DOUBLE     8	  20 int8
+        # SQL_DATE       9	1082 date
+        # SQL_TIME      10	1083 time
+        # SQL_TIMESTAMP 11	1296 timestamp
+        # SQL_VARCHAR   12	1043 varchar
+
 	my $ti = [
 	  $names,
           # name          type  prec  prefix suffix  create params null case se unsign mon  incr       local   min    max
           #					     
-          [ 'bool',         16,    1,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'BOOLEAN', undef, undef ],
-          [ 'int8',         20,   20, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',   'LONGINT', undef, undef ],
-          [ 'int2',         21,    5, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',  'SMALLINT', undef, undef ],
-          [ 'int4',         23,   10, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',   'INTEGER', undef, undef ],
-          [ 'text',         25, 4096,  '\'',  '\'',           undef, 1, '1', 3, undef, '0', '0',      'TEXT', undef, undef ],
-          [ 'float4',      700,   12, undef, undef,     'precision', 1, '0', 2,   '0', '0', '0',     'FLOAT', undef, undef ],
-          [ 'float8',      701,   24, undef, undef,     'precision', 1, '0', 2,   '0', '0', '0',      'REAL', undef, undef ],
-          [ 'abstime',     702,   20,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'ABSTIME', undef, undef ],
-          [ 'reltime',     703,   20,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'RELTIME', undef, undef ],
-          [ 'tinterval',   704,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0', 'TINTERVAL', undef, undef ],
-          [ 'money',       790,   24, undef, undef,           undef, 1, '0', 2, undef, '1', '0',     'MONEY', undef, undef ],
-          [ 'bpchar',     1042, 4096,  '\'',  '\'',    'max length', 1, '1', 3, undef, '0', '0', 'CHARACTER', undef, undef ],
-          [ 'varchar',    1043, 4096,  '\'',  '\'',    'max length', 1, '1', 3, undef, '0', '0',   'VARCHAR', undef, undef ],
-          [ 'date',       1082,   10,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',      'DATE', undef, undef ],
-          [ 'time',       1083,   16,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',      'TIME', undef, undef ],
-          [ 'datetime',   1184,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',  'DATETIME', undef, undef ],
-          [ 'timespan',   1186,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',  'INTERVAL', undef, undef ],
-          [ 'timestamp',  1296,   19,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0', 'TIMESTAMP', undef, undef ]
+          [ 'bool',          0,    1,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'BOOLEAN', undef, undef ],
+          [ 'int8',          8,   20, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',   'LONGINT', undef, undef ],
+          [ 'int2',          5,    5, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',  'SMALLINT', undef, undef ],
+          [ 'int4',          4,   10, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',   'INTEGER', undef, undef ],
+          [ 'text',         12, 4096,  '\'',  '\'',           undef, 1, '1', 3, undef, '0', '0',      'TEXT', undef, undef ],
+          [ 'float4',        6,   12, undef, undef,     'precision', 1, '0', 2,   '0', '0', '0',     'FLOAT', undef, undef ],
+          [ 'float8',        7,   24, undef, undef,     'precision', 1, '0', 2,   '0', '0', '0',      'REAL', undef, undef ],
+          [ 'abstime',      10,   20,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'ABSTIME', undef, undef ],
+          [ 'reltime',      10,   20,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'RELTIME', undef, undef ],
+          [ 'tinterval',    11,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0', 'TINTERVAL', undef, undef ],
+          [ 'money',         0,   24, undef, undef,           undef, 1, '0', 2, undef, '1', '0',     'MONEY', undef, undef ],
+          [ 'bpchar',       12, 4096,  '\'',  '\'',    'max length', 1, '1', 3, undef, '0', '0', 'CHARACTER', undef, undef ],
+          [ 'varchar',      12, 4096,  '\'',  '\'',    'max length', 1, '1', 3, undef, '0', '0',   'VARCHAR', undef, undef ],
+          [ 'date',          9,   10,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',      'DATE', undef, undef ],
+          [ 'time',         10,   16,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',      'TIME', undef, undef ],
+          [ 'datetime',     11,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',  'DATETIME', undef, undef ],
+          [ 'timespan',     11,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',  'INTERVAL', undef, undef ],
+          [ 'timestamp',    10,   19,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0', 'TIMESTAMP', undef, undef ]
           #
           # intentionally omitted: char, bytea, all geometric types, all array types
         ];
 	return $ti;
     }
 
+
     sub quote {
-	my ($dbh, $str, $data_type) = @_;
+        my ($dbh, $str, $data_type) = @_;
 
         return "NULL" unless defined $str;
-       
-        $str =~ s/\\/\\\\/g;
-        $str=~s/'/''/g;
 
-        return "'$str'";
+        unless ($data_type) {
+            $str =~ s/'/''/g;           # ISO SQL2
+            # In addition to the DBI method it doubles also the
+            # backslash, because PostgreSQL treats a backslash as an
+            # escape character.
+            $str =~ s/\\/\\\\/g;
+            return "'$str'";
+        }
+
+        # Optimise for standard numerics which need no quotes
+        return $str if $data_type == DBI::SQL_INTEGER
+                    || $data_type == DBI::SQL_SMALLINT
+                    || $data_type == DBI::SQL_DECIMAL
+                    || $data_type == DBI::SQL_FLOAT
+                    || $data_type == DBI::SQL_REAL
+                    || $data_type == DBI::SQL_DOUBLE
+                    || $data_type == DBI::SQL_NUMERIC;
+        my $ti = $dbh->type_info($data_type);
+        # XXX needs checking
+        my $lp = $ti ? $ti->{LITERAL_PREFIX} || "" : "'";
+        my $ls = $ti ? $ti->{LITERAL_SUFFIX} || "" : "'";
+        # XXX don't know what the standard says about escaping
+        # in the 'general case' (where $lp != "'").
+        # So we just do this and hope:
+        $str =~ s/$lp/$lp$lp/g
+                if $lp && $lp eq $ls && ($lp eq "'" || $lp eq '"');
+        return "$lp$str$ls";
     }
 }
 
@@ -270,6 +344,7 @@ $DBD::Pg::VERSION = '0.92';
 {   package DBD::Pg::st; # ====== STATEMENT ======
 
     # all done in XS
+
 }
 
 1;
@@ -342,7 +417,9 @@ started with the C<-i> option (TCP/IP sockets).
 
 The options parameter specifies runtime options for the Postgres 
 backend. Common usage is to increase the number of buffers with 
-the C<-B> option. For further details please refer to the L<postgres>. 
+the C<-B> option. Also important is the C<-F> option, which disables 
+automatiic fsync() call after each transaction. For further details 
+please refer to the L<postgres>. 
 
 For authentication with username and password appropriate entries have 
 to be made in pg_hba.conf. Please refer to the L<pg_hba.conf> and the 
@@ -417,6 +494,75 @@ Implemented by DBI, no driver-specific impact.
 
 Implemented by DBI, no driver-specific impact.
 
+=item B<func>
+
+This driver supports a variety of driver specific functions 
+accessible via the func interface:
+
+  $attrs = $dbh->func($table, 'table_attributes');
+
+This method returns for the given table a reference to an 
+array of hashes:
+
+  NAME       attribute name
+  TYPE       attribute type
+  SIZE       attribute size (-1 for variable size)
+  NULLABLE   flag nullable
+
+  $lobjId = $dbh->func($mode, 'lo_creat');
+
+Creates a new large object and returns the object-id. $mode is a 
+bit-mask describing different attributes of the new object. Use 
+the following constants:
+
+  $dbh->{pg_INV_WRITE}
+  $dbh->{pg_INV_READ}
+
+Upon failure it returns undef.
+
+  $lobj_fd = $dbh->func($lobjId, $mode, 'lo_open');
+
+Opens an existing large object and returns an object-descriptor 
+for use in subsequent lo_* calls. 
+For the mode bits see lo_create. Returns undef upon failure.
+Note, that 0 is a perfectly correct object descriptor !
+
+  $nbytes = $dbh->func($lobj_fd, $buf, $len, 'lo_write');
+
+Writes $len bytes of $buf into the large object $lobj_fd.
+Returns the number of bytes written and undef upon failure.
+
+  $nbytes = $dbh->func($lobj_fd, $buf, $len, 'lo_read');
+
+Reads $len bytes into $buf from large object $lobj_fd.
+Returns the number of bytes read and undef upon failure.
+
+  $loc = $dbh->func($lobj_fd, $offset, $whence, 'lo_lseek');
+
+Change the current read or write location on the large
+object $obj_id. Currently $whence can only be 0 (L_SET).
+Returns the current location and undef upon failure. 
+
+  $loc = $dbh->func($lobj_fd, 'lo_tell');
+
+Returns the current read or write location on the large
+object $lobj_fd and undef upon failure.
+
+  $lobj_fd = $dbh->func($lobj_fd, 'lo_close');
+
+Closes an existing large object. Returns true upon success
+and false upon failure.
+
+  $lobjId = $dbh->func($filename, 'lo_import');
+
+Imports a Unix file as large object and returns the object
+id of the new object or undef upon failure. 
+
+  $ret = $dbh->func($lobjId, 'lo_export');
+
+Exports a large object into a Unix file.  Returns false upon
+failure, true otherwise.
+
 =back
 
 
@@ -475,6 +621,10 @@ Implemented by DBI, not used by the driver.
 
 Implemented by DBI, not used by the driver.
 
+=item B<Taint> (boolean, inherited)
+
+Implemented by DBI, no driver-specific impact.
+
 =item B<private_*>
 
 Implemented by DBI, no driver-specific impact.
@@ -497,6 +647,12 @@ Implemented by DBI, no driver-specific impact.
 =item B<selectall_arrayref>
 
   $ary_ref = $dbh->selectall_arrayref($statement, \%attr, @bind_values);
+
+Implemented by DBI, no driver-specific impact.
+
+=item B<selectcol_arrayref>
+
+  $ary_ref = $dbh->selectcol_arrayref($statement, \%attr, @bind_values);
 
 Implemented by DBI, no driver-specific impact.
 
@@ -572,21 +728,6 @@ method returns all tables and views which are owned by the
 current user. It does not select any indices and sequences. 
 Also system tables are not selected. 
 
-=item B<attributes>
-
-  $sth = $dbh->DBD::Pg::db::attributes($table);
-
-This method is PostgreSQL specific and returns for the given 
-table the following data: 
-
-  unique number
-  attribute name
-  attribute type
-  attribute length (-1 for variable length attributes)
-
-Because this method is not supported by DBI you have to use the 
-complete name including the package. 
-
 =item B<type_info_all>
 
   $type_info_all = $dbh->type_info_all;
@@ -635,8 +776,7 @@ Implemented by DBI, no driver-specific impact.
 
 This module implements it's own quote method. In addition to the 
 DBI method it doubles also the backslash, because PostgreSQL treats 
-a backslash as an escape character. The optional data_type parameter 
-is not used. 
+a backslash as an escape character. 
 
 =back
 
@@ -657,12 +797,20 @@ to off, a transaction will be started and every commit or rollback
 will automatically start a new transaction. For details see the 
 notes about B<Transactions> elsewhere in this document. 
 
+=item B<Driver>  (handle)
+
+Implemented by DBI, no driver-specific impact. 
+
 =item B<Name>  (string, read-only)
 
 The default method of DBI is overridden by a driver specific 
 method, which returns only the database name. Anything else 
 from the connection string is stripped off. Note, that here 
 the method is read-only in contrast to the DBI specs. 
+
+=item B<RowCacheSize>  (integer)
+
+Implemented by DBI, not used by the driver.
 
 =item B<pg_auto_escape> (boolean)
 
@@ -675,6 +823,14 @@ parameters will be escaped in the following way:
 The default is on. Note, that PostgreSQL also accepts quotes, which 
 are escaped by a backslash. Any other ASCII character can be used 
 directly in a string constant. 
+
+=item B<pg_INV_READ> (integer, read-only)
+
+Constant to be used for the mode in lo_creat and lo_open.
+
+=item B<pg_INV_WRITE> (integer, read-only)
+
+Constant to be used for the mode in lo_creat and lo_open.
 
 =back
 
@@ -771,18 +927,20 @@ This method seems to be heavily influenced by the current implementation
 of blobs in Oracle. Nevertheless we try to be as compatible as possible. 
 Whereas Oracle suffers from the limitation that blobs are related to tables 
 and every table can have only one blob (data-type LONG), PostgreSQL handles 
-its blobs independent of any table by using so called object identifiers. This 
-explains why the blob_read method is blessed into the STATEMENT package and 
-not part of the DATABASE package. Here the field parameter has been used to 
-handle this object identifier. 
+its blobs independent of any table by using so called object identifiers. 
+This explains why the blob_read method is blessed into the STATEMENT package 
+and not part of the DATABASE package. Here the field parameter has been used 
+to handle this object identifier. The offset and len parameter may be set to 
+zero, in which case the driver fetches the whole blob at once. 
 
-The offset and len parameter may be set to zero, in which case the driver 
-fetches the whole blob at once. See also the B<blob_copy_to_file> method, 
-which also supported by DBI, but not documented. 
+Starting with PostgreSQL-6.5 every access to a blob has to be put into a 
+transaction. This holds even for a read-only access.
 
-For further information and examples about blobs, specifically about the 
-two built-in functions lo_import() and lo_export(), please read the 
-L<large_objects>. 
+See also the PostgreSQL-specific functions concerning blobs which are 
+available via the func-interface. 
+
+For further information and examples about blobs, please read the chapter 
+about Large Objects in the PostgreSQL Programmer's Guide. 
 
 =back
 
@@ -802,6 +960,14 @@ Implemented by DBI, no driver-specific impact.
 =item B<NAME>  (array-ref, read-only)
 
 Supported by the driver as proposed by DBI. 
+
+=item B<NAME_lc>  (array-ref, read-only)
+
+Implemented by DBI, no driver-specific impact. 
+
+=item B<NAME_uc>  (array-ref, read-only)
+
+Implemented by DBI, no driver-specific impact. 
 
 =item B<TYPE>  (array-ref, read-only)
 
@@ -830,6 +996,10 @@ B<Cursors> elsewhere in this document.
 =item B<Statement>  (string, read-only)
 
 Supported by the driver as proposed by DBI. 
+
+=item B<RowCache>  (integer, read-only)
+
+Not supported by the driver. 
 
 =item B<pg_size>  (array-ref, read-only)
 
@@ -871,6 +1041,14 @@ In this mode, any change to the database becomes valid immediately. Any
 If AutoCommit is switched-off, immediately a transaction will be started by 
 issuing a 'begin' statement. Any 'commit' or 'rollback' will start a new 
 transaction. A disconnect will issue a 'rollback' statement. 
+
+
+=head2 Large Objects
+
+The driver supports all large-objects related functions provided by 
+libpq via the func-interface. Please note, that starting with 
+PoostgreSQL-65. any access to a large object - even read-onlyy - 
+has to be put into a transaction ! 
 
 
 =head2 Cursors

@@ -1,7 +1,7 @@
 
 DBD::Pg  --  a PostgreSQL interface for Perl 5.
 
-   $Id: README,v 1.34 1999/06/16 18:55:30 mergl Exp $
+   $Id: README,v 1.35 1999/09/29 20:30:23 mergl Exp $
 
    Copyright (c) 1997,1998,1999 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -13,7 +13,7 @@ DBD::Pg  --  a PostgreSQL interface for Perl 5.
 DESCRIPTION:
 ------------
 
-This is version 0.92 of DBD-Pg.
+This is version 0.93 of DBD-Pg.
 DBD-Pg is a PostgreSQL interface for Perl5 using DBI.
 
 For further information about DBI look at:
@@ -24,15 +24,19 @@ For further information about DBI look at:
 RECENT CHANGES:
 ---------------
 
-  - proposal from Philip Warner <pjw@rhyme.com.au>:
-    increase BUFSIZE from 1024 to 32768 in order to improve
-    I/O performance.
-  - bug-fix in Makefile.PL for $POSTGRES_HOME not defined
-    spotted by mdalphin@amgen.com (Mark Dalphin)
-  - bug-fix for data-type datetime in type_info_all
-    spotted by Alan Grover <awgrover@iconnect-inc.com>
-  - bug-fix for escaped 's spotted by Hankin <hankin@consultco.com>
-  - removed 'large objects' related tests from test.pl
+- it is required now to set the environment variables POSTGRES_INCLUDE
+  and POSTGRES_LIB for compiling the module.
+- add Win32 port from Bob Kline <bkline@rksystems.com>.
+- support for all large-object functions via the func
+  interface. 
+- fixed bug with placeholders and casts spotted by
+  mschout@gkg.net
+- replaced the method attributes by the method table_attributes,
+  from Scott Williams <scott@james.com>.
+- fix type defintions for type_info_all().
+  bug spotted by "carlos" <emarcet@intramed.net.ar>.
+- now the Pg-specific quote() method also evaluates the 
+  data-type paramater. 
 
 
 COPYRIGHT:
@@ -51,6 +55,10 @@ Use the following URL to look for new versions of this module:
 
 Note, that this request will be redirected automatically to the 
 nearest CPAN site. 
+
+A precompiled package for Windows-NT is available at:
+
+  http://www.bawue.de/~mergl/export/DBD-Pg.zip
 
 
 IF YOU HAVE PROBLEMS:
@@ -71,13 +79,13 @@ REQUIREMENTS:
 
   - build, test and install Perl 5         (at least 5.003)
   - build, test and install the DBI module (at least 1.00)
-  - build, test and install PostgreSQL     (at least 6.4.2)
+  - build, test and install PostgreSQL     (at least 6.5)
 
 
 PLATFORMS:
 ----------
 
-  This release of DBD-Pg has been developed using Linux 2.0 with 
+  This release of DBD-Pg has been developed using Linux 2.2 with 
   dynamic loading for the perl extensions. Let me know, if there 
   are any problems with other platforms.
 
@@ -85,9 +93,8 @@ PLATFORMS:
 INSTALLATION:
 -------------
 
-The Makefile checks the environment variable POSTGRES_HOME as well 
-some standard locations, to find the root directory of your Postgres 
-installation.
+The Makefile checks the environment variables POSTGRES_INCLUDE and
+POSTGRES_LIB, to find the library lipq.so and the proper include files. 
  
 1.   perl Makefile.PL
 2.   make
@@ -95,6 +102,10 @@ installation.
 4.   make install
 
 ( 1. to 3. as normal user, not as root ! )
+
+For Windows-NT use the pre-compiled package DBD-Pg.zip. 
+Unzip the package and follow the instructions in the 
+README. 
 
 
 TESTING:
@@ -146,8 +157,16 @@ Sun Users: if you get compile errors like:
            in the standard include file.
 
 
+Win32 Users: currently only the client part of postgresql is available 
+             for Win32 platforms. The server part has not yet been ported.
+             Running DBD-Pg scripts on Win32 needs some configuration work
+             on the server side:
+             - add a postgres user with the same name as the NT-User (eg Administrator)
+             - make sure, that your pg_hba.conf on the server is configured, 
+               such that a connection from another host will be accepted
+
 ---------------------------------------------------------------------------
 
-   Edmund Mergl <E.Mergl@bawue.de>                            June 16, 1999
+   Edmund Mergl <E.Mergl@bawue.de>                       September 29, 1999
 
 ---------------------------------------------------------------------------

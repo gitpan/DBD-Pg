@@ -1,5 +1,20 @@
 Revision history for Perl extension DBD-Pg.
 
+0.93 Sep 29, 1999
+	- it is required now to set the environment variables POSTGRES_INCLUDE
+	  and POSTGRES_LIB for compiling the module.
+	- add Win32 port from Bob Kline <bkline@rksystems.com>.
+	- support for all large-object functions via the func
+	  interface. 
+	- fixed bug with placeholders and casts spotted by
+	  mschout@gkg.net
+	- replaced the method attributes by the method table_attributes,
+	  from Scott Williams <scott@james.com>.
+	- fix type defintions for type_info_all().
+	  bug spotted by "carlos" <emarcet@intramed.net.ar>.
+	- now the Pg-specific quote() method also evaluates the 
+	  data-type paramater. 
+
 0.92 Jun 16, 1999
 	- proposal from Philip Warner <pjw@rhyme.com.au>:
 	  increase BUFSIZE from 1024 to 32768 in order to improve

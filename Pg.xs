@@ -1,5 +1,5 @@
 /*
-   $Id: Pg.xs,v 1.19 1999/02/14 20:33:24 mergl Exp $
+   $Id: Pg.xs,v 1.20 1999/09/29 20:30:23 mergl Exp $
 
    Copyright (c) 1997,1998,1999 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -13,12 +13,17 @@
 #include "Pg.h"
 
 
+#ifdef _MSC_VER
+#define strncasecmp(a,b,c) _strnicmp((a),(b),(c))
+#endif
+
+
+
 DBISTATE_DECLARE;
 
 
 MODULE = DBD::Pg	PACKAGE = DBD::Pg
 
-REQUIRE:    1.929
 PROTOTYPES: DISABLE
 
 BOOT:
@@ -29,7 +34,6 @@ BOOT:
     DBI_IMP_SIZE("DBD::Pg::db::imp_data_size", sizeof(imp_dbh_t));
     DBI_IMP_SIZE("DBD::Pg::st::imp_data_size", sizeof(imp_sth_t));
     dbd_init(DBIS);
-
 
 
 # ------------------------------------------------------------
@@ -62,20 +66,20 @@ _login(dbh, dbname, username, pwd)
     char *	pwd
     CODE:
     D_imp_dbh(dbh);
-    ST(0) = dbd_db_login(dbh, imp_dbh, dbname, username, pwd) ? &sv_yes : &sv_no;
+    ST(0) = pg_db_login(dbh, imp_dbh, dbname, username, pwd) ? &sv_yes : &sv_no;
 
 
 int
 _ping(dbh)
     SV *	dbh
     CODE:
-    int retval;
-    retval = dbd_db_ping(dbh);
-    if (retval == 0) {
+    int ret;
+    ret = dbd_db_ping(dbh);
+    if (ret == 0) {
         XST_mUNDEF(0);
     }
     else {
-        XST_mIV(0, retval);
+        XST_mIV(0, ret);
     }
 
 void
@@ -184,21 +188,119 @@ DESTROY(dbh)
 	    /* Perl will call DESTROY on the dbh and, if we don't rollback,	*/
 	    /* the server will automatically commit! Bham! Corrupt database!	*/
             if (!DBIc_has(imp_dbh,DBIcf_AutoCommit)) {
-                static int auto_rollback = -1;
-                if (auto_rollback == -1) {	/* need to determine behaviour	*/
-		    /* DBD_ORACLE_AUTO_ROLLBACK is offered as a _temporary_ sop to */
-		    /* those who can't fix their code in a short timescale.	   */
-                    char *p = getenv("DBD_ORACLE_AUTO_ROLLBACK");
-                    auto_rollback = (p) ? atoi(p) : 1;
-                }
-                if (auto_rollback) {
-                    dbd_db_rollback(dbh, imp_dbh);	/* ROLLBACK! */
-                }
+                dbd_db_rollback(dbh, imp_dbh);	/* ROLLBACK! */
             }
             dbd_db_disconnect(dbh, imp_dbh);
         }
         dbd_db_destroy(dbh, imp_dbh);
     }
+
+
+# driver specific functions
+
+
+void
+lo_open(dbh, lobjId, mode)
+    SV *	dbh
+    unsigned int	lobjId
+    int	mode
+    CODE:
+        int ret = pg_db_lo_open(dbh, lobjId, mode);
+        ST(0) = (-1 != ret) ? sv_2mortal(newSViv(ret)) : &sv_undef;
+
+void
+lo_close(dbh, fd)
+    SV *	dbh
+    int	fd
+    CODE:
+        ST(0) = (-1 != pg_db_lo_close(dbh, fd)) ? &sv_yes : &sv_no;
+
+
+void
+lo_read(dbh, fd, buf, len)
+	    SV *	dbh
+	    int	fd
+	    char *	buf
+	    int	len
+	PREINIT:
+	    SV *bufsv = SvROK(ST(2)) ? SvRV(ST(2)) : ST(2);
+	    int ret;
+	CODE:
+	    buf = SvGROW(bufsv, len + 1);
+	    ret = pg_db_lo_read(dbh, fd, buf, len);
+	    if (ret > 0) {
+	        SvCUR_set(bufsv, ret);
+	        *SvEND(bufsv) = '\0';
+	        sv_setpvn(ST(2), buf, ret);
+	        SvSETMAGIC(ST(2));
+	    }
+	    ST(0) = (-1 != ret) ? sv_2mortal(newSViv(ret)) : &sv_undef;
+
+
+void
+lo_write(dbh, fd, buf, len)
+    SV *	dbh
+    int	fd
+    char *	buf
+    int	len
+    CODE:
+        int ret = pg_db_lo_write(dbh, fd, buf, len);
+        ST(0) = (-1 != ret) ? sv_2mortal(newSViv(ret)) : &sv_undef;
+
+
+void
+lo_lseek(dbh, fd, offset, whence)
+    SV *	dbh
+    int	fd
+    int	offset
+    int	whence
+    CODE:
+        int ret = pg_db_lo_lseek(dbh, fd, offset, whence);
+        ST(0) = (-1 != ret) ? sv_2mortal(newSViv(ret)) : &sv_undef;
+
+
+void
+lo_creat(dbh, mode)
+    SV *	dbh
+    int	mode
+    CODE:
+        int ret = pg_db_lo_creat(dbh, mode);
+        ST(0) = (-1 != ret) ? sv_2mortal(newSViv(ret)) : &sv_undef;
+
+
+void
+lo_tell(dbh, fd)
+    SV *	dbh
+    int	fd
+    CODE:
+        int ret = pg_db_lo_tell(dbh, fd);
+        ST(0) = (-1 != ret) ? sv_2mortal(newSViv(ret)) : &sv_undef;
+
+
+void
+lo_unlink(dbh, lobjId)
+    SV *	dbh
+    unsigned int	lobjId
+    CODE:
+        ST(0) = (-1 != pg_db_lo_unlink(dbh, lobjId)) ? &sv_yes : &sv_no;
+
+
+void
+lo_import(dbh, filename)
+    SV *	dbh
+    char *	filename
+    CODE:
+        unsigned int ret = pg_db_lo_import(dbh, filename);
+        ST(0) = (ret) ? sv_2mortal(newSViv(ret)) : &sv_undef;
+
+
+void
+lo_export(dbh, lobjId, filename)
+    SV *	dbh
+    unsigned int	lobjId
+    char *	filename
+    CODE:
+        ST(0) = (-1 != pg_db_lo_export(dbh, lobjId, filename)) ? &sv_yes : &sv_no;
 
 
 # -- end of DBD::Pg::db
@@ -259,7 +361,7 @@ bind_param(sth, param, value, attribs=Nullsv)
             SV **svp;
             DBD_ATTRIBS_CHECK("bind_param", sth, attribs);
 	    /* XXX we should perhaps complain if TYPE is not SvNIOK */
-            DBD_ATTRIB_GET_IV(attribs, "TYPE",4, svp, sql_type);
+            DBD_ATTRIB_GET_IV(attribs, "TYPE", 4, svp, sql_type);
         }
     }
     ST(0) = dbd_bind_ph(sth, imp_sth, param, value, sql_type, attribs, FALSE, 0) ? &sv_yes : &sv_no;
@@ -303,7 +405,7 @@ execute(sth, ...)
     SV *	sth
     CODE:
     D_imp_sth(sth);
-    int retval;
+    int ret;
     if (items > 1) {
 	/* Handle binding supplied values to placeholders	*/
         int i;
@@ -321,16 +423,16 @@ execute(sth, ...)
             }
         }
     }
-    retval = dbd_st_execute(sth, imp_sth);
+    ret = dbd_st_execute(sth, imp_sth);
     /* remember that dbd_st_execute must return <= -2 for error	*/
-    if (retval == 0) {		/* ok with no rows affected	*/
+    if (ret == 0) {		/* ok with no rows affected	*/
         XST_mPV(0, "0E0");	/* (true but zero)		*/
     }
-    else if (retval < -1) {	/* -1 == unknown number of rows	*/
+    else if (ret < -1) {	/* -1 == unknown number of rows	*/
         XST_mUNDEF(0);		/* <= -2 means error   		*/
     }
     else {
-        XST_mIV(0, retval);	/* typically 1, rowcount or -1	*/
+        XST_mIV(0, ret);	/* typically 1, rowcount or -1	*/
     }
 
 

@@ -1,5 +1,5 @@
 /*
-   $Id: Pg.h,v 1.17 1999/06/16 18:55:29 mergl Exp $
+   $Id: Pg.h,v 1.18 1999/09/29 20:30:23 mergl Exp $
 
    Copyright (c) 1997,1998,1999 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -19,6 +19,9 @@
 #ifndef INV_READ
 #define INV_READ 0x00040000
 #endif
+#ifndef INV_WRITE
+#define INV_WRITE 0x00020000
+#endif
 
 #ifdef BUFSIZ
 #undef BUFSIZ
@@ -27,7 +30,7 @@
 #define BUFSIZ 32768
 
 
-#define NEED_DBIXS_VERSION 9
+#define NEED_DBIXS_VERSION 93
 
 #include <DBIXS.h>		/* installed by the DBI module	*/
 
@@ -35,6 +38,5 @@
 
 #include <dbd_xsh.h>		/* installed by the DBI module	*/
 
-int dbd_db_ping(SV *dbh);
 
 /* end of Pg.h */
