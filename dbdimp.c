@@ -1,6 +1,6 @@
 /*
 
-   $Id: dbdimp.c,v 1.30 2003/09/08 21:39:41 markjugg Exp $
+   $Id: dbdimp.c,v 1.32 2003/10/27 19:57:02 rlippan Exp $
 
    Copyright (c) 2002,2003 PostgreSQL Global Development Group
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
@@ -768,10 +768,11 @@ dbd_bind_ph (sth, imp_sth, ph_namesv, newvalue, sql_type, attribs, is_inout, max
 	if (SvTYPE(newvalue) > SVt_PVLV) { /* hook for later array logic	*/
 		croak("Can't bind a non-scalar value (%s)", neatsvpv(newvalue,0));
 	}
-	if (SvROK(newvalue) && !IS_DBI_HANDLE(newvalue)) {
+	if ((SvROK(newvalue) &&!IS_DBI_HANDLE(newvalue) &&!SvMAGIC(newvalue))) {
 		/* dbi handle allowed for cursor variables */
 		croak("Can't bind a reference (%s)", neatsvpv(newvalue,0));
 	}
+
 	if (SvTYPE(newvalue) == SVt_PVLV && is_inout) {	 /* may allow later */
 		croak("Can't bind ``lvalue'' mode scalar as inout parameter (currently)");
 	}
@@ -805,6 +806,8 @@ dbd_bind_ph (sth, imp_sth, ph_namesv, newvalue, sql_type, attribs, is_inout, max
 							"by DBD::ChurlPg",
 							name, sql_type_info->type_name);
 			}
+		} else {
+			croak("Cannot bind %s unknown sql_type %i",	name, sql_type);
 		}
 		bind_type = sql_type_info->type_id;
 		
@@ -1241,7 +1244,7 @@ dbd_st_FETCH_attrib (sth, imp_sth, keysv)
 			
 		}
 	} else if (kl==13 && strEQ(key, "pg_oid_status")) {
-		retsv = newSVpv((char *)PQoidStatus(imp_sth->result), 0);
+		retsv = newSViv(PQoidValue(imp_sth->result));
 	} else if (kl==13 && strEQ(key, "pg_cmd_status")) {
 		retsv = newSVpv((char *)PQcmdStatus(imp_sth->result), 0);
 	} else {

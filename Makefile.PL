@@ -1,5 +1,5 @@
 
-# $Id: Makefile.PL,v 1.17 2003/09/08 21:39:41 markjugg Exp $
+# $Id: Makefile.PL,v 1.18 2003/09/25 04:59:25 tlowery Exp $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -66,7 +66,7 @@ else {
   $dbi_arch_dir = dbd_dbi_arch_dir();
 }
 
-my $comp_opts;
+my $comp_opts = $Config{q{ccflags}};
 if ($major_ver == 7) {
     if ($minor_ver >= 2) {
         $comp_opts .= " -DHAVE_PQescapeString";
