@@ -1,5 +1,5 @@
 
-#  $Id: Pg.pm,v 1.73 2003/11/14 20:38:44 rlippan Exp $
+#  $Id: Pg.pm,v 1.74 2003/11/17 21:22:25 rlippan Exp $
 #
 #  Copyright (c) 1997,1998,1999,2000 Edmund Mergl
 #  Copyright (c) 2002 Jeffrey W. Baker
@@ -12,7 +12,7 @@
 
 use 5.006001;
 
-$DBD::Pg::VERSION = '1.31_9';
+$DBD::Pg::VERSION = '1.31';
 
 {
 	package DBD::Pg;
