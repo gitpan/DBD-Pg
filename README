@@ -1,6 +1,6 @@
 #---------------------------------------------------------
 #
-# $Id: README,v 1.10 1997/08/26 20:57:47 mergl Exp $
+# $Id: README,v 1.10 1997/10/05 18:25:55 mergl Exp $
 #
 # Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 # Portions Copyright (c) 1997                Edmund Mergl
@@ -8,10 +8,26 @@
 #---------------------------------------------------------
 
 
+
+**********************************************************
+*                                                        *
+*            This release makes changes which are        *
+*                      INCOMPATIBLE                      *
+*                      ------------                      *
+*                  to previous releases.                 *
+*                                                        *
+*        Please check the module documentation           *
+*             for the attribute AutoCommit               *
+*               and for the data type bool.              *
+*                                                        *
+**********************************************************
+
+
+
 DESCRIPTION:
 ------------
 
-This is version 0.62 of DBD-Pg.
+This is version 0.63 of DBD-Pg.
 DBD-Pg is a PostgreSQL interface for Perl 5 using DBI.
 
 For further information about DBI look at:
@@ -44,7 +60,7 @@ REQUIREMENTS:
 
   - build, test and install Perl 5         (at least 5.002)
   - build, test and install the DBI module (at least 0.89)
-  - build, test and install PostgreSQL     (at least 6.1.1)
+  - build, test and install PostgreSQL     (at least 6.2)
 
 
 PLATFORMS:
@@ -78,15 +94,21 @@ Note, that the user running this script must have been created with
 the access rights to create databases *AND* users ! Do not run this
 script as root !
 
-If you are using the shared library libpq.so, make sure, your dynamic 
-loader is able to find libpq.so. With Linux the command /sbin/ldconfig -v 
-should tell you, where it finds libpq.so. If not, you need to add an 
-appropriate entry to /etc/ld.so.conf or to the environment variable 
-LD_LIBRARY_PATH.
+If testing fails with the message 'login failed', please check if access 
+to the database template1 as well as pgperltest is not protected in pg_hba.conf. 
+
+If you are using the shared library libpq.so check if your dynamic loader 
+finds libpq.so. With Linux the command /sbin/ldconfig -v should tell you, 
+where it finds libpq.so. If ldconfig does not find libpq.so, either add an 
+appropriate entry to /etc/ld.so.conf and re-run ldconfig or add the path to 
+the environment variable LD_LIBRARY_PATH. 
+A typical error message resulting from not finding libpq.so is: 
+  install_driver(Pg) failed: Can't load './blib/arch/auto/DBD/Pg/Pg.so' 
+  for module DBD::Pg: File not found at 
 
 Some linux distributions have an incomplete perl installation.
 If you have compile errors like "XS_VERSION_BOOTCHECK undeclared", make a
-          'find /usr/lib/perl5 -name XSUB.h -print'
+          'find .../lib/perl5 -name XSUB.h -print'
 If this file is not present, you need to recompile and reinstall perl.
 
 SGI users: if you get segmentation faults make sure, you use the malloc which 
@@ -96,6 +118,6 @@ SGI users: if you get segmentation faults make sure, you use the malloc which
 
 ---------------------------------------------------------------------------
 
-   Edmund Mergl <E.Mergl@bawue.de>                     August 26, 1997
+   Edmund Mergl <E.Mergl@bawue.de>                       October 05, 1997
 
 ---------------------------------------------------------------------------

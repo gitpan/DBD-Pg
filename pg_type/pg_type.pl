@@ -2,7 +2,7 @@
 
 #---------------------------------------------------------
 #
-# $Id: pg_type.pl,v 1.1 1997/08/16 16:14:08 mergl Exp $
+# $Id: pg_type.pl,v 1.1 1997/09/15 19:14:09 mergl Exp $
 #
 # get all OIDs and names from pgsql/src/include/catalog/pg_type.h 
 # and write them as array into the module pg_type.pm 

@@ -1,6 +1,6 @@
 #---------------------------------------------------------
 #
-# $Id: Pg.pm,v 1.8 1997/08/26 20:57:45 mergl Exp $
+# $Id: Pg.pm,v 1.10 1997/10/05 18:25:55 mergl Exp $
 #
 #  Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 #  Portions Copyright (c) 1997                Edmund Mergl
@@ -16,15 +16,15 @@ require 5.002;
     use DynaLoader ();
     @ISA = qw(DynaLoader);
 
-    $VERSION = '0.62';
+    $VERSION = '0.63';
 
     require_version DBI 0.89;
 
     bootstrap DBD::Pg $VERSION;
 
     $err = 0;		# holds error code   for DBI::err
-    $errstr = "";	# holds error string for DBI::errst
-    $drh = undef;	# holds driver handle once initialised
+    $errstr = "";	# holds error string for DBI::errstr
+    $drh = undef;	# holds driver handle once initialized
 
     sub driver{
 	return $drh if $drh;
@@ -112,27 +112,6 @@ require 5.002;
 	$sth->execute or return undef;
 	$sth;
     }
-
-    sub FETCH {
-	my ($dbh, $attrib) = @_;
-	# In reality this would interrogate the database engine to
-	# either return dynamic values that cannot be precomputed
-	# or fetch and cache attribute values too expensive to prefetch.
-	return 1 if $attrib eq 'AutoCommit';
-	# else pass up to DBI to handle
-	return $dbh->DBD::_::st::FETCH($attrib);
-    }
-
-    sub STORE {
-	my ($dbh, $attrib, $value) = @_;
-	# would normally validate and only store known attributes
-	# else pass up to DBI to handle
-	if ($attrib eq 'AutoCommit') {
-	    return 1 if $value;	# is already set
-	    croak("Can't disable AutoCommit");
-	}
-	return $dbh->DBD::_::st::STORE($attrib, $value);
-    }
 }
 
 
@@ -141,11 +120,6 @@ require 5.002;
 
     sub errstr {
 	return $DBD::Pg::errstr;
-    }
-
-    sub bind_param {
-	my($sth, $param, $value, $attribs) = @_;
-	$sth->{'param'}->[$param] = $value;
     }
 }
 
@@ -178,12 +152,14 @@ access to PostgreSQL databases.
 
 To connect to a database you can say:
 
-	$dbh = DBI->connect('dbi:Pg:DB', 'username', 'password');
+	$dbh = DBI->connect('dbi:Pg:dbname:host:port', 'username', 'password');
 
-The first parameter specifies the driver and the database. 
-The second and third parameter specify the username and 
-password. This returns a database handle which can be used 
-for subsequent database interactions.
+The first parameter specifies the driver, the database and 
+the optional host and port. The second and third parameter 
+specify the username and password. This returns a database 
+handle which can be used for subsequent database interactions. 
+Please refer to the pg_passwd man-page for the different types 
+of authorization. 
 
 
 =head1 SIMPLE STATEMENTS
@@ -206,11 +182,10 @@ no data. You create a statement handle using:
 
 Once the statement is prepared, you can execute it:
 
-	$numrows = $sth->execute;
+	$rv = $sth->execute;
 
-For statements which return data, $numrows is the number 
-of selected rows. You can retrieve the values in the 
-following way:
+$rv is the number of selected / affected rows. You can retrieve the values 
+in the following way:
 
 	while ($ary_ref = $sth->fetch) {
 
@@ -274,20 +249,37 @@ There is also support for two PostgreSQL-specific attributes:
 
 =head1 TRANSACTIONS
 
-PostgreSQL supports simple transactions. They can not be named 
-and they can not be nested ! You start a transaction with: 
+The transaction behavior is now controlled with the attribute AutoCommit. 
+For a complete definition of AutoCommit please refer to the DBI documentation. 
 
-	$dbh->do('begin');
+According to the DBI specification the default for AutoCommit is TRUE. 
+In this mode, any change to the database becomes valid immediately. Any 
+'begin', 'commit' or 'rollback' statement will be rejected. 
 
-The transaction can be aborted or finished with:
+If AutoCommit is switched-off, immediately a transaction will be started by 
+issuing a 'begin' statement. Any 'commit' or 'rollback' will start a new 
+transaction. A disconnect will issue a 'rollback' statement. 
 
-	$dbh->do('abort');
-	$dbh->do('end');
+In case your scripts do not use transactions, no changes are necessary. 
+If your scripts make use of transactions, you have to adapt them to the 
+AutoCommit feature. In most cases it is be sufficient, to remove the 
+'begin' statements and to switch-off the AutoCommit mode. 
 
-Note that the following functions can also be used:
 
-	$dbh->rollback;
-	$dbh->commit;
+=head1 DATA TYPE bool
+
+The current implementation of PostgreSQL returns 't' for true and 'f' for 
+false. From the perl point of view a rather unfortunate choice. Starting 
+with this release, the DBD-Pg module translates the result for the data type 
+bool in a more perl-ish like manner: 'f' -> '0' and 't' -> '1'. This way 
+the application does not have to check the database-specific return values 
+for the data type bool, because perl treats '0' as false and '1' as true. 
+If you make use of the data type bool you have to adapt your scripts !
+
+There is still one drawback: in INSERT or UPDATE statements you have to stay 
+with 't' for true instead of '1', because PostgreSQL accepts almost anything 
+as input but treats it as false. This behavior might change in the next release 
+of PostgreSQL. 
 
 
 =head1 BLOBS
@@ -307,13 +299,6 @@ examples.
 PostgreSQL does not has the concept of preparing 
 a statement. Here the prepare method just stores 
 the statement. 
-
-=item *
-Currently PostgreSQL does not return the number of 
-affected rows for non-select statements. 
-
-=item *
-Transactions can not be named and not be nested. 
 
 =item *
 Although PostgreSQL has a cursor concept, it has not 
@@ -346,7 +331,7 @@ DBI and DBD-Oracle by Tim Bunce (Tim.Bunce@ig.co.uk)
 =item *
 DBD-Pg by Edmund Mergl (E.Mergl@bawue.de)
 
- Major parts of this package have been copied from DBD-Oracle.
+ Major parts of this package have been copied from DBI and DBD-Oracle.
 
 
 =head1 COPYRIGHT
@@ -355,8 +340,8 @@ The DBD::Pg module is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.
 
 
-=head1 ACKNOWLEDGEMENTS
+=head1 ACKNOWLEDGMENTS
 
-See also L<DBI/ACKNOWLEDGEMENTS>.
+See also L<DBI/ACKNOWLEDGMENTS>.
 
 =cut

@@ -1,6 +1,6 @@
 /*---------------------------------------------------------
  *
- * $Id: Pg.h,v 1.3 1997/08/23 05:59:16 mergl Exp $
+ * $Id: Pg.h,v 1.9 1997/10/05 18:25:55 mergl Exp $
  *
  * Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
  * Portions Copyright (c) 1997                Edmund Mergl
@@ -10,6 +10,7 @@
 
 
 #include "libpq-fe.h"
+#include <string.h>
 
 #if 0
 #include<sys/stat.h>

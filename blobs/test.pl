@@ -1,15 +1,15 @@
-#!/usr/local/bin/perl
+#!/usr/local/bin/perl -w
 
 #---------------------------------------------------------
 #
-# $Id: test.pl,v 1.2 1997/08/23 06:09:53 mergl Exp $
+# $Id: test.pl,v 1.3 1997/10/05 18:27:49 mergl Exp $
 #
 #---------------------------------------------------------
 
 use DBI;
 
 $dbmain = 'template1';
-$dbname = 'lobject';
+$dbname = 'pgperltest';
 $dbuser = '';
 $dbpass = '';
 
@@ -31,10 +31,10 @@ $sth = $dbh->prepare("SELECT loid FROM lobject WHERE id = 1");
 $sth->execute;
 ($lobj_id) = $sth->fetchrow_array;
 
-$blob = $sth->blob_read($lobj_id, 0, 0);
+$blob = $sth->blob_read($lobj_id, 200, 80);
 print $blob, "\n";
 
-$blob = $sth->blob_read($lobj_id, 200, 80);
+$blob = $sth->blob_read($lobj_id, 0, 0);
 print $blob, "\n";
 
 $sth->finish;

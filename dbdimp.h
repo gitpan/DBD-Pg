@@ -1,6 +1,6 @@
 /*---------------------------------------------------------
  *
- * $Id: dbdimp.h,v 1.3 1997/08/23 05:59:18 mergl Exp $
+ * $Id: dbdimp.h,v 1.8 1997/10/05 18:25:56 mergl Exp $
  *
  * Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
  * Portions Copyright (c) 1997                Edmund Mergl
@@ -27,6 +27,7 @@ struct imp_sth_st {
 
     PGresult* result;		/* result structure */
     int cur_tuple;		/* current tuple */
+    int rows;			/* number of affected rows */
 
     /* Input Details	*/
     HV        *all_params_hv;	/* all params, keyed by name	*/
@@ -35,6 +36,9 @@ struct imp_sth_st {
 
     /* (In/)Out Parameter Details */
     bool  has_inout_params;
+
+    /* needed by conversion of datatype bool */
+    char *is_bool;
 };
 
 

@@ -1,19 +1,22 @@
 #---------------------------------------------------------
 #
-# $Id: Makefile.PL,v 1.4 1997/08/23 05:59:15 mergl Exp $
+# $Id: Makefile.PL,v 1.6 1997/10/05 18:25:55 mergl Exp $
 #
 # Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 # Portions Copyright (c) 1997                Edmund Mergl
 #
 #---------------------------------------------------------
 
-use 5.004;
 use ExtUtils::MakeMaker;
 use Config;
 use strict;
 use DBI 0.89;
 use DBI::DBD;
 
+
+print "\nConfiguring Pg\n";
+print "Remember to actually read the README file !\n";
+die "\nYou didn't read the README file !\n" unless ($] >= 5.002);
 
 if (! $ENV{POSTGRES_HOME}) {
     print "\$POSTGRES_HOME not defined. Searching for PostgreSQL...\n";

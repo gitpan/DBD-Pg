@@ -1,5 +1,24 @@
 Revision history for Perl extension DBD-Pg.
 
+0.63  October 05, 1997
+	- adapted to PostgreSQL-6.2:
+          o $sth->rows as well as $sth->execute
+            and $sth->do return the number of 
+            affected rows even for non-Select
+            statements.
+          o support for password authorization added, 
+            please check the man-page for pg_passwd. 
+        - the data_source parameter of the connect 
+          method accepts two additional parameters 
+          which are  treated as host and port:
+          DBI->connect("dbi:Pg:dbname:host:port", "uid", "pwd")
+        - support for AutoCommit, please read the 
+          module documentation for impacts on your 
+          scripts !
+        - more perl-ish handling of data type bool, 
+          please read the module documentation for 
+          impacts on your scripts !
+
 0.62  August 26, 1997
 	- added blobs/README
 

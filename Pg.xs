@@ -1,6 +1,6 @@
 /*---------------------------------------------------------
  *
- * $Id: Pg.xs,v 1.3 1997/08/23 05:59:17 mergl Exp $
+ * $Id: Pg.xs,v 1.10 1997/10/05 18:25:55 mergl Exp $
  *
  * Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
  * Portions Copyright (c) 1997                Edmund Mergl
@@ -71,10 +71,30 @@ _do(dbh, statement, attribs=Nullsv)
     SV *	attribs
     CODE:
     {
+    D_imp_dbh(dbh);
+    int retval;
     DBD_ATTRIBS_CHECK("_do", dbh, attribs);
-#   D_imp_dbh(dbh);
-#   ST(0) = dbd_db_do(dbh, imp_dbh, statement, attribs) ? &sv_yes : &sv_no;
-    ST(0) = dbd_db_do(dbh, statement) ? &sv_yes : &sv_no;
+    if (!strncasecmp(statement, "begin", 5) ||
+        (DBIc_has(imp_dbh, DBIcf_AutoCommit) &&
+         (!strncasecmp(statement, "end",      4) ||
+          !strncasecmp(statement, "commit",   6) ||
+          !strncasecmp(statement, "abort",    5) ||
+          !strncasecmp(statement, "rollback", 8) ))) {
+        warn("transactions ineffective with AutoCommit");
+	retval = -2;
+    } else {
+     /* retval = dbd_db_do(dbh, imp_dbh, statement, attribs); */
+        retval = dbd_db_do(dbh, statement);
+    }
+    if (retval == 0) {		/* ok with no rows affected	*/
+	XST_mPV(0, "0E0");	/* (true but zero)		*/
+    }
+    else if (retval < -1) {	/* -1 == unknown number of rows	*/
+	XST_mUNDEF(0);		/* <= -2 means error   		*/
+    }
+    else {
+	XST_mIV(0, retval);	/* typically 1, rowcount or -1	*/
+    }
     }
 
 
@@ -83,10 +103,12 @@ commit(dbh)
     SV *	dbh
     CODE:
     D_imp_dbh(dbh);
-    if (DBIc_has(imp_dbh,DBIcf_AutoCommit)) {
-	warn("commit ineffective with AutoCommit");
+    if (DBIc_has(imp_dbh, DBIcf_AutoCommit)) {
+        warn("commit ineffective with AutoCommit");
+        ST(0) = &sv_no;
+    } else {
+        ST(0) = dbd_db_commit(dbh, imp_dbh) ? &sv_yes : &sv_no;
     }
-    ST(0) = dbd_db_commit(dbh, imp_dbh) ? &sv_yes : &sv_no;
 
 
 void
@@ -94,10 +116,12 @@ rollback(dbh)
     SV *	dbh
     CODE:
     D_imp_dbh(dbh);
-    if (DBIc_has(imp_dbh,DBIcf_AutoCommit)) {
-	warn("rollback ineffective with AutoCommit");
+    if (DBIc_has(imp_dbh, DBIcf_AutoCommit)) {
+        warn("rollback ineffective with AutoCommit");
+        ST(0) = &sv_no;
+    } else {
+        ST(0) = dbd_db_rollback(dbh, imp_dbh) ? &sv_yes : &sv_no;
     }
-    ST(0) = dbd_db_rollback(dbh, imp_dbh) ? &sv_yes : &sv_no;
 
 
 void
@@ -156,6 +180,9 @@ DESTROY(dbh)
 	}
     }
     else {
+        if (DBIc_IADESTROY(imp_dbh)) { /* want's ineffective destroy    */
+            DBIc_ACTIVE_off(imp_dbh);
+        }
 	if (DBIc_ACTIVE(imp_dbh)) {
 	    static int auto_rollback = -1;
 	    if (DBIc_WARN(imp_dbh) && (!dirty || dbis->debug >= 3)) {
@@ -199,8 +226,19 @@ _prepare(sth, statement, attribs=Nullsv)
     CODE:
     {
     D_imp_sth(sth);
+    D_imp_dbh_from_sth;
     DBD_ATTRIBS_CHECK("_prepare", sth, attribs);
-    ST(0) = dbd_st_prepare(sth, imp_sth, statement, attribs) ? &sv_yes : &sv_no;
+    if (!strncasecmp(statement, "begin", 5) ||
+        (DBIc_has(imp_dbh, DBIcf_AutoCommit) &&
+         (!strncasecmp(statement, "end",      4) ||
+          !strncasecmp(statement, "commit",   6) ||
+          !strncasecmp(statement, "abort",    5) ||
+          !strncasecmp(statement, "rollback", 8) ))) {
+        warn("transactions ineffective with AutoCommit");
+	ST(0) = &sv_no;
+    } else {
+        ST(0) = dbd_st_prepare(sth, imp_sth, statement, attribs) ? &sv_yes : &sv_no;
+    }
     }
 
 
@@ -424,6 +462,9 @@ DESTROY(sth)
 	}
     }
     else {
+        if (DBIc_IADESTROY(imp_sth)) { /* want's ineffective destroy    */
+            DBIc_ACTIVE_off(imp_sth);
+        }
 	if (DBIc_ACTIVE(imp_sth)) {
 	    dbd_st_finish(sth, imp_sth);
 	}

@@ -1,6 +1,6 @@
 /*---------------------------------------------------------
  *
- * $Id: dbdimp.c,v 1.4 1997/08/23 05:59:18 mergl Exp $
+ * $Id: dbdimp.c,v 1.13 1997/10/05 18:25:55 mergl Exp $
  *
  * Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
  * Portions Copyright (c) 1997                Edmund Mergl
@@ -12,6 +12,14 @@
 #include "Pg.h"
 
 #define BUFSIZE 1024
+
+#if NEVER
+#define TRANSACTION_DEBUG 1
+#endif
+
+#if NEVER
+#define PG_DEBUG 1
+#endif
 
 
 DBISTATE_DECLARE;
@@ -63,22 +71,45 @@ dbd_db_login(dbh, imp_dbh, dbname, uid, pwd)
     char *pwd;
 {
     char *conn_str;
+    char *host;
+    char *port;
+    int len;
 
-#ifdef PGDEBUG
+#ifdef PG_DEBUG
     fprintf(stderr, "dbd_db_login\n");
 #endif
 
     /* make a connection to the database */
-    conn_str = (char *)malloc(strlen(dbname) + strlen(uid) + strlen(pwd) + 48);
+    conn_str = (char *)malloc(strlen(dbname) + strlen(uid) + strlen(pwd) + 64);
     if (! conn_str) {
         return 0;
     }
+
+    /* build connect string */
     strcpy(conn_str, "dbname=");
-    strcat(conn_str, dbname);
-    if (strlen(uid) && strlen(pwd)) {
-        strcat(conn_str, " authtype=password user=");
+    if (host = index(dbname, ':')) {
+        len  = host - dbname;
+        strncat(conn_str, dbname, len);
+        strcat(conn_str, " host=");
+        host++;
+        if (port = index(host, ':')) {
+            len  = port - host;
+            strncat(conn_str, host, len);
+            strcat(conn_str, " port=");
+            port++;
+            strcat(conn_str, port);
+        } else {
+            strcat(conn_str, host);
+        }
+    } else {
+        strcat(conn_str, dbname);
+    }
+    if (strlen(uid)) {
+        strcat(conn_str, " user=");
         strcat(conn_str, uid);
-        strcat(conn_str, " password=");
+    }
+    if (strlen(uid) && strlen(pwd)) {
+        strcat(conn_str, " authtype=password password=");
         strcat(conn_str, pwd);
     }
     imp_dbh->conn = PQconnectdb(conn_str);
@@ -90,8 +121,9 @@ dbd_db_login(dbh, imp_dbh, dbname, uid, pwd)
 	return 0;
     }
 
-    DBIc_IMPSET_on(imp_dbh);	/* imp_dbh set up now			*/
-    DBIc_ACTIVE_on(imp_dbh);	/* call disconnect before freeing	*/
+    DBIc_set(imp_dbh, DBIcf_AutoCommit, TRUE);	/* AutoCommit is default */
+    DBIc_IMPSET_on(imp_dbh);			/* imp_dbh set up now */
+    DBIc_ACTIVE_on(imp_dbh);			/* call disconnect before freeing */
     return 1;
 }
 
@@ -105,23 +137,34 @@ dbd_db_do(dbh, statement)
     D_imp_dbh(dbh);
     PGresult* result = 0;
     ExecStatusType status;
+    char *cmdStatus;
+    char *cmdTuples;
+    int ret = -2;
 
-#ifdef PGDEBUG
+#ifdef PG_DEBUG
     fprintf(stderr, "dbd_db_do\n");
 #endif
 
     /* execute command */
     result = PQexec(imp_dbh->conn, statement);
-    status = result ? PQresultStatus(result) : -1;
+    status    = result ? PQresultStatus(result)      : -1;
+    cmdStatus = result ? (char *)PQcmdStatus(result) : NULL;
+    cmdTuples = result ? (char *)PQcmdTuples(result) : NULL;
     PQclear(result);
 
     /* check also for PGRES_TUPLES_OK in case of 'SELECT INTO TABLE' */
     if (status != PGRES_COMMAND_OK && status != PGRES_TUPLES_OK) {
         dbd_error(dbh, status, PQerrorMessage(imp_dbh->conn));
-        return 0;
+        return -2;
     }
 
-    return 1;
+    if (! strncmp(cmdStatus, "DELETE", 6) || ! strncmp(cmdStatus, "INSERT", 6) || ! strncmp(cmdStatus, "UPDATE", 6)) {
+        ret = atoi(cmdTuples);
+    } else {
+        ret = -1;
+    }
+
+    return ret;
 }
 
 
@@ -132,6 +175,11 @@ dbd_db_commit(dbh, imp_dbh)
 {
     PGresult* result = 0;
     ExecStatusType status;
+    int retval = 1;
+
+#ifdef TRANSACTION_DEBUG
+    fprintf(stderr, "dbd_db_commit\n");
+#endif
 
     /* execute commit */
     result = PQexec(imp_dbh->conn, "commit");
@@ -143,8 +191,19 @@ dbd_db_commit(dbh, imp_dbh)
         return 0;
     }
 
-    return 1;
+    if (DBIc_has(imp_dbh, DBIcf_AutoCommit) == FALSE) {
+        result = PQexec(imp_dbh->conn, "begin");
+        status = result ? PQresultStatus(result) : -1;
+        PQclear(result);
+        if (status != PGRES_COMMAND_OK) {
+            dbd_error(dbh, status, "begin failed\n");
+            return 0;
+        }
+    }
+
+    return retval;
 }
+
 
 int
 dbd_db_rollback(dbh, imp_dbh)
@@ -153,6 +212,11 @@ dbd_db_rollback(dbh, imp_dbh)
 {
     PGresult* result = 0;
     ExecStatusType status;
+    int retval = 1;
+
+#ifdef TRANSACTION_DEBUG
+    fprintf(stderr, "dbd_db_rollback\n");
+#endif
 
     /* execute rollback */
     result = PQexec(imp_dbh->conn, "rollback");
@@ -164,7 +228,17 @@ dbd_db_rollback(dbh, imp_dbh)
         return 0;
     }
 
-    return 1;
+    if (DBIc_has(imp_dbh, DBIcf_AutoCommit) == FALSE) {
+        result = PQexec(imp_dbh->conn, "begin");
+        status = result ? PQresultStatus(result) : -1;
+        PQclear(result);
+        if (status != PGRES_COMMAND_OK) {
+            dbd_error(dbh, status, "begin failed\n");
+            return 0;
+        }
+    }
+
+    return retval;
 }
 
 
@@ -173,9 +247,29 @@ dbd_db_disconnect(dbh, imp_dbh)
     SV *dbh;
     imp_dbh_t *imp_dbh;
 {
+#ifdef PG_DEBUG
+    fprintf(stderr, "dbd_db_disconnect\n");
+#endif
+
     /* We assume that disconnect will always work	*/
     /* since most errors imply already disconnected.	*/
     DBIc_ACTIVE_off(imp_dbh);
+
+    /* rollback if AutoCommit = off */
+    if (DBIc_has(imp_dbh, DBIcf_AutoCommit) == FALSE) {
+        PGresult* result = 0;
+        ExecStatusType status;
+        result = PQexec(imp_dbh->conn, "rollback");
+        status = result ? PQresultStatus(result) : -1;
+        PQclear(result);
+        if (status != PGRES_COMMAND_OK) {
+            dbd_error(dbh, status, "rollback failed\n");
+            return 0;
+        }
+#ifdef TRANSACTION_DEBUG
+    fprintf(stderr, "dbd_db_disconnect: AutoCommit=off -> rollback\n");
+#endif
+    }
 
     PQfinish(imp_dbh->conn);
 
@@ -191,13 +285,13 @@ dbd_db_destroy(dbh, imp_dbh)
     SV *dbh;
     imp_dbh_t *imp_dbh;
 {
+#ifdef PG_DEBUG
+    fprintf(stderr, "dbd_db_destroy\n");
+#endif
+
     if (DBIc_ACTIVE(imp_dbh)) {
 	dbd_db_disconnect(dbh, imp_dbh);
     }
-
-#ifdef PGDEBUG
-    fprintf(stderr, "destroy database handle\n");
-#endif
 
     /* Nothing in imp_dbh to be freed	*/
     DBIc_IMPSET_off(imp_dbh);
@@ -211,7 +305,50 @@ dbd_db_STORE_attrib(dbh, imp_dbh, keysv, valuesv)
     SV *keysv;
     SV *valuesv;
 {
-    return FALSE;
+    STRLEN kl;
+    char *key = SvPV(keysv,kl);
+    int retval = TRUE;
+    int newval = SvTRUE(valuesv);
+
+#ifdef PG_DEBUG
+    fprintf(stderr, "dbd_db_STORE\n");
+#endif
+
+    if (kl==10 && strEQ(key, "AutoCommit")) {
+        int oldval = DBIc_has(imp_dbh, DBIcf_AutoCommit);
+        DBIc_set(imp_dbh, DBIcf_AutoCommit, newval);
+        if (oldval == FALSE && newval != FALSE) {
+            /* commit any outstanding changes */
+            PGresult* result = 0;
+            ExecStatusType status;
+            result = PQexec(imp_dbh->conn, "commit");
+            status = result ? PQresultStatus(result) : -1;
+            PQclear(result);
+            if (status != PGRES_COMMAND_OK) {
+                dbd_error(dbh, status, "commit failed\n");
+                return 0;
+            }
+#ifdef TRANSACTION_DEBUG
+    fprintf(stderr, "dbd_db_STORE: switch AutoCommit to on: rollback\n");
+#endif
+        } else if (oldval != FALSE && newval == FALSE) {
+            /* start new transaction */
+            PGresult* result = 0;
+            ExecStatusType status;
+            result = PQexec(imp_dbh->conn, "begin");
+            status = result ? PQresultStatus(result) : -1;
+            PQclear(result);
+            if (status != PGRES_COMMAND_OK) {
+                dbd_error(dbh, status, "begin failed\n");
+                return 0;
+            }
+#ifdef TRANSACTION_DEBUG
+    fprintf(stderr, "dbd_db_STORE: switch AutoCommit to off: begin\n");
+#endif
+        }
+    }
+
+    return retval;
 }
 
 
@@ -223,9 +360,17 @@ dbd_db_FETCH_attrib(dbh, imp_dbh, keysv)
 {
     STRLEN kl;
     char *key = SvPV(keysv,kl);
-    SV *retsv = NULL;
+    SV *retsv = Nullsv;
 
-    return Nullsv;
+#ifdef PG_DEBUG
+    fprintf(stderr, "dbd_db_FETCH\n");
+#endif
+
+    if (kl==10 && strEQ(key, "AutoCommit")) {
+        retsv = newSViv((IV)DBIc_is(imp_dbh, DBIcf_AutoCommit));
+    }
+
+    return sv_2mortal(retsv);
 }
 
 
@@ -239,7 +384,7 @@ dbd_st_prepare(sth, imp_sth, statement, attribs)
     char *statement;
     SV *attribs;
 {
-#ifdef PGDEBUG
+#ifdef PG_DEBUG
     fprintf(stderr, "dbd_st_prepare\n");
 #endif
 
@@ -258,7 +403,11 @@ dbd_st_rows(sth, imp_sth)
     SV *sth;
     imp_sth_t *imp_sth;
 {
-    return PQntuples(imp_sth->result);
+#ifdef PG_DEBUG
+    fprintf(stderr, "dbd_st_rows\n");
+#endif
+
+    return imp_sth->rows;
 }
 
 
@@ -269,12 +418,15 @@ dbd_st_execute(sth, imp_sth)	/* <= -2:error, >=0:ok row count, (-1=unknown count
 {
     D_imp_dbh_from_sth;
     ExecStatusType status = -1;
+    char *cmdStatus;
+    char *cmdTuples;
     int ret = -2;
+    int i, num_fields;
 
     SV** svp = hv_fetch((HV *)SvRV(sth), "Statement", 9, FALSE);
     char *statement = SvPV(*svp, na);
 
-#ifdef PGDEBUG
+#ifdef PG_DEBUG
     fprintf(stderr, "dbd_st_execute\n");
 #endif
 
@@ -287,22 +439,44 @@ dbd_st_execute(sth, imp_sth)	/* <= -2:error, >=0:ok row count, (-1=unknown count
             imp_sth->result = PQexec(imp_dbh->conn, statement);
         }
         /* check status */
-        status = imp_sth->result ? PQresultStatus(imp_sth->result) : -1;
+        status    = imp_sth->result ? PQresultStatus(imp_sth->result)      : -1;
+        cmdStatus = imp_sth->result ? (char *)PQcmdStatus(imp_sth->result) : "";
+        cmdTuples = imp_sth->result ? (char *)PQcmdTuples(imp_sth->result) : "";
     }
 
     if (PGRES_TUPLES_OK == status) {
         /* select statement */
+        num_fields = PQnfields(imp_sth->result);
+        imp_sth->is_bool = (char *)malloc(num_fields);
+        if (! imp_sth->is_bool) {
+            return -2;
+        }
+        for(i = 0; i < num_fields; ++i) { /* store the columns with datatype = bool */
+            if (16 == PQftype(imp_sth->result, i)) {
+               imp_sth->is_bool[i] = '1';
+            } else {
+               imp_sth->is_bool[i] = '0';
+            }
+        }
         imp_sth->cur_tuple = 0;
-        DBIc_NUM_FIELDS(imp_sth) = PQnfields(imp_sth->result);
+        DBIc_NUM_FIELDS(imp_sth) = num_fields;
         DBIc_ACTIVE_on(imp_sth);
+
         ret = PQntuples(imp_sth->result);
     } else if (PGRES_COMMAND_OK == status) {
         /* non-select statement */
-        ret = -1;
+        if (! strncmp(cmdStatus, "DELETE", 6) || ! strncmp(cmdStatus, "INSERT", 6) || ! strncmp(cmdStatus, "UPDATE", 6)) {
+            ret = atoi(cmdTuples);
+        } else {
+            ret = -1;
+        }
     } else {
         dbd_error(sth, status, PQerrorMessage(imp_dbh->conn));
         ret = -2;
     }
+
+    /* store the number of affected rows */
+    imp_sth->rows = ret;
 
     return ret;
 }
@@ -318,7 +492,7 @@ dbd_st_fetch(sth, imp_sth)
     int i;
     AV *av;
 
-#ifdef PGDEBUG
+#ifdef PG_DEBUG
     fprintf(stderr, "dbd_st_fetch\n");
 #endif
 
@@ -338,8 +512,12 @@ dbd_st_fetch(sth, imp_sth)
 
     for(i = 0; i < num_fields; ++i) {
 
-	SV *sv = AvARRAY(av)[i];
-	sv_setpv(sv, (char*)PQgetvalue(imp_sth->result, imp_sth->cur_tuple, i));
+	SV   *sv  = AvARRAY(av)[i];
+        char *val = (char*)PQgetvalue(imp_sth->result, imp_sth->cur_tuple, i);
+        if ('1' == imp_sth->is_bool[i]) {
+           *val = *val == 'f' ? '0' : '1'; /* bool: translate postgres into perl */
+        }
+	sv_setpv(sv, val);
     }
 
     imp_sth->cur_tuple += 1;
@@ -353,13 +531,16 @@ dbd_st_finish(sth, imp_sth)
     SV *sth;
     imp_sth_t *imp_sth;
 {
-#ifdef PGDEBUG
+    D_imp_dbh_from_sth;
+
+#ifdef PG_DEBUG
     fprintf(stderr, "dbd_st_finish\n");
 #endif
 
-    if (imp_sth->result) {
+    if (DBIc_ACTIVE(imp_sth) && imp_sth->result) {
 	PQclear(imp_sth->result);
         imp_sth->result = 0;
+        imp_sth->rows   = 0;
     }
 
     DBIc_ACTIVE_off(imp_sth);
@@ -372,11 +553,16 @@ dbd_st_destroy(sth, imp_sth)
     SV *sth;
     imp_sth_t *imp_sth;
 {
-#ifdef PGDEBUG
+#ifdef PG_DEBUG
     fprintf(stderr, "dbd_st_destroy\n");
 #endif
 
     /* Free off contents of imp_sth	*/
+
+    if (imp_sth->is_bool) {
+        free(imp_sth->is_bool);
+        imp_sth->is_bool = 0;
+    }
 
     if (imp_sth->out_params_av)
 	sv_free((SV*)imp_sth->out_params_av);
@@ -416,6 +602,10 @@ dbd_st_blob_read (sth, imp_sth, lobjId, offset, len, destrv, destoffset)
     PGresult* result;
     ExecStatusType status;
     SV *bufsv;
+
+#ifdef PG_DEBUG
+    fprintf(stderr, "dbd_st_blob_read\n");
+#endif
 
     /* safety check */
     if (! SvROK(destrv)) {
@@ -507,6 +697,10 @@ dbd_st_STORE_attrib(sth, imp_sth, keysv, valuesv)
     SV *keysv;
     SV *valuesv;
 {
+#ifdef PG_DEBUG
+    fprintf(stderr, "dbd_st_STORE\n");
+#endif
+
     return FALSE;
 }
 
@@ -519,15 +713,19 @@ dbd_st_FETCH_attrib(sth, imp_sth, keysv)
 {
     STRLEN kl;
     char *key = SvPV(keysv,kl);
-    SV *retsv = NULL;
+    SV *retsv = Nullsv;
     int i;
 
+#ifdef PG_DEBUG
+    fprintf(stderr, "dbd_st_FETCH\n");
+#endif
+
     if (kl==13 && strEQ(key, "NUM_OF_PARAMS")) { /* handled by DBI */
-	return Nullsv;	
+	return Nullsv;
     }
 
     if (! imp_sth->result) {
-	return Nullsv;	
+	return Nullsv;
     }
 
     if (kl == 4 && strEQ(key, "NAME")) {
@@ -567,6 +765,10 @@ _dbd_rebind_ph(sth, imp_sth, phs)
     phs_t *phs;
 {
     STRLEN value_len;
+
+#ifdef PG_DEBUG
+    fprintf(stderr, "dbd_st_rebind\n");
+#endif
 
 /*	for strings, must be a PV first for ptr to be valid? */
 /*    sv_insert +4	*/
@@ -639,6 +841,10 @@ dbd_bind_ph(sth, imp_sth, param, value, sql_type, attribs, is_inout, maxlen)
     char *name;
     char namebuf[30];
     phs_t *phs;
+
+#ifdef PG_DEBUG
+    fprintf(stderr, "dbd_bind_ph\n");
+#endif
 
     /* check if placeholder was passed as a number	*/
     if (SvNIOK(param) || (SvPOK(param) && isDIGIT(*SvPVX(param)))) {

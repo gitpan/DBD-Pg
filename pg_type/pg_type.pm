@@ -1,7 +1,5 @@
 package DBD::Pg::pg_type;
 
-@pg_type;
-
 $pg_type[16] = 'bool';
 $pg_type[17] = 'bytea';
 $pg_type[18] = 'char';

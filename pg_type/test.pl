@@ -1,8 +1,8 @@
-#!/usr/local/bin/perl
+#!/usr/local/bin/perl -w
 
 #---------------------------------------------------------
 #
-# $Id: test.pl,v 1.2 1997/08/23 05:59:24 mergl Exp $
+# $Id: test.pl,v 1.2 1997/10/05 18:26:13 mergl Exp $
 #
 #---------------------------------------------------------
 
@@ -10,7 +10,7 @@ use DBI;
 use pg_type;
 
 $dbmain = 'template1';
-$dbname = 'pg_type';
+$dbname = 'pgperltest';
 $dbuser = '';
 $dbpass = '';
 
