@@ -1,5 +1,8 @@
 Revision history for Perl extension DBD-Pg.
 
+0.99 May 24, 2001
+	- fix the segmentation fault in pg_error.
+
 0.98 Apr 25, 2001
 	- bug-fix for core-dump after any failed function call.
 	- applied patch from Alex Pilosov <alex@pilosoft.com> 

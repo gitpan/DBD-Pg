@@ -1,6 +1,6 @@
 
 /*
-   $Id: dbdimp.c,v 1.37 2001/04/25 11:29:06 mergl Exp $
+   $Id: dbdimp.c,v 1.38 2001/05/24 17:30:45 mergl Exp $
 
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -75,7 +75,7 @@ pg_error (h, error_num, error_msg)
     char *err, *src, *dst; 
     int  len  = strlen(error_msg);
 
-    err = (char *)malloc(strlen(error_msg + 1));
+    err = (char *)malloc(strlen(error_msg) + 1);
     if (!err) {
       return;
     }
@@ -83,7 +83,7 @@ pg_error (h, error_num, error_msg)
     dst = err;
 
     /* copy error message without trailing newlines */
-    while (*dst != '\0' && *dst != '\n') {
+    while (*src != '\0' && *src != '\n') {
         *dst++ = *src++;
     }
     *dst = '\0';

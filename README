@@ -1,7 +1,7 @@
 
 DBD::Pg  --  a PostgreSQL interface for Perl 5.
 
-   $Id: README,v 1.42 2001/04/25 11:29:06 mergl Exp $
+   $Id: README,v 1.43 2001/05/24 17:30:45 mergl Exp $
 
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -13,7 +13,7 @@ DBD::Pg  --  a PostgreSQL interface for Perl 5.
 DESCRIPTION:
 ------------
 
-This is version 0.98 of DBD-Pg.
+This is version 0.99 of DBD-Pg.
 DBD-Pg is a PostgreSQL interface for Perl5 using DBI.
 
 For further information about DBI look at:
@@ -24,9 +24,7 @@ For further information about DBI look at:
 RECENT CHANGES:
 ---------------
 
-- bug-fix for core-dump after any failed function call.
-- applied patch from Alex Pilosov <alex@pilosoft.com> 
-  which adds support for the datatype bytea
+ - fix the segmentation fault in pg_error.
 
 
 COPYRIGHT:
@@ -164,6 +162,6 @@ Win32 Users: Running DBD-Pg scripts on Win32 needs some configuration work
 
 ---------------------------------------------------------------------------
 
-   Edmund Mergl <E.Mergl@bawue.de>                           Apr 25, 2001
+   Edmund Mergl <E.Mergl@bawue.de>                           May 24, 2001
 
 ---------------------------------------------------------------------------
