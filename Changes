@@ -1,5 +1,12 @@
 Revision history for Perl extension DBD-Pg.
 
+0.73 Jun 03, 1998
+	- changed include directives in Makefile.PL from 
+	  archlib to installarchlib and from sitearch to
+	  installsitearch (Tony.Curtis@vcpc.univie.ac.at).
+	- applied patch from Junio Hamano <junio@twinsun.com>
+	  quote method also doubles backslash.
+
 0.72 April 20, 1998
 	- applied patch from Michael J Schout <mschout@gkg.net>
 	  which fixed the bug with queries containing the cast

@@ -1,6 +1,6 @@
 #---------------------------------------------------------
 #
-# $Id: README,v 1.19 1998/04/20 20:06:00 mergl Exp $
+# $Id: README,v 1.20 1998/06/03 03:59:44 mergl Exp $
 #
 # Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 # Portions Copyright (c) 1997,1998           Edmund Mergl
@@ -12,7 +12,7 @@
 DESCRIPTION:
 ------------
 
-This is version 0.72 of DBD-Pg.
+This is version 0.73 of DBD-Pg.
 DBD-Pg is a PostgreSQL interface for Perl 5 using DBI.
 
 For further information about DBI look at:
@@ -122,6 +122,6 @@ Sun Users: if you get compile errors like:
 
 ---------------------------------------------------------------------------
 
-   Edmund Mergl <E.Mergl@bawue.de>                       April 20, 1998
+   Edmund Mergl <E.Mergl@bawue.de>                       June 03, 1998
 
 ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 #---------------------------------------------------------
 #
-# $Id: Pg.pm,v 1.20 1998/04/20 20:05:59 mergl Exp $
+# $Id: Pg.pm,v 1.22 1998/06/03 04:06:16 mergl Exp $
 #
 #  Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 #  Portions Copyright (c) 1997,1998           Edmund Mergl
@@ -16,7 +16,7 @@ require 5.002;
     use DynaLoader ();
     @ISA = qw(DynaLoader);
 
-    $VERSION = '0.72';
+    $VERSION = '0.73';
 
     require_version DBI 0.91;
 
@@ -73,6 +73,16 @@ require 5.002;
 
 {   package DBD::Pg::db; # ====== DATABASE ======
     use strict;
+
+    sub quote {
+        my $self = shift;
+        my $str  = shift;
+        return "NULL" unless defined $str;
+       
+        $str =~ s/\\/\\\\/g;
+        $str=~s/'/''/g;
+        "'$str'";
+    }
 
     sub errstr {
 	return $DBD::Pg::errstr;
@@ -257,6 +267,13 @@ The following attributes are supported:
 	$DBI::errstr	# error message
 
 	$DBI::rows	# row count
+
+
+=head1 DATABASE HANDLE ATTRIBUTES
+
+This module implements it's own quote method. In addition to the 
+DBI method it doubles also the backslash, because PostgreSQL treats 
+a backslash as an escape character. 
 
 
 =head1 STATEMENT HANDLE ATTRIBUTES
