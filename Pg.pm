@@ -1,5 +1,5 @@
 
-#  $Id: Pg.pm,v 1.40 2001/04/20 21:01:17 mergl Exp $
+#  $Id: Pg.pm,v 1.41 2001/04/25 11:29:06 mergl Exp $
 #
 #  Copyright (c) 1997,1998,1999,2000 Edmund Mergl
 #  Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -10,7 +10,7 @@
 
 require 5.003;
 
-$DBD::Pg::VERSION = '0.97';
+$DBD::Pg::VERSION = '0.98';
 
 {
     package DBD::Pg;
@@ -104,6 +104,7 @@ $DBD::Pg::VERSION = '0.97';
 
 {   package DBD::Pg::db; # ====== DATABASE ======
     use strict;
+    use POSIX(qw(isprint)); # necessary for quote()
 
     sub prepare {
         my($dbh, $statement, @attribs)= @_;
@@ -312,6 +313,7 @@ $DBD::Pg::VERSION = '0.97';
 	  $names,
           # name          type  prec  prefix suffix  create params null case se unsign mon  incr       local   min    max
           #					     
+          [ 'bytea',        -2, 4096,  '\'',  '\'',           undef, 1, '1', 3, undef, '0', '0',     'BYTEA', undef, undef ],
           [ 'bool',          0,    1,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',   'BOOLEAN', undef, undef ],
           [ 'int8',          8,   20, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',   'LONGINT', undef, undef ],
           [ 'int2',          5,    5, undef, undef,           undef, 1, '0', 2,   '0', '0', '0',  'SMALLINT', undef, undef ],
@@ -331,7 +333,7 @@ $DBD::Pg::VERSION = '0.97';
           [ 'timespan',     11,   47,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0',  'INTERVAL', undef, undef ],
           [ 'timestamp',    10,   19,  '\'',  '\'',           undef, 1, '0', 2, undef, '0', '0', 'TIMESTAMP', undef, undef ]
           #
-          # intentionally omitted: char, bytea, all geometric types, all array types
+          # intentionally omitted: char, all geometric types, all array types
         ];
 	return $ti;
     }
@@ -366,8 +368,17 @@ $DBD::Pg::VERSION = '0.97';
         # XXX don't know what the standard says about escaping
         # in the 'general case' (where $lp != "'").
         # So we just do this and hope:
-        $str =~ s/$lp/$lp$lp/g
-                if $lp && $lp eq $ls && ($lp eq "'" || $lp eq '"');
+        $str =~ s/$lp/$lp$lp/g  
+            if $lp && $lp eq $ls && ($lp eq "'" || $lp eq '"');
+        # also, escape the backslashes, always
+        $str =~ s/\\/\\\\/g;
+        # if the type is SQL_BINARY, escape the non-printable chars
+        if ($data_type == DBI::SQL_BINARY ||
+            $data_type == DBI::SQL_VARBINARY ||
+            $data_type == DBI::SQL_LONGVARBINARY) {
+            $str=join("", map { isprint($_)?$_:'\\'.sprintf("%03o",ord($_)) } 
+                          split //, $str);
+        }
         return "$lp$str$ls";
     }
 }
