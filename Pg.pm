@@ -1,5 +1,5 @@
 
-#  $Id: Pg.pm,v 1.13 2002/11/27 01:44:12 theory Exp $
+#  $Id: Pg.pm,v 1.17 2002/12/30 04:59:05 bmomjian Exp $
 #
 #  Copyright (c) 1997,1998,1999,2000 Edmund Mergl
 #  Copyright (c) 2002 Jeffrey W. Baker
@@ -11,7 +11,7 @@
 
 require 5.004;
 
-$DBD::Pg::VERSION = '1.20';
+$DBD::Pg::VERSION = '1.21';
 
 {
     package DBD::Pg;
@@ -530,8 +530,9 @@ $DBD::Pg::VERSION = '1.20';
         my $sth = $dbh->prepare("
             select relname  AS \"TABLE_NAME\"
             from   pg_class 
-            where  relkind = 'r' 
-            and    relname !~ '^xin[vx][0-9]+' 
+            where  relkind = 'r'
+            and    relname !~ '^pg_'
+            and    relname !~ '^xin[vx][0-9]+'
             order by 1 
         ") or return undef;
             # and    relname !~ '^pg_' 
@@ -616,7 +617,17 @@ $DBD::Pg::VERSION = '1.20';
             $default = '' unless $default;
 
             # Test for any constraints
-            my ($constraint) = $dbh->selectrow_array("select rcsrc from pg_relcheck where rcname = '${table}_$col_name'");
+            # Note: as of PostgreSQL 7.3 pg_relcheck has been replaced
+            # by pg_constraint. To maintain compatibility, check 
+            # version number and execute appropriate query.
+	
+            my ($version) = $dbh->selectrow_array("SELECT version()");
+            $version =~ /^PostgreSQL (\d)\.(\d)/;
+            
+            my $con_query = $1.$2 < 73
+             ? "SELECT rcsrc FROM pg_relcheck WHERE rcname = '${table}_$col_name'"
+             : "SELECT consrc FROM pg_catalog.pg_constraint WHERE contype = 'c' AND conname = '${table}_$col_name'";
+            my ($constraint) = $dbh->selectrow_array($con_query);
             $constraint = '' unless $constraint;
 
             # Check to see if this is the primary key
@@ -1495,7 +1506,7 @@ transaction. A disconnect will issue a 'rollback' statement.
 =head2 Large Objects
 
 The driver supports all large-objects related functions provided by libpq via
-the func-interface. Please note, that starting with PoostgreSQL-65. any access
+the func-interface. Please note, that starting with PostgreSQL 6.5 any access
 to a large object - even read-only - has to be put into a transaction!
 
 =head2 Cursors
@@ -1511,16 +1522,38 @@ amounts of data!
 =head2 Data-Type bool
 
 The current implementation of PostgreSQL returns 't' for true and 'f' for
-false. From the perl point of view a rather unfortunate choice. The DBD-Pg
+false. From the Perl point of view a rather unfortunate choice. The DBD::Pg
 module translates the result for the data-type bool in a perl-ish like manner:
 'f' -> '0' and 't' -> '1'. This way the application does not have to check the
-database-specific returned values for the data-type bool, because perl treats
+database-specific returned values for the data-type bool, because Perl treats
 '0' as false and '1' as true.
 
-PostgreSQL Version 6.2 considers the input 't' as true and anything else as
-false. PostgreSQL Version 6.3 considers the input 't', '1' and 1 as true and
-anything else as false. PostgreSQL Version 6.4 considers the input 't', '1'
-and 'y' as true and any other character as false.
+Boolean values can be passed to PostgreSQL as TRUE, 't', 'true', 'y', 'yes' or
+'1' for true and FALSE, 'f', 'false', 'n', 'no' or '0' for false.
+
+=head2 Schema support
+
+PostgreSQL version 7.3 introduced schema support. Note that the PostgreSQL
+schema concept may differ to that of other databases. Please refer to the
+PostgreSQL documentation for more details.
+
+Currently DBD::Pg does not provide explicit support for PostgreSQL schemas.
+However, schema functionality may be used without any restrictions by
+explicitly addressing schema objects, e.g.
+
+  my $res = $dbh->selectall_arrayref("SELECT * FROM my_schema.my_table");
+
+or by manipulating the schema search path with SET search_path, e.g.
+
+  $dbh->do("SET search_path TO my_schema, public");
+
+B<NOTE:> If you create an object with the same name as a PostgreSQL system
+object (as contained in the pg_catalog schema) and explicitly set the search
+path so that pg_catalog comes after the new object's schema, some DBD::Pg
+methods (particularly those querying PostgreSQL system objects) may fail.
+This problem should be fixed in a future release of DBD::Pg. Creating objects
+with the same name as system objects (or beginning with 'pg_') is not
+recommended practice and should be avoided in any case.
 
 =head1 SEE ALSO
 
@@ -1531,7 +1564,9 @@ L<DBI>
 DBI and DBD-Oracle by Tim Bunce (Tim.Bunce@ig.co.uk)
 
 DBD-Pg by Edmund Mergl (E.Mergl@bawue.de) and Jeffrey W. Baker
-(jwbaker@acm.org)
+(jwbaker@acm.org). By David Wheeler <david@wheeler.net>, Jason
+Stewart <jason@openinformatics.com> and Bruce Momjian
+<pgman@candle.pha.pa.us> after v1.13.
 
 Major parts of this package have been copied from DBI and DBD-Oracle.
 

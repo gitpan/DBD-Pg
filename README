@@ -1,18 +1,18 @@
 
 DBD::Pg  --  the DBI PostgreSQL interface for Perl
 
-# $Id: README,v 1.7 2002/11/27 17:53:30 theory Exp $
+# $Id: README,v 1.10 2002/12/17 04:08:05 tlowery Exp $
 
 DESCRIPTION:
 ------------
 
-This is version 1.20 of DBD-Pg.  The web site for this interface is at:
+This is version 1.21 of DBD-Pg.  The web site for this interface is at:
 
 	http://gborg.postgresql.org/project/dbdpg/projdisplay.php
 
 For further information about DBI look at:
 
-	http://dbi.symbolstone.org/
+	http://dbi.perl.org/
 
 For information about PostgreSQL, visit:
     
@@ -58,18 +58,19 @@ in your bug-report.
 REQUIREMENTS:
 -------------
 
-	build, test and install Perl 5         (at least 5.005)
-	build, test and install the DBI module (at least 1.30)
-	build, test and install PostgreSQL     (at least 7.3)
-
+	build, test, and install Perl 5         (at least 5.005)
+	build, test, and install the DBI module (at least 1.30)
+	build, test, and install PostgreSQL     (at least 7.3)
+        build, test, and install Test::Simple   (at least 0.17)
 
 INSTALLATION:
 -------------
 
-The Makefile uses the environment variables POSTGRES_INCLUDE and
-POSTGRES_LIB, or POSTGRES_HOME, to find the library libpq.so and the
-proper include files.
-	 
+By default Makefile.PL uses App:Info to find the location of the
+PostgreSQL library and include directories.  However, if you want to
+control it yourself, define the environment variables POSTGRES_INCLUDE
+and POSTGRES_LIB, or POSTGRES_HOME.
+
 	1.   perl Makefile.PL
 	2.   make
 	3.   make test

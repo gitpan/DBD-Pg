@@ -1,6 +1,6 @@
 
 /*
-   $Id: dbdimp.c,v 1.8 2002/11/27 02:02:39 theory Exp $
+   $Id: dbdimp.c,v 1.10 2003/01/08 22:08:17 bmomjian Exp $
 
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Copyright (c) 2002 Jeffrey W. Baker
@@ -191,6 +191,7 @@ pg_db_login (dbh, imp_dbh, dbname, uid, pwd)
 
     imp_dbh->init_commit = 1;			/* initialize AutoCommit */
     imp_dbh->pg_auto_escape = 1;		/* initialize pg_auto_escape */
+    imp_dbh->pg_bool_tf = 0;                    /* initialize pg_bool_tf */
 
     DBIc_IMPSET_on(imp_dbh);			/* imp_dbh set up now */
     DBIc_ACTIVE_on(imp_dbh);			/* call disconnect before freeing */
@@ -280,25 +281,31 @@ dbd_db_commit (dbh, imp_dbh)
 
     if (NULL != imp_dbh->conn) {
         PGresult* result = 0;
-        ExecStatusType status;
+        ExecStatusType commitstatus, beginstatus;
 
         /* execute commit */
         result = PQexec(imp_dbh->conn, "commit");
-        status = result ? PQresultStatus(result) : -1;
+        commitstatus = result ? PQresultStatus(result) : -1;
         PQclear(result);
 
         /* check result */
-        if (status != PGRES_COMMAND_OK) {
-            pg_error(dbh, status, "commit failed\n");
-            return 0;
+        if (commitstatus != PGRES_COMMAND_OK) {
+	    /* Only put the error message in DBH->errstr */
+	    pg_error(dbh, commitstatus, PQerrorMessage(imp_dbh->conn));
         }
 
         /* start new transaction.  AutoCommit must be FALSE, ref. 20 lines up */
         result = PQexec(imp_dbh->conn, "begin");
-        status = result ? PQresultStatus(result) : -1;
+        beginstatus = result ? PQresultStatus(result) : -1;
         PQclear(result);
-        if (status != PGRES_COMMAND_OK) {
-            pg_error(dbh, status, "begin failed\n");
+        if (beginstatus != PGRES_COMMAND_OK) {
+	    /* Maybe add some loud barf here? Raising some very high error? */
+            pg_error(dbh, beginstatus, "begin failed\n");
+            return 0;
+        }
+
+	/* if the initial COMMIT failed, return 0 now */
+	if (commitstatus != PGRES_COMMAND_OK) {
             return 0;
         }
         
@@ -461,6 +468,8 @@ dbd_db_STORE_attrib (dbh, imp_dbh, keysv, valuesv)
         return 1;
     } else if (kl==14 && strEQ(key, "pg_auto_escape")) {
         imp_dbh->pg_auto_escape = newval;
+    } else if (kl==10 && strEQ(key, "pg_bool_tf")) {
+	imp_dbh->pg_bool_tf = newval;
     } else {
         return 0;
     }
@@ -483,6 +492,8 @@ dbd_db_FETCH_attrib (dbh, imp_dbh, keysv)
         retsv = boolSV(DBIc_has(imp_dbh, DBIcf_AutoCommit));
     } else if (kl==14 && strEQ(key, "pg_auto_escape")) {
         retsv = newSViv((IV)imp_dbh->pg_auto_escape);
+    } else if (kl==10 && strEQ(key, "pg_bool_tf")) {
+	retsv = newSViv((IV)imp_dbh->pg_bool_tf);
     } else if (kl==11 && strEQ(key, "pg_INV_READ")) {
         retsv = newSViv((IV)INV_READ);
     } else if (kl==12 && strEQ(key, "pg_INV_WRITE")) {
@@ -1326,6 +1337,7 @@ dbd_st_fetch (sth, imp_sth)
     SV *sth;
     imp_sth_t *imp_sth;
 {
+    D_imp_dbh_from_sth;
     int num_fields;
     int i;
     AV *av;
@@ -1357,7 +1369,7 @@ dbd_st_fetch (sth, imp_sth)
             char *val   = (char*)PQgetvalue(imp_sth->result, imp_sth->cur_tuple, i);
             int val_len = strlen(val);
             int  type   = PQftype(imp_sth->result, i); /* hopefully these hard coded values will not change */
-            if (16 == type) {
+            if (16 == type && ! imp_dbh->pg_bool_tf) {
                *val = (*val == 'f') ? '0' : '1'; /* bool: translate postgres into perl */
             }
             if (17 == type) {  /* decode \001 -> chr(1), etc, in-place */

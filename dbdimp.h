@@ -1,5 +1,5 @@
 /*
-   $Id: dbdimp.h,v 1.3 2002/11/27 10:21:46 jason_e_stewart Exp $
+   $Id: dbdimp.h,v 1.4 2003/01/08 22:08:17 bmomjian Exp $
 
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -22,6 +22,7 @@ struct imp_dbh_st {
     PGconn    * conn;		/* connection structure */
     int         init_commit;	/* initialize AutoCommit */
     int         pg_auto_escape;	/* initialize AutoEscape */
+    int         pg_bool_tf;     /* do bools return 't'/'f' */
 };
 
 /* Define sth implementor data structure */
