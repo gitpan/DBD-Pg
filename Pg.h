@@ -1,5 +1,5 @@
 /*
-   $Id: Pg.h,v 1.4 2004/07/09 19:05:40 turnstep Exp $
+   $Id: Pg.h,v 1.5 2005/04/01 23:37:23 turnstep Exp $
 
    Copyright (c) 2000-2004 PostgreSQL Global Development Group
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
@@ -40,6 +40,8 @@ static int errno;
 #include <DBIXS.h>		/* installed by the DBI module	*/
 
 #include "dbdimp.h"		/* read in our implementation details */
+
+#include "large_object.h"
 
 #include <dbd_xsh.h>		/* installed by the DBI module	*/
 

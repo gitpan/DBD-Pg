@@ -1,5 +1,5 @@
 /*
-	$Id: dbdimp.h,v 1.34 2005/03/29 02:35:53 turnstep Exp $
+	$Id: dbdimp.h,v 1.35 2005/04/01 23:37:23 turnstep Exp $
 	
 	Copyright (c) 2000-2005 PostgreSQL Global Development Group
 	Portions Copyright (c) 1997-2000 Edmund Mergl
@@ -99,9 +99,15 @@ struct imp_sth_st {
 
 SV * dbd_db_pg_notifies (SV *dbh, imp_dbh_t *imp_dbh);
 int dbd_db_ping ();
+int dbd_db_getfd ();
 int pg_db_putline ();
 int pg_db_getline ();
 int pg_db_endcopy ();
+int pg_db_savepoint ();
+int pg_db_rollback_to ();
+int pg_db_release ();
+void pg_db_pg_server_trace ();
+void pg_db_pg_server_untrace ();
 void pg_db_server_trace ();
 void pg_db_no_server_trace ();
 

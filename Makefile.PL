@@ -1,5 +1,5 @@
 
-# $Id: Makefile.PL,v 1.33 2005/03/31 23:11:55 turnstep Exp $
+# $Id: Makefile.PL,v 1.34 2005/03/31 23:17:45 turnstep Exp $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -61,6 +61,13 @@ if ($os =~ /Win32/) {
 if ($serverversion < 70200) {
 	print "\n****************\n";
 	print "WARNING! DBD::Pg no longer supports versions less than 7.2.\n";
+	print "It is highly recommended that you upgrade PostgreSQL to a newer version.\n";
+	print "****************\n\n";
+}
+
+if ($serverversion < 70400) {
+	print "\n****************\n";
+	print "WARNING! Support for servers older than version 7.4 will soon end.\n";
 	print "It is highly recommended that you upgrade PostgreSQL to a newer version.\n";
 	print "****************\n\n";
 }
