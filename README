@@ -1,6 +1,6 @@
 #---------------------------------------------------------
 #
-# $Id: README,v 1.9 1997/08/23 06:10:55 mergl Exp $
+# $Id: README,v 1.10 1997/08/26 20:57:47 mergl Exp $
 #
 # Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 # Portions Copyright (c) 1997                Edmund Mergl
@@ -11,7 +11,7 @@
 DESCRIPTION:
 ------------
 
-This is version 0.61 of DBD-Pg.
+This is version 0.62 of DBD-Pg.
 DBD-Pg is a PostgreSQL interface for Perl 5 using DBI.
 
 For further information about DBI look at:
@@ -96,6 +96,6 @@ SGI users: if you get segmentation faults make sure, you use the malloc which
 
 ---------------------------------------------------------------------------
 
-   Edmund Mergl <E.Mergl@bawue.de>                     August 20, 1997
+   Edmund Mergl <E.Mergl@bawue.de>                     August 26, 1997
 
 ---------------------------------------------------------------------------
