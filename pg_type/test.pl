@@ -1,8 +1,8 @@
-#!/usr/local/bin/perl -w
+#!/usr/local/bin/perl
 
 #---------------------------------------------------------
 #
-# $Id: test.pl,v 1.2 1997/10/05 18:26:13 mergl Exp $
+# $Id: test.pl,v 1.4 1998/02/01 18:40:48 mergl Exp $
 #
 #---------------------------------------------------------
 
@@ -11,27 +11,28 @@ use pg_type;
 
 $dbmain = 'template1';
 $dbname = 'pgperltest';
+$dbhost = 'localhost';
 $dbuser = '';
 $dbpass = '';
 
-my $dbh = DBI->connect("dbi:Pg:$dbmain", $dbuser, $dbpass);
+my $dbh = DBI->connect("dbi:Pg:dbname=$dbmain;host=$dbhost", $dbuser, $dbpass);
 $dbh->do( "CREATE DATABASE $dbname" );
 $dbh->disconnect;
 
-$dbh = DBI->connect("dbi:Pg:$dbname", $dbuser, $dbpass);
+$dbh = DBI->connect("dbi:Pg:dbname=$dbname;host=$dbhost", $dbuser, $dbpass);
 
 $dbh->do( "CREATE TABLE builtin(
-  bool    bool,
-  char    char,
-  char16  char16,
-  text    text,
-  date    date,
-  int4    int4,
-  _int4   int[],
-  float8  float8,
-  point   point,
-  lseg    lseg,
-  box     box
+  bool_    bool,
+  char_    char,
+  char16_  char16,
+  text_    text,
+  date_    date,
+  int4_    int4,
+  int4a_   int[],
+  float8_  float8,
+  point_   point,
+  lseg_    lseg,
+  box_     box
   )" );
 
 $dbh->do( "INSERT INTO builtin VALUES(
@@ -63,7 +64,7 @@ print "\n";
 print "TYPE:\n";
 @type = @{$sth->{'TYPE'}};
 foreach $key (@type) {
-     print "$DBD::Pg::pg_type::pg_type[$key] ";
+     print "$DBD::Pg::pg_type::pg_type[$key]  ";
 }
 print "\n";
 #################################################
@@ -72,7 +73,7 @@ $sth->finish;
 
 $dbh->disconnect;
 
-$dbh = DBI->connect("dbi:Pg:$dbmain", $dbuser, $dbpass);
+$dbh = DBI->connect("dbi:Pg:dbname=$dbmain;host=$dbhost", $dbuser, $dbpass);
 $dbh->do( "DROP DATABASE $dbname" );
 $dbh->disconnect;
 

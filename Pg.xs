@@ -1,6 +1,6 @@
 /*---------------------------------------------------------
  *
- * $Id: Pg.xs,v 1.10 1997/10/05 18:25:55 mergl Exp $
+ * $Id: Pg.xs,v 1.12 1998/02/01 18:40:34 mergl Exp $
  *
  * Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
  * Portions Copyright (c) 1997                Edmund Mergl
@@ -65,6 +65,20 @@ _login(dbh, dbname, uid, pwd)
 
 
 int
+_ping(dbh)
+    SV *	dbh
+    CODE:
+    int retval;
+    retval = dbd_db_ping(dbh);
+    if (retval == 0) {
+	XST_mUNDEF(0);
+    }
+    else {
+	XST_mIV(0, retval);
+    }
+
+
+int
 _do(dbh, statement, attribs=Nullsv)
     SV *	dbh
     char *	statement
@@ -83,7 +97,6 @@ _do(dbh, statement, attribs=Nullsv)
         warn("transactions ineffective with AutoCommit");
 	retval = -2;
     } else {
-     /* retval = dbd_db_do(dbh, imp_dbh, statement, attribs); */
         retval = dbd_db_do(dbh, statement);
     }
     if (retval == 0) {		/* ok with no rows affected	*/
@@ -135,7 +148,8 @@ disconnect(dbh)
     /* Check for disconnect() being called whilst refs to cursors	*/
     /* still exists. This possibly needs some more thought.			*/
     if (DBIc_ACTIVE_KIDS(imp_dbh) && DBIc_WARN(imp_dbh) && !dirty) {
-	warn("disconnect(%s) invalidates %d active cursor(s)", SvPV(dbh,na), (int)DBIc_ACTIVE_KIDS(imp_dbh));
+	warn("disconnect(%s) invalidates %d active cursor(s)",
+            SvPV(dbh,na), (int)DBIc_ACTIVE_KIDS(imp_dbh));
     }
     ST(0) = dbd_db_disconnect(dbh, imp_dbh) ? &sv_yes : &sv_no;
 
@@ -268,9 +282,7 @@ bind_param(sth, param, value, attribs=Nullsv)
 	else {
 	    SV **svp;
 	    DBD_ATTRIBS_CHECK("bind_param", sth, attribs);
-	    if ((svp = hv_fetch((HV*)SvRV(attribs), "TYPE", 4, 0)) != NULL) {
-		sql_type = SvIV(*svp);
-	    }
+	    DBD_ATTRIB_GET_IV(attribs, "TYPE",4, svp, sql_type);
 	}
     }
     ST(0) = dbd_bind_ph(sth, imp_sth, param, value, sql_type, attribs, FALSE, 0) ? &sv_yes : &sv_no;
@@ -302,9 +314,7 @@ bind_param_inout(sth, param, value_ref, maxlen, attribs=Nullsv)
 	else {
 	    SV **svp;
 	    DBD_ATTRIBS_CHECK("bind_param", sth, attribs);
-	    if ((svp = hv_fetch((HV*)SvRV(attribs), "TYPE", 4, 0)) != NULL) {
-		sql_type = SvIV(*svp);
-	    }
+	    DBD_ATTRIB_GET_IV(attribs, "TYPE",4, svp, sql_type);
 	}
     }
     ST(0) = dbd_bind_ph(sth, imp_sth, param, SvRV(value_ref), sql_type, attribs, TRUE, maxlen) ? &sv_yes : &sv_no;
@@ -321,6 +331,7 @@ execute(sth, ...)
 	/* Handle binding supplied values to placeholders	*/
 	int i, error = 0;
         SV *idx;
+        imp_sth->all_params_len = 0; /* used for malloc of statement string in case we have placeholders */
 	if (items-1 != DBIc_NUM_PARAMS(imp_sth)) {
 	    croak("execute called with %ld bind variables, %d needed", items-1, DBIc_NUM_PARAMS(imp_sth));
 	    XSRETURN_UNDEF;

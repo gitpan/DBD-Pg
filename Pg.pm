@@ -1,6 +1,6 @@
 #---------------------------------------------------------
 #
-# $Id: Pg.pm,v 1.10 1997/10/05 18:25:55 mergl Exp $
+# $Id: Pg.pm,v 1.12 1998/02/01 18:40:33 mergl Exp $
 #
 #  Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 #  Portions Copyright (c) 1997                Edmund Mergl
@@ -16,7 +16,7 @@ require 5.002;
     use DynaLoader ();
     @ISA = qw(DynaLoader);
 
-    $VERSION = '0.63';
+    $VERSION = '0.64';
 
     require_version DBI 0.89;
 
@@ -78,6 +78,12 @@ require 5.002;
 	return $DBD::Pg::errstr;
     }
 
+    sub ping {
+        my($dbh) = @_;
+
+        DBD::Pg::db::_ping($dbh);
+    }
+
     sub do {
         my($dbh, $statement, @attribs) = @_;
 
@@ -100,14 +106,29 @@ require 5.002;
 
     sub tables {
 	my($dbh) = @_;
+	my $sth = $dbh->prepare(" 
+            select c.relname 
+	    from pg_class c, pg_user u 
+	    where ( c.relkind = 'r' or c.relkind = 'i' or c.relkind = 'S' ) 
+	    and c.relname !~ '^pg_' 
+	    and c.relname !~ '^xin[vx][0-9]+' 
+	    and c.relowner = u.usesysid 
+	    ORDER BY c.relname 
+        ");
+	$sth->execute or return undef;
+	$sth;
+    }
+
+    sub attributes {
+	my($dbh,$table) = @_;
 	my $sth = $dbh->prepare("
-            select usename, relname, relkind, relhasrules 
-	    from pg_class, pg_user 
-	    where ( relkind = 'r' or relkind = 'i' or relkind = 'S' ) 
-	    and relname !~ '^pg_' 
-	    and relname !~ '^xin[vx][0-9]+' 
-	    and usesysid = relowner 
-	    ORDER BY relname 
+            select a.attnum, a.attname, t.typname, a.attlen 
+	    from pg_class c, pg_attribute a, pg_type t 
+	    where c.relname = '$table' 
+	    and a.attnum > 0 
+	    and a.attrelid = c.oid 
+	    and a.atttypid = t.oid 
+	    ORDER BY attnum 
         ");
 	$sth->execute or return undef;
 	$sth;
@@ -137,7 +158,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
   use DBI;
 
-  $dbh = DBI->connect("dbi:Pg:$dbname", $user, $passwd);
+  $dbh = DBI->connect("dbi:Pg:dbname=$dbname", $user, $passwd);
 
   # See the DBI module documentation for full details
 
@@ -152,14 +173,20 @@ access to PostgreSQL databases.
 
 To connect to a database you can say:
 
-	$dbh = DBI->connect('dbi:Pg:dbname:host:port', 'username', 'password');
+	$dbh = DBI->connect('dbi:Pg:dbname=dbname;host=host;port=port', 'username', 'password');
 
 The first parameter specifies the driver, the database and 
 the optional host and port. The second and third parameter 
-specify the username and password. This returns a database 
-handle which can be used for subsequent database interactions. 
-Please refer to the pg_passwd man-page for the different types 
-of authorization. 
+specify the username and password. Note that for these two 
+parameters DBI distinguishes between empty and undefined. 
+If these parameters are undefined DBI substitutes the values 
+of the DBI_USER and DBI_PASS environment variables. The 
+connect method returns a database handle which can be used for 
+subsequent database interactions. Please refer to the pg_passwd 
+man-page for the different types of authorization. 
+
+This module also supports the ping-method, which can be used 
+to check the validity of a database-handle. 
 
 
 =head1 SIMPLE STATEMENTS
@@ -266,20 +293,34 @@ AutoCommit feature. In most cases it is be sufficient, to remove the
 'begin' statements and to switch-off the AutoCommit mode. 
 
 
+=head1 Meta-Information
+
+The driver supports two simple methods to get meta-information about 
+the available tables and their attributes:
+
+	$dbh->tables;
+	$dbh->DBD::Pg::db::attributes($table);
+
+Because the second one is not (yet) supported by DBI you have to use the 
+complete name including the package. The first method returns all tables 
+which are owned by the current user. The second method returns for the 
+given table a unique number, the name, the type, and the length of every 
+attribute. 
+
+
 =head1 DATA TYPE bool
 
 The current implementation of PostgreSQL returns 't' for true and 'f' for 
-false. From the perl point of view a rather unfortunate choice. Starting 
-with this release, the DBD-Pg module translates the result for the data type 
-bool in a more perl-ish like manner: 'f' -> '0' and 't' -> '1'. This way 
-the application does not have to check the database-specific return values 
-for the data type bool, because perl treats '0' as false and '1' as true. 
-If you make use of the data type bool you have to adapt your scripts !
+false. From the perl point of view a rather unfortunate choice. The DBD-Pg 
+module translates the result for the data-type bool in a perl-ish like manner: 
+'f' -> '0' and 't' -> '1'. This way the application does not have to check 
+the database-specific returned values for the data-type bool, because perl 
+treats '0' as false and '1' as true. If you make use of the data-type bool 
+you have to adapt your scripts !
 
-There is still one drawback: in INSERT or UPDATE statements you have to stay 
-with 't' for true instead of '1', because PostgreSQL accepts almost anything 
-as input but treats it as false. This behavior might change in the next release 
-of PostgreSQL. 
+Starting with version 6.3 PostgreSQL will consider 1 and '1' as input for 
+the boolean data-type as true. In older versions everything except 't' is 
+considerd as false. 
 
 
 =head1 BLOBS

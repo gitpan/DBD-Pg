@@ -1,5 +1,19 @@
 Revision history for Perl extension DBD-Pg.
 
+0.64  February 01, 1998
+        - changed syntax of data_source (ODBC-conformant): 
+          'dbi:Pg:dbname=dbname;host=host;port=port'
+          !!! PLEASE ADAPT YOUR SCRIPTS !!!
+        - implemented placeholders 
+        - implemented ping-method
+        - added support for $dbh->{RaiseError} and $dbh->{PrintError},
+          note: DBI-default for PrintError is on !
+        - allow commit and rollback only if AutoCommit = off
+        - added documentation for $dbh->tables;
+        - new method to get meta-information about a given table:
+          $dbh->DBD::Pg::db::attributes($table);
+        - host-parameter in test.pl is set explicitely to localhost
+
 0.63  October 05, 1997
 	- adapted to PostgreSQL-6.2:
           o $sth->rows as well as $sth->execute

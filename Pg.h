@@ -1,6 +1,6 @@
 /*---------------------------------------------------------
  *
- * $Id: Pg.h,v 1.9 1997/10/05 18:25:55 mergl Exp $
+ * $Id: Pg.h,v 1.10 1998/02/01 18:40:33 mergl Exp $
  *
  * Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
  * Portions Copyright (c) 1997                Edmund Mergl
@@ -27,5 +27,6 @@
 
 #include <dbd_xsh.h>		/* installed by the DBI module	*/
 
+int dbd_db_ping(SV *dbh);
 
 /* end of Pg.h */

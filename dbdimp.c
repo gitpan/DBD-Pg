@@ -1,6 +1,6 @@
 /*---------------------------------------------------------
  *
- * $Id: dbdimp.c,v 1.13 1997/10/05 18:25:55 mergl Exp $
+ * $Id: dbdimp.c,v 1.15 1998/02/01 18:40:34 mergl Exp $
  *
  * Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
  * Portions Copyright (c) 1997                Edmund Mergl
@@ -13,16 +13,10 @@
 
 #define BUFSIZE 1024
 
-#if NEVER
-#define TRANSACTION_DEBUG 1
-#endif
-
-#if NEVER
-#define PG_DEBUG 1
-#endif
-
-
 DBISTATE_DECLARE;
+
+static void dbd_preparse  (imp_sth_t *imp_sth, char *statement);
+static int _dbd_rebind_ph (SV *sth, imp_sth_t *imp_sth, phs_t *phs);
 
 static SV *dbd_pad_empty;
 
@@ -34,7 +28,7 @@ dbd_init(dbistate)
     DBIS = dbistate;
 
     if (getenv("DBD_PAD_EMPTY"))
-	sv_setiv(dbd_pad_empty, atoi(getenv("DBD_PAD_EMPTY")));
+        sv_setiv(dbd_pad_empty, atoi(getenv("DBD_PAD_EMPTY")));
 }
 
 
@@ -58,6 +52,8 @@ dbd_discon_all(drh, imp_drh)
     SV *drh;
     imp_drh_t *imp_drh;
 {
+    if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_discon_all\n"); }
+
     return FALSE;
 }
 
@@ -71,39 +67,33 @@ dbd_db_login(dbh, imp_dbh, dbname, uid, pwd)
     char *pwd;
 {
     char *conn_str;
-    char *host;
-    char *port;
+    char *src;
+    char *dest;
     int len;
 
-#ifdef PG_DEBUG
-    fprintf(stderr, "dbd_db_login\n");
-#endif
+    if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_db_login\n"); }
 
-    /* make a connection to the database */
-    conn_str = (char *)malloc(strlen(dbname) + strlen(uid) + strlen(pwd) + 64);
+    /* build connect string */
+    /* DBD-Pg syntax: 'dbname=dbname;host=host;port=port' */
+    /* pgsql  syntax: 'dbname=dbname host=host port=port user=uid authtype=password password=pwd' */
+
+    conn_str = (char *)malloc(strlen(dbname) + strlen(uid) + strlen(pwd) + 34 + 1);
     if (! conn_str) {
         return 0;
     }
 
-    /* build connect string */
-    strcpy(conn_str, "dbname=");
-    if (host = index(dbname, ':')) {
-        len  = host - dbname;
-        strncat(conn_str, dbname, len);
-        strcat(conn_str, " host=");
-        host++;
-        if (port = index(host, ':')) {
-            len  = port - host;
-            strncat(conn_str, host, len);
-            strcat(conn_str, " port=");
-            port++;
-            strcat(conn_str, port);
-        } else {
-            strcat(conn_str, host);
-        }
-    } else {
-        strcat(conn_str, dbname);
+    src  = dbname;
+    dest = conn_str;
+    while (*src) {
+	if (*src != ';') {
+	    *dest++ = *src++;
+	    continue;
+	}
+        *dest++ = ' ';
+        src++;
     }
+    *dest = '\0';
+
     if (strlen(uid)) {
         strcat(conn_str, " user=");
         strcat(conn_str, uid);
@@ -112,18 +102,52 @@ dbd_db_login(dbh, imp_dbh, dbname, uid, pwd)
         strcat(conn_str, " authtype=password password=");
         strcat(conn_str, pwd);
     }
+
+    if (dbis->debug >= 2) { fprintf(DBILOGFP, "dbd_db_login: conn_str = >%s<\n", conn_str); }
+
+    /* make a connection to the database */
     imp_dbh->conn = PQconnectdb(conn_str);
     free(conn_str);
 
     /* check to see that the backend connection was successfully made */
     if (PQstatus(imp_dbh->conn) != CONNECTION_OK) {
-	dbd_error(dbh, PQstatus(imp_dbh->conn), "login failed\n");
+        dbd_error(dbh, PQstatus(imp_dbh->conn), PQerrorMessage(imp_dbh->conn));
 	return 0;
     }
 
-    DBIc_set(imp_dbh, DBIcf_AutoCommit, TRUE);	/* AutoCommit is default */
+    DBIc_on(imp_dbh, DBIcf_AutoCommit);		/* AutoCommit is default */
     DBIc_IMPSET_on(imp_dbh);			/* imp_dbh set up now */
     DBIc_ACTIVE_on(imp_dbh);			/* call disconnect before freeing */
+    return 1;
+}
+
+
+int
+dbd_db_ping(dbh)
+    SV *dbh;
+{
+    int id;
+    D_imp_dbh(dbh);
+
+    if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_db_ping\n"); }
+
+    if (imp_dbh->conn->status != CONNECTION_OK) {
+        dbd_error(dbh, imp_dbh->conn->status, "dbd_db_ping: no connection to the backend\n");
+        return 0;
+    }
+
+    if (1 == pqPuts("Q ", imp_dbh->conn->Pfout, imp_dbh->conn->Pfdebug)) {
+        dbd_error(dbh, imp_dbh->conn->status, "dbd_db_ping: sending query to the backend failed\n");
+        imp_dbh->conn->status = CONNECTION_BAD;
+        return 0;
+    }
+
+    if ('I' != pqGetc(imp_dbh->conn->Pfin, imp_dbh->conn->Pfdebug) || '\0' != pqGetc(imp_dbh->conn->Pfin, imp_dbh->conn->Pfdebug)) {
+        dbd_error(dbh, imp_dbh->conn->status, "dbd_db_ping: backend closed the channel before responding\n");
+        imp_dbh->conn->status = CONNECTION_BAD;
+        return 0;
+    }
+
     return 1;
 }
 
@@ -133,7 +157,6 @@ dbd_db_do(dbh, statement)
     SV * dbh;
     char *statement;
 {
-    /* imp_dbh should be propagated by Pg.xs, but then it needs to be declared in dbd_xsh.h */
     D_imp_dbh(dbh);
     PGresult* result = 0;
     ExecStatusType status;
@@ -141,9 +164,7 @@ dbd_db_do(dbh, statement)
     char *cmdTuples;
     int ret = -2;
 
-#ifdef PG_DEBUG
-    fprintf(stderr, "dbd_db_do\n");
-#endif
+    if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_st_do: statement = >%s<\n", statement); }
 
     /* execute command */
     result = PQexec(imp_dbh->conn, statement);
@@ -177,9 +198,12 @@ dbd_db_commit(dbh, imp_dbh)
     ExecStatusType status;
     int retval = 1;
 
-#ifdef TRANSACTION_DEBUG
-    fprintf(stderr, "dbd_db_commit\n");
-#endif
+    if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_db_commit\n"); }
+
+    /* no commit if AutoCommit = on */
+    if (DBIc_has(imp_dbh, DBIcf_AutoCommit) != FALSE) {
+        return 0;
+    }
 
     /* execute commit */
     result = PQexec(imp_dbh->conn, "commit");
@@ -214,9 +238,12 @@ dbd_db_rollback(dbh, imp_dbh)
     ExecStatusType status;
     int retval = 1;
 
-#ifdef TRANSACTION_DEBUG
-    fprintf(stderr, "dbd_db_rollback\n");
-#endif
+    if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_db_rollback\n"); }
+
+    /* no rollback if AutoCommit = on */
+    if (DBIc_has(imp_dbh, DBIcf_AutoCommit) != FALSE) {
+        return 0;
+    }
 
     /* execute rollback */
     result = PQexec(imp_dbh->conn, "rollback");
@@ -247,9 +274,7 @@ dbd_db_disconnect(dbh, imp_dbh)
     SV *dbh;
     imp_dbh_t *imp_dbh;
 {
-#ifdef PG_DEBUG
-    fprintf(stderr, "dbd_db_disconnect\n");
-#endif
+    if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_db_disconnect\n"); }
 
     /* We assume that disconnect will always work	*/
     /* since most errors imply already disconnected.	*/
@@ -266,9 +291,7 @@ dbd_db_disconnect(dbh, imp_dbh)
             dbd_error(dbh, status, "rollback failed\n");
             return 0;
         }
-#ifdef TRANSACTION_DEBUG
-    fprintf(stderr, "dbd_db_disconnect: AutoCommit=off -> rollback\n");
-#endif
+        if (dbis->debug >= 2) { fprintf(DBILOGFP, "dbd_db_disconnect: AutoCommit=off -> rollback\n"); }
     }
 
     PQfinish(imp_dbh->conn);
@@ -285,9 +308,7 @@ dbd_db_destroy(dbh, imp_dbh)
     SV *dbh;
     imp_dbh_t *imp_dbh;
 {
-#ifdef PG_DEBUG
-    fprintf(stderr, "dbd_db_destroy\n");
-#endif
+    if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_db_destroy\n"); }
 
     if (DBIc_ACTIVE(imp_dbh)) {
 	dbd_db_disconnect(dbh, imp_dbh);
@@ -310,9 +331,7 @@ dbd_db_STORE_attrib(dbh, imp_dbh, keysv, valuesv)
     int retval = TRUE;
     int newval = SvTRUE(valuesv);
 
-#ifdef PG_DEBUG
-    fprintf(stderr, "dbd_db_STORE\n");
-#endif
+    if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_db_STORE\n"); }
 
     if (kl==10 && strEQ(key, "AutoCommit")) {
         int oldval = DBIc_has(imp_dbh, DBIcf_AutoCommit);
@@ -328,9 +347,7 @@ dbd_db_STORE_attrib(dbh, imp_dbh, keysv, valuesv)
                 dbd_error(dbh, status, "commit failed\n");
                 return 0;
             }
-#ifdef TRANSACTION_DEBUG
-    fprintf(stderr, "dbd_db_STORE: switch AutoCommit to on: rollback\n");
-#endif
+            if (dbis->debug >= 2) { fprintf(DBILOGFP, "dbd_db_STORE: switch AutoCommit to on: rollback\n"); }
         } else if (oldval != FALSE && newval == FALSE) {
             /* start new transaction */
             PGresult* result = 0;
@@ -342,10 +359,15 @@ dbd_db_STORE_attrib(dbh, imp_dbh, keysv, valuesv)
                 dbd_error(dbh, status, "begin failed\n");
                 return 0;
             }
-#ifdef TRANSACTION_DEBUG
-    fprintf(stderr, "dbd_db_STORE: switch AutoCommit to off: begin\n");
-#endif
+            if (dbis->debug >= 2) { fprintf(DBILOGFP, "dbd_db_STORE: switch AutoCommit to off: begin\n"); }
+        } else if (oldval == 512 && newval != FALSE) {
+           /* initialization of AutoCommit = on after login */
+           /* do nothing, fall through */
         }
+    } else if (kl==10 && strEQ(key, "RaiseError")) {
+        DBIc_set(imp_dbh, DBIcf_RaiseError, newval);
+    } else if (kl==10 && strEQ(key, "PrintError")) {
+        DBIc_set(imp_dbh, DBIcf_PrintError, newval);
     }
 
     return retval;
@@ -362,9 +384,7 @@ dbd_db_FETCH_attrib(dbh, imp_dbh, keysv)
     char *key = SvPV(keysv,kl);
     SV *retsv = Nullsv;
 
-#ifdef PG_DEBUG
-    fprintf(stderr, "dbd_db_FETCH\n");
-#endif
+    if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_db_FETCH\n"); }
 
     if (kl==10 && strEQ(key, "AutoCommit")) {
         retsv = newSViv((IV)DBIc_is(imp_dbh, DBIcf_AutoCommit));
@@ -384,12 +404,12 @@ dbd_st_prepare(sth, imp_sth, statement, attribs)
     char *statement;
     SV *attribs;
 {
-#ifdef PG_DEBUG
-    fprintf(stderr, "dbd_st_prepare\n");
-#endif
+    if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_st_prepare: statement = >%s<\n", statement); }
+
+    /* scan statement for '?', ':1' and/or ':foo' style placeholders */
+    dbd_preparse(imp_sth, statement);
 
     /* initialize new statement handle */
-
     imp_sth->result    = 0;
     imp_sth->cur_tuple = 0;
 
@@ -398,21 +418,96 @@ dbd_st_prepare(sth, imp_sth, statement, attribs)
 }
 
 
+static void
+dbd_preparse(imp_sth, statement)
+    imp_sth_t *imp_sth;
+    char *statement;
+{
+    bool in_literal = FALSE;
+    char *src, *start, *dest;
+    phs_t phs_tpl;
+    SV *phs_sv;
+    int idx=0, style=0, laststyle=0;
+    STRLEN namelen;
+
+    if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_st_preparse: statement = >%s<\n", statement); }
+
+    /* allocate room for copy of statement with spare capacity	*/
+    /* for editing '?' or ':1' into ':p1' so we can use obndrv.	*/
+    imp_sth->statement = (char*)safemalloc(strlen(statement) * 3);
+
+    /* initialise phs ready to be cloned per placeholder	*/
+    memset(&phs_tpl, 0, sizeof(phs_tpl));
+    phs_tpl.ftype = 1;	/* VARCHAR2 */
+
+    src  = statement;
+    dest = imp_sth->statement;
+    while(*src) {
+	if (*src == '\'')
+	    in_literal = ~in_literal;
+	if ((*src != ':' && *src != '?') || in_literal) {
+	    *dest++ = *src++;
+	    continue;
+	}
+	start = dest;			/* save name inc colon	*/ 
+	*dest++ = *src++;
+	if (*start == '?') {		/* X/Open standard	*/
+	    sprintf(start,":p%d", ++idx); /* '?' -> ':p1' (etc)	*/
+	    dest = start+strlen(start);
+	    style = 3;
+
+	} else if (isDIGIT(*src)) {	/* ':1'		*/
+	    idx = atoi(src);
+	    *dest++ = 'p';		/* ':1'->':p1'	*/
+	    if (idx <= 0)
+		croak("Placeholder :%d must be a positive number", idx);
+	    while(isDIGIT(*src))
+		*dest++ = *src++;
+	    style = 1;
+
+	} else if (isALNUM(*src)) {	/* ':foo'	*/
+	    while(isALNUM(*src))	/* includes '_'	*/
+		*dest++ = *src++;
+	    style = 2;
+	} else {			/* perhaps ':=' PL/SQL construct */
+	    continue;
+	}
+	*dest = '\0';			/* handy for debugging	*/
+	namelen = (dest-start);
+	if (laststyle && style != laststyle)
+	    croak("Can't mix placeholder styles (%d/%d)",style,laststyle);
+	laststyle = style;
+	if (imp_sth->all_params_hv == NULL)
+	    imp_sth->all_params_hv = newHV();
+	phs_tpl.sv = &sv_undef;
+	phs_sv = newSVpv((char*)&phs_tpl, sizeof(phs_tpl)+namelen+1);
+	hv_store(imp_sth->all_params_hv, start, namelen, phs_sv, 0);
+	strcpy( ((phs_t*)(void*)SvPVX(phs_sv))->name, start);
+	/* warn("params_hv: '%s'\n", start);	*/
+    }
+    *dest = '\0';
+    if (imp_sth->all_params_hv) {
+	DBIc_NUM_PARAMS(imp_sth) = (int)HvKEYS(imp_sth->all_params_hv);
+	if (dbis->debug >= 2)
+	    fprintf(DBILOGFP, "    dbd_preparse scanned %d distinct placeholders\n",
+		(int)DBIc_NUM_PARAMS(imp_sth));
+    }
+}
+
+
 int
 dbd_st_rows(sth, imp_sth)
     SV *sth;
     imp_sth_t *imp_sth;
 {
-#ifdef PG_DEBUG
-    fprintf(stderr, "dbd_st_rows\n");
-#endif
+    if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_st_rows\n"); }
 
     return imp_sth->rows;
 }
 
 
 int
-dbd_st_execute(sth, imp_sth)	/* <= -2:error, >=0:ok row count, (-1=unknown count) */
+dbd_st_execute(sth, imp_sth)        /* <= -2:error, >=0:ok row count, (-1=unknown count) */
     SV *sth;
     imp_sth_t *imp_sth;
 {
@@ -420,29 +515,82 @@ dbd_st_execute(sth, imp_sth)	/* <= -2:error, >=0:ok row count, (-1=unknown count
     ExecStatusType status = -1;
     char *cmdStatus;
     char *cmdTuples;
+    char *statement;
     int ret = -2;
-    int i, num_fields;
+    int num_fields;
+    int i;
+    bool in_literal = FALSE;
+    char *src;
+    char *dest;
+    char *val;
+    char namebuf[30];
+    phs_t *phs;
+    SV **svp;
 
-    SV** svp = hv_fetch((HV *)SvRV(sth), "Statement", 9, FALSE);
-    char *statement = SvPV(*svp, na);
+    if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_st_execute\n"); }
 
-#ifdef PG_DEBUG
-    fprintf(stderr, "dbd_st_execute\n");
-#endif
+    /*
+    here we get the statement from the statement handle where
+    it has been stored when creating a blank sth during prepare
+    svp = hv_fetch((HV *)SvRV(sth), "Statement", 9, FALSE);
+    statement = SvPV(*svp, na);
+    */
 
+    statement = imp_sth->statement;
     if (! statement) {
         /* are we prepared ? */
         dbd_error(sth, -1, "statement not prepared\n");
-    } else {
-        /* execute statement if not already done */
-        if (! imp_sth->result) {
-            imp_sth->result = PQexec(imp_dbh->conn, statement);
-        }
-        /* check status */
-        status    = imp_sth->result ? PQresultStatus(imp_sth->result)      : -1;
-        cmdStatus = imp_sth->result ? (char *)PQcmdStatus(imp_sth->result) : "";
-        cmdTuples = imp_sth->result ? (char *)PQcmdTuples(imp_sth->result) : "";
+        return -2;
     }
+
+    /* do we have input parameters ? */
+    if ((int)DBIc_NUM_PARAMS(imp_sth) > 0) {
+        statement = (char*)safemalloc(strlen(imp_sth->statement) + imp_sth->all_params_len);
+        dest = statement;
+        src  = imp_sth->statement;
+        while(*src) {
+            if (*src == '\'') {
+                in_literal = ~in_literal;
+            }
+            if (*src != ':' || in_literal) {
+                *dest++ = *src++;
+                continue;
+            }
+            i = 0;
+            namebuf[i++] = *src++; /* ':' */
+            namebuf[i++] = *src++; /* 'p' */
+            while (isDIGIT(*src)) {
+                namebuf[i++] = *src++;
+            }
+            namebuf[i] = '\0';
+            svp = hv_fetch(imp_sth->all_params_hv, namebuf, i, 0);
+            if (svp == NULL) {
+                dbd_error(sth, -1, "parameter unknown\n");
+                return -2;
+            }
+            phs = (phs_t*)(void*)SvPVX(*svp);
+            val = neatsvpv(phs->sv, 0);
+            while (*val) {
+                *dest++ = *val++;
+            }
+        }
+        *dest = '\0';
+    }
+
+    if (dbis->debug >= 2) { fprintf(DBILOGFP, "dbd_st_execute: statement = >%s<\n", statement); }
+
+    /* execute statement */
+    imp_sth->result = PQexec(imp_dbh->conn, statement);
+
+    /* free statement string in case of input parameters */
+    if ((int)DBIc_NUM_PARAMS(imp_sth) > 0) {
+        Safefree(statement);
+    }
+
+    /* check status */
+    status    = imp_sth->result ? PQresultStatus(imp_sth->result)      : -1;
+    cmdStatus = imp_sth->result ? (char *)PQcmdStatus(imp_sth->result) : "";
+    cmdTuples = imp_sth->result ? (char *)PQcmdTuples(imp_sth->result) : "";
 
     if (PGRES_TUPLES_OK == status) {
         /* select statement */
@@ -484,7 +632,7 @@ dbd_st_execute(sth, imp_sth)	/* <= -2:error, >=0:ok row count, (-1=unknown count
 
 AV *
 dbd_st_fetch(sth, imp_sth)
-    SV *	sth;
+    SV *        sth;
     imp_sth_t *imp_sth;
 {
     D_imp_dbh_from_sth;
@@ -492,14 +640,12 @@ dbd_st_fetch(sth, imp_sth)
     int i;
     AV *av;
 
-#ifdef PG_DEBUG
-    fprintf(stderr, "dbd_st_fetch\n");
-#endif
+    if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_st_fetch\n"); }
 
     /* Check that execute() was executed sucessfully */
     if ( !DBIc_ACTIVE(imp_sth) ) {
-	dbd_error(sth, 1, "no statement executing\n");
-	return Nullav;
+        dbd_error(sth, 1, "no statement executing\n");
+        return Nullav;
     }
 
     if ( imp_sth->cur_tuple == PQntuples(imp_sth->result) ) {
@@ -512,12 +658,12 @@ dbd_st_fetch(sth, imp_sth)
 
     for(i = 0; i < num_fields; ++i) {
 
-	SV   *sv  = AvARRAY(av)[i];
+        SV   *sv  = AvARRAY(av)[i];
         char *val = (char*)PQgetvalue(imp_sth->result, imp_sth->cur_tuple, i);
         if ('1' == imp_sth->is_bool[i]) {
            *val = *val == 'f' ? '0' : '1'; /* bool: translate postgres into perl */
         }
-	sv_setpv(sv, val);
+        sv_setpv(sv, val);
     }
 
     imp_sth->cur_tuple += 1;
@@ -533,12 +679,10 @@ dbd_st_finish(sth, imp_sth)
 {
     D_imp_dbh_from_sth;
 
-#ifdef PG_DEBUG
-    fprintf(stderr, "dbd_st_finish\n");
-#endif
+    if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_st_finish\n"); }
 
     if (DBIc_ACTIVE(imp_sth) && imp_sth->result) {
-	PQclear(imp_sth->result);
+        PQclear(imp_sth->result);
         imp_sth->result = 0;
         imp_sth->rows   = 0;
     }
@@ -553,33 +697,32 @@ dbd_st_destroy(sth, imp_sth)
     SV *sth;
     imp_sth_t *imp_sth;
 {
-#ifdef PG_DEBUG
-    fprintf(stderr, "dbd_st_destroy\n");
-#endif
+    if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_st_destroy\n"); }
 
-    /* Free off contents of imp_sth	*/
+    /* Free off contents of imp_sth        */
 
+    Safefree(imp_sth->statement);
     if (imp_sth->is_bool) {
         free(imp_sth->is_bool);
         imp_sth->is_bool = 0;
     }
 
     if (imp_sth->out_params_av)
-	sv_free((SV*)imp_sth->out_params_av);
+        sv_free((SV*)imp_sth->out_params_av);
 
     if (imp_sth->all_params_hv) {
-	HV *hv = imp_sth->all_params_hv;
-	SV *sv;
-	char *key;
-	I32 retlen;
-	hv_iterinit(hv);
-	while( (sv = hv_iternextsv(hv, &key, &retlen)) != NULL ) {
-	    if (sv != &sv_undef) {
-		phs_t *phs_tpl = (phs_t*)(void*)SvPVX(sv);
-		sv_free(phs_tpl->sv);
-	    }
-	}
-	sv_free((SV*)imp_sth->all_params_hv);
+        HV *hv = imp_sth->all_params_hv;
+        SV *sv;
+        char *key;
+        I32 retlen;
+        hv_iterinit(hv);
+        while( (sv = hv_iternextsv(hv, &key, &retlen)) != NULL ) {
+            if (sv != &sv_undef) {
+                phs_t *phs_tpl = (phs_t*)(void*)SvPVX(sv);
+                sv_free(phs_tpl->sv);
+            }
+        }
+        sv_free((SV*)imp_sth->all_params_hv);
     }
 
     DBIc_IMPSET_off(imp_sth); /* let DBI know we've done it */
@@ -603,18 +746,16 @@ dbd_st_blob_read (sth, imp_sth, lobjId, offset, len, destrv, destoffset)
     ExecStatusType status;
     SV *bufsv;
 
-#ifdef PG_DEBUG
-    fprintf(stderr, "dbd_st_blob_read\n");
-#endif
+    if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_st_blob_read\n"); }
 
     /* safety check */
     if (! SvROK(destrv)) {
         dbd_error(sth, -1, "dbd_st_blob_read: destrv not a reference");
         return 0;
     }
-    bufsv = SvRV(destrv);	       	/* dereference destination	*/
+    bufsv = SvRV(destrv);                       /* dereference destination        */
     if (! destoffset) {
-        sv_setpvn(bufsv, "", 0);	/* ensure it's writable string	*/
+        sv_setpvn(bufsv, "", 0);        /* ensure it's writable string        */
     }
 
     /* execute begin */
@@ -629,7 +770,7 @@ dbd_st_blob_read (sth, imp_sth, lobjId, offset, len, destrv, destoffset)
     /* open large object */
     lobj_fd = lo_open(imp_dbh->conn, lobjId, INV_READ);
     if (lobj_fd < 0) {
-	sprintf(&err[0], "lo_open: can't open large object %d", lobjId);
+        sprintf(&err[0], "lo_open: can't open large object %d", lobjId);
         dbd_error(sth, -1, err);
         return 0;
     }
@@ -638,7 +779,7 @@ dbd_st_blob_read (sth, imp_sth, lobjId, offset, len, destrv, destoffset)
     if (offset > 0) {
         ret = lo_lseek(imp_dbh->conn, lobj_fd, offset, SEEK_SET);
         if (ret < 0) {
-	    sprintf(&err[0], "lo_seek: can't seek large object %d", lobjId);
+            sprintf(&err[0], "lo_seek: can't seek large object %d", lobjId);
             dbd_error(sth, -1, err);
             return 0;
         }
@@ -648,14 +789,14 @@ dbd_st_blob_read (sth, imp_sth, lobjId, offset, len, destrv, destoffset)
     nread  = 0;
     nbytes = 1;
     while (nbytes > 0) {
-        SvGROW(bufsv, destoffset + nread + BUFSIZE + 1);	/* SvGROW doesn't do +1	*/
+        SvGROW(bufsv, destoffset + nread + BUFSIZE + 1);        /* SvGROW doesn't do +1        */
         nbytes = lo_read(imp_dbh->conn, lobj_fd, ((char*)SvPVX(bufsv)) + destoffset + nread, BUFSIZE);
         if (nbytes < 0) {
-	    sprintf(&err[0], "lo_read: can't read from large object %d", lobjId);
+            sprintf(&err[0], "lo_read: can't read from large object %d", lobjId);
             dbd_error(sth, -1, err);
             return 0;
         }
-	nread += nbytes;
+        nread += nbytes;
         /* break if user wants only a specified chunk */
         if (len && nread > len) {
             break;
@@ -665,7 +806,7 @@ dbd_st_blob_read (sth, imp_sth, lobjId, offset, len, destrv, destoffset)
     /* close large object */
     ret = lo_close(imp_dbh->conn, lobj_fd);
     if (ret < 0) {
-	sprintf(&err[0], "lo_close: can't close large object %d", lobjId);
+        sprintf(&err[0], "lo_close: can't close large object %d", lobjId);
         dbd_error(sth, -1, err);
         return 0;
     }
@@ -697,9 +838,7 @@ dbd_st_STORE_attrib(sth, imp_sth, keysv, valuesv)
     SV *keysv;
     SV *valuesv;
 {
-#ifdef PG_DEBUG
-    fprintf(stderr, "dbd_st_STORE\n");
-#endif
+    if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_st_STORE\n"); }
 
     return FALSE;
 }
@@ -716,42 +855,40 @@ dbd_st_FETCH_attrib(sth, imp_sth, keysv)
     SV *retsv = Nullsv;
     int i;
 
-#ifdef PG_DEBUG
-    fprintf(stderr, "dbd_st_FETCH\n");
-#endif
+    if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_st_FETCH\n"); }
 
     if (kl==13 && strEQ(key, "NUM_OF_PARAMS")) { /* handled by DBI */
-	return Nullsv;
+        return Nullsv;
     }
 
     if (! imp_sth->result) {
-	return Nullsv;
+        return Nullsv;
     }
 
     if (kl == 4 && strEQ(key, "NAME")) {
-	AV *av = newAV();
-	retsv = newRV(sv_2mortal((SV*)av));
-	for (i = 0; i < DBIc_NUM_FIELDS(imp_sth); i++) {
-	    av_store(av, i, newSVpv(PQfname(imp_sth->result, i),0));
+        AV *av = newAV();
+        retsv = newRV(sv_2mortal((SV*)av));
+        for (i = 0; i < DBIc_NUM_FIELDS(imp_sth); i++) {
+            av_store(av, i, newSVpv(PQfname(imp_sth->result, i),0));
         }
     } else if ( kl== 4 && strEQ(key, "TYPE")) {
-	AV *av = newAV();
-	retsv = newRV(sv_2mortal((SV*)av));
-	for (i = 0; i < DBIc_NUM_FIELDS(imp_sth); i++) {
-	    av_store(av, i, newSViv(PQftype(imp_sth->result, i)));
+        AV *av = newAV();
+        retsv = newRV(sv_2mortal((SV*)av));
+        for (i = 0; i < DBIc_NUM_FIELDS(imp_sth); i++) {
+            av_store(av, i, newSViv(PQftype(imp_sth->result, i)));
         }
     } else if (kl==4 && strEQ(key, "SIZE")) {
-	AV *av = newAV();
-	retsv = newRV(sv_2mortal((SV*)av));
-	for (i = 0; i < DBIc_NUM_FIELDS(imp_sth); i++) {
-	    av_store(av, i, newSViv(PQfsize(imp_sth->result, i)));
+        AV *av = newAV();
+        retsv = newRV(sv_2mortal((SV*)av));
+        for (i = 0; i < DBIc_NUM_FIELDS(imp_sth); i++) {
+            av_store(av, i, newSViv(PQfsize(imp_sth->result, i)));
         }
     } else if (kl==13 && strEQ(key, "pg_oid_status")) {
         retsv = newSVpv((char *)PQoidStatus(imp_sth->result), 0);
     } else if (kl==13 && strEQ(key, "pg_cmd_status")) {
         retsv = newSVpv((char *)PQcmdStatus(imp_sth->result), 0);
     } else {
-	return Nullsv;
+        return Nullsv;
     }
 
     return sv_2mortal(retsv);
@@ -766,60 +903,65 @@ _dbd_rebind_ph(sth, imp_sth, phs)
 {
     STRLEN value_len;
 
-#ifdef PG_DEBUG
-    fprintf(stderr, "dbd_st_rebind\n");
-#endif
+    if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_st_rebind\n"); }
 
-/*	for strings, must be a PV first for ptr to be valid? */
-/*    sv_insert +4	*/
-/*    sv_chop(phs->sv, SvPV(phs->sv,na)+4);	XXX */
+/*        for strings, must be a PV first for ptr to be valid? */
+/*    sv_insert +4        */
+/*    sv_chop(phs->sv, SvPV(phs->sv,na)+4);        XXX */
 
     if (dbis->debug >= 2) {
-	char *text = neatsvpv(phs->sv,0);
-	fprintf(DBILOGFP, "bind %s <== %s (size %d/%d/%ld, ptype %ld, otype %d)\n",
-	    phs->name, text, SvCUR(phs->sv),SvLEN(phs->sv),phs->maxlen,
-	    SvTYPE(phs->sv), phs->ftype);
+        char *text = neatsvpv(phs->sv,0);
+        fprintf(DBILOGFP, "bind %s <== %s (size %d/%d/%ld, ptype %ld, otype %d)\n",
+        phs->name, text, SvCUR(phs->sv),SvLEN(phs->sv),phs->maxlen,
+        SvTYPE(phs->sv), phs->ftype);
     }
 
-    /* At the moment we always do sv_setsv() and rebind.	*/
-    /* Later we may optimise this so that more often we can	*/
-    /* just copy the value & length over and not rebind.	*/
+    /* At the moment we always do sv_setsv() and rebind.        */
+    /* Later we may optimise this so that more often we can        */
+    /* just copy the value & length over and not rebind.        */
 
-    if (phs->is_inout) {	/* XXX */
-	if (SvREADONLY(phs->sv))
-	    croak(no_modify);
-	/* phs->sv _is_ the real live variable, it may 'mutate' later	*/
-	/* pre-upgrade high to reduce risk of SvPVX realloc/move	*/
-	(void)SvUPGRADE(phs->sv, SVt_PVNV);
-	/* ensure room for result, 28 is magic number (see sv_2pv)	*/
-	SvGROW(phs->sv, (phs->maxlen < 28) ? 28 : phs->maxlen+1);
-	if (imp_sth->dbd_pad_empty)
-	    croak("Can't use dbd_pad_empty with bind_param_inout");
+    if (phs->is_inout) {        /* XXX */
+        if (SvREADONLY(phs->sv))
+            croak(no_modify);
+        /* phs->sv _is_ the real live variable, it may 'mutate' later        */
+        /* pre-upgrade high to reduce risk of SvPVX realloc/move        */
+        (void)SvUPGRADE(phs->sv, SVt_PVNV);
+        /* ensure room for result, 28 is magic number (see sv_2pv)        */
+        SvGROW(phs->sv, (phs->maxlen < 28) ? 28 : phs->maxlen+1);
+        if (imp_sth->dbd_pad_empty)
+            croak("Can't use dbd_pad_empty with bind_param_inout");
     }
     else {
-	/* phs->sv is copy of real variable, upgrade to at least string	*/
-	(void)SvUPGRADE(phs->sv, SVt_PV);
+        /* phs->sv is copy of real variable, upgrade to at least string        */
+        (void)SvUPGRADE(phs->sv, SVt_PV);
     }
 
-    /* At this point phs->sv must be at least a PV with a valid buffer,	*/
-    /* even if it's undef (null)					*/
-    /* Here we set phs->progv, phs->indp, and value_len.		*/
+    /* At this point phs->sv must be at least a PV with a valid buffer,        */
+    /* even if it's undef (null)                                        */
+    /* Here we set phs->progv, phs->indp, and value_len.                */
     if (SvOK(phs->sv)) {
-	phs->progv = SvPV(phs->sv, value_len);
-	phs->indp  = 0;
+        phs->progv = SvPV(phs->sv, value_len);
+        phs->indp  = 0;
     }
-    else {	/* it's null but point to buffer incase it's an out var	*/
-	phs->progv = SvPVX(phs->sv);
-	phs->indp  = -1;
-	value_len  = 0;
+    else {        /* it's null but point to buffer incase it's an out var        */
+        phs->progv = SvPVX(phs->sv);
+        phs->indp  = -1;
+        value_len  = 0;
     }
     if (imp_sth->dbd_pad_empty && value_len==0) {
-	sv_setpv(phs->sv, " ");
-	phs->progv = SvPV(phs->sv, value_len);
+        sv_setpv(phs->sv, " ");
+        phs->progv = SvPV(phs->sv, value_len);
     }
-    phs->sv_type = SvTYPE(phs->sv);	/* part of mutation check	*/
+    phs->sv_type = SvTYPE(phs->sv);        /* part of mutation check        */
     phs->alen    = value_len + phs->alen_incnull;
-    phs->maxlen  = SvLEN(phs->sv)-1;	/* avail buffer space	*/
+    phs->maxlen  = SvLEN(phs->sv)-1;        /* avail buffer space        */
+
+    imp_sth->all_params_len += phs->alen;
+
+    if (dbis->debug >= 3) {
+        fprintf(DBILOGFP, "bind %s <== '%.100s' (size %d/%ld, indp %d)\n",
+           phs->name, phs->progv, phs->alen, (long)phs->maxlen, phs->indp);
+    }
 
     return 1;
 }
@@ -842,58 +984,57 @@ dbd_bind_ph(sth, imp_sth, param, value, sql_type, attribs, is_inout, maxlen)
     char namebuf[30];
     phs_t *phs;
 
-#ifdef PG_DEBUG
-    fprintf(stderr, "dbd_bind_ph\n");
-#endif
+    if (dbis->debug >= 1) { fprintf(DBILOGFP, "dbd_bind_ph\n"); }
 
-    /* check if placeholder was passed as a number	*/
+    /* check if placeholder was passed as a number        */
     if (SvNIOK(param) || (SvPOK(param) && isDIGIT(*SvPVX(param)))) {
-	name = namebuf;
-	sprintf(name, ":p%d", (int)SvIV(param));
-	name_len = strlen(name);
+        name = namebuf;
+        sprintf(name, ":p%d", (int)SvIV(param));
+        name_len = strlen(name);
     }
-    else {		/* use the supplied placeholder name directly */
-	name = SvPV(param, name_len);
+    else {                /* use the supplied placeholder name directly */
+        name = SvPV(param, name_len);
     }
 
-    if (SvTYPE(value) > SVt_PVMG)	/* hook for later array logic	*/
-	croak("Can't bind non-scalar value (currently)");
+    if (SvTYPE(value) > SVt_PVMG)        /* hook for later array logic        */
+        croak("Can't bind non-scalar value (currently)");
 
-    if (dbis->debug >= 2)
-	fprintf(DBILOGFP, "bind %s <== %s (attribs: %s)\n",
-		name, neatsvpv(value,0), attribs ? SvPV(attribs,na) : "" );
+    if (dbis->debug >= 2) {
+        fprintf(DBILOGFP, "bind %s <== %s (attribs: %s)\n", name, neatsvpv(value,0), attribs ? SvPV(attribs,na) : "" );
+    }
 
     phs_svp = hv_fetch(imp_sth->all_params_hv, name, name_len, 0);
     if (phs_svp == NULL)
-	croak("Can't bind unknown placeholder '%s'", name);
-    phs = (phs_t*)(void*)SvPVX(*phs_svp);	/* placeholder struct	*/
+        croak("Can't bind unknown placeholder '%s'", name);
+    phs = (phs_t*)(void*)SvPVX(*phs_svp);        /* placeholder struct        */
 
-    if (phs->sv == &sv_undef) {	/* first bind for this placeholder	*/
-	phs->ftype    = 1;		/* our default type VARCHAR2	*/
-	phs->maxlen   = maxlen;		/* 0 if not inout		*/
-	phs->is_inout = is_inout;
-	if (is_inout) {
-	    phs->sv = SvREFCNT_inc(value);	/* point to live var	*/
-	    ++imp_sth->has_inout_params;
-	    /* build array of phs's so we can deal with out vars fast	*/
-	    if (!imp_sth->out_params_av)
-		imp_sth->out_params_av = newAV();
-	    av_push(imp_sth->out_params_av, SvREFCNT_inc(*phs_svp));
-	}
-    }
-	/* check later rebinds for any changes */
+    if (phs->sv == &sv_undef) {        /* first bind for this placeholder        */
+        phs->ftype    = 1;                /* our default type VARCHAR2        */
+        phs->maxlen   = maxlen;                /* 0 if not inout                */
+        phs->is_inout = is_inout;
+        if (is_inout) {
+            phs->sv = SvREFCNT_inc(value);        /* point to live var        */
+            ++imp_sth->has_inout_params;
+            /* build array of phs's so we can deal with out vars fast        */
+            if (!imp_sth->out_params_av) {
+                imp_sth->out_params_av = newAV();
+            }
+            av_push(imp_sth->out_params_av, SvREFCNT_inc(*phs_svp));
+        } 
+   }
+        /* check later rebinds for any changes */
     else if (is_inout || phs->is_inout) {
-	croak("Can't rebind or change param %s in/out mode after first bind", phs->name);
+        croak("Can't rebind or change param %s in/out mode after first bind", phs->name);
     }
     else if (maxlen && maxlen != phs->maxlen) {
-	croak("Can't change param %s maxlen (%ld->%ld) after first bind",
-			phs->name, phs->maxlen, maxlen);
+        croak("Can't change param %s maxlen (%ld->%ld) after first bind",
+                        phs->name, phs->maxlen, maxlen);
     }
 
-    if (!is_inout) {	/* normal bind to take a (new) copy of current value	*/
-	if (phs->sv == &sv_undef)	/* (first time bind) */
-	    phs->sv = newSV(0);
-	sv_setsv(phs->sv, value);
+    if (!is_inout) {        /* normal bind to take a (new) copy of current value        */
+        if (phs->sv == &sv_undef)        /* (first time bind) */
+            phs->sv = newSV(0);
+        sv_setsv(phs->sv, value);
     }
 
     return _dbd_rebind_ph(sth, imp_sth, phs);

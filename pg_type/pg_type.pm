@@ -1,5 +1,7 @@
 package DBD::Pg::pg_type;
 
+@pg_type;
+
 $pg_type[16] = 'bool';
 $pg_type[17] = 'bytea';
 $pg_type[18] = 'char';
@@ -56,6 +58,7 @@ $pg_type[1010] = '_tid';
 $pg_type[1011] = '_xid';
 $pg_type[1012] = '_cid';
 $pg_type[1013] = '_oid8';
+$pg_type[1014] = '_lock';
 $pg_type[1015] = '_stub';
 $pg_type[1016] = '_ref';
 $pg_type[1017] = '_point';

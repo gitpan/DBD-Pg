@@ -1,6 +1,6 @@
 /*---------------------------------------------------------
  *
- * $Id: dbdimp.h,v 1.8 1997/10/05 18:25:56 mergl Exp $
+ * $Id: dbdimp.h,v 1.9 1998/02/01 10:00:52 mergl Exp $
  *
  * Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
  * Portions Copyright (c) 1997                Edmund Mergl
@@ -30,9 +30,11 @@ struct imp_sth_st {
     int rows;			/* number of affected rows */
 
     /* Input Details	*/
+    char      *statement;	/* sql (see sth_scan)		*/
     HV        *all_params_hv;	/* all params, keyed by name	*/
     AV        *out_params_av;	/* quick access to inout params	*/
     int        dbd_pad_empty;	/* convert ""->" " when binding	*/
+    int        all_params_len;  /* length-sum of all params     */
 
     /* (In/)Out Parameter Details */
     bool  has_inout_params;
