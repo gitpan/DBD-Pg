@@ -1,6 +1,6 @@
 #---------------------------------------------------------
 #
-# $Id: Makefile.PL,v 1.8 1998/02/21 16:34:19 mergl Exp $
+# $Id: Makefile.PL,v 1.9 1998/03/03 21:04:52 mergl Exp $
 #
 # Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 # Portions Copyright (c) 1997,1998           Edmund Mergl
@@ -10,7 +10,7 @@
 use ExtUtils::MakeMaker;
 use Config;
 use strict;
-use DBI 0.89;
+use DBI 0.91;
 use DBI::DBD;
 
 

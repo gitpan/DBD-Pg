@@ -2,7 +2,7 @@
 
 #---------------------------------------------------------
 #
-# $Id: test.pl,v 1.13 1998/02/19 20:28:55 mergl Exp $
+# $Id: test.pl,v 1.14 1998/03/03 21:04:53 mergl Exp $
 #
 # Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 # Portions Copyright (c) 1997,1998           Edmund Mergl
@@ -29,7 +29,6 @@ $| = 1;
 
 $dbmain = 'template1';
 $dbname = 'pgperltest';
-$dbhost = 'localhost';
 $dbuser = '';
 $dbpass = '';
 
@@ -37,7 +36,7 @@ $dbpass = '';
 
 ######################### create test database
 
-$dbh = DBI->connect("dbi:Pg:dbname=$dbmain;host=$dbhost", $dbuser, $dbpass, {PrintError => 0}) or die $DBI::errstr;
+$dbh = DBI->connect("dbi:Pg:dbname=$dbmain", $dbuser, $dbpass, {PrintError => 0}) or die $DBI::errstr;
 
 $dbh->do("DROP DATABASE $dbname");
 $dbh->do("CREATE DATABASE $dbname");
@@ -48,7 +47,7 @@ $dbh->disconnect;
 
 # connect to database and create table
 
-( $dbh = DBI->connect("dbi:Pg:dbname=$dbname;host=$dbhost", $dbuser, $dbpass) )
+( $dbh = DBI->connect("dbi:Pg:dbname=$dbname", $dbuser, $dbpass) )
     and print "ok 2\n"
     or  die $DBI::errstr;
 
@@ -229,7 +228,7 @@ $sth->fetch;
 
 ######################### disconnect and drop test database
 
-$dbh = DBI->connect("dbi:Pg:dbname=$dbmain;host=$dbhost", $dbuser, $dbpass) or die $DBI::errstr;
+$dbh = DBI->connect("dbi:Pg:dbname=$dbmain", $dbuser, $dbpass) or die $DBI::errstr;
 
 $dbh->do("DROP DATABASE $dbname");
 

@@ -1,6 +1,6 @@
 #---------------------------------------------------------
 #
-# $Id: README,v 1.15 1998/02/21 16:34:20 mergl Exp $
+# $Id: README,v 1.16 1998/03/03 21:04:53 mergl Exp $
 #
 # Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 # Portions Copyright (c) 1997,1998           Edmund Mergl
@@ -12,7 +12,7 @@
 DESCRIPTION:
 ------------
 
-This is version 0.67 of DBD-Pg.
+This is version 0.68 of DBD-Pg.
 DBD-Pg is a PostgreSQL interface for Perl 5 using DBI.
 
 For further information about DBI look at:
@@ -45,7 +45,7 @@ REQUIREMENTS:
 
   - build, test and install Perl 5         (at least 5.002)
   - build, test and install the DBI module (at least 0.91)
-  - build, test and install PostgreSQL     (at least 6.2)
+  - build, test and install PostgreSQL     (at least 6.3)
 
 
 PLATFORMS:
@@ -107,9 +107,15 @@ HP users: if you get error messages like:
           'shared' option in the LDDFLAGS with 'archive'.
           Dan Lauterbach <danla@dimensional.com>
 
+FreeBSD users: if you get during make test the error message:
+    'DBD driver has not implemented the AutoCommit attribute'
+    recompile the DBI module and the DBD-Pg module and disable
+    optimization. This error message is due to the broken
+    optimization in gcc-2.7.2.1.
+
 
 ---------------------------------------------------------------------------
 
-   Edmund Mergl <E.Mergl@bawue.de>                       February 21, 1998
+   Edmund Mergl <E.Mergl@bawue.de>                       March  3, 1998
 
 ---------------------------------------------------------------------------

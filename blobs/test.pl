@@ -2,7 +2,7 @@
 
 #---------------------------------------------------------
 #
-# $Id: test.pl,v 1.4 1998/02/01 10:00:54 mergl Exp $
+# $Id: test.pl,v 1.5 1998/03/03 21:04:58 mergl Exp $
 #
 #---------------------------------------------------------
 
@@ -10,7 +10,6 @@ use DBI;
 
 $dbmain = 'template1';
 $dbname = 'pgperltest';
-$dbhost = 'localhost';
 $dbuser = '';
 $dbpass = '';
 
@@ -18,11 +17,11 @@ $cwd = `pwd`;
 chop $cwd;
 $lobject = $cwd . '/README';
 
-my $dbh = DBI->connect("dbi:Pg:dbname=$dbmain;host=$dbhost", $dbuser, $dbpass);
+my $dbh = DBI->connect("dbi:Pg:dbname=$dbmain", $dbuser, $dbpass);
 $dbh->do( "CREATE DATABASE $dbname" );
 $dbh->disconnect;
 
-$dbh = DBI->connect("dbi:Pg:dbname=$dbname;host=$dbhost", $dbuser, $dbpass);
+$dbh = DBI->connect("dbi:Pg:dbname=$dbname", $dbuser, $dbpass);
 
 $dbh->do("CREATE TABLE lobject ( id int4, loid oid )");
 
@@ -42,7 +41,7 @@ $sth->finish;
 
 $dbh->disconnect;
 
-$dbh = DBI->connect("dbi:Pg:dbname=$dbmain;host=$dbhost", $dbuser, $dbpass);
+$dbh = DBI->connect("dbi:Pg:dbname=$dbmain", $dbuser, $dbpass);
 $dbh->do( "DROP DATABASE $dbname" );
 $dbh->disconnect;
 

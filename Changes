@@ -1,5 +1,8 @@
 Revision history for Perl extension DBD-Pg.
 
+0.68  March 3, 1998
+        - return to UNIX domain sockets in test-scripts
+
 0.67  February 21, 1998
 	- remove part of Driver.xst due to compile
 	  error on some systems.

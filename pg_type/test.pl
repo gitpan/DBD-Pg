@@ -2,7 +2,7 @@
 
 #---------------------------------------------------------
 #
-# $Id: test.pl,v 1.4 1998/02/01 18:40:48 mergl Exp $
+# $Id: test.pl,v 1.5 1998/03/03 21:05:02 mergl Exp $
 #
 #---------------------------------------------------------
 
@@ -11,15 +11,14 @@ use pg_type;
 
 $dbmain = 'template1';
 $dbname = 'pgperltest';
-$dbhost = 'localhost';
 $dbuser = '';
 $dbpass = '';
 
-my $dbh = DBI->connect("dbi:Pg:dbname=$dbmain;host=$dbhost", $dbuser, $dbpass);
+my $dbh = DBI->connect("dbi:Pg:dbname=$dbmain", $dbuser, $dbpass);
 $dbh->do( "CREATE DATABASE $dbname" );
 $dbh->disconnect;
 
-$dbh = DBI->connect("dbi:Pg:dbname=$dbname;host=$dbhost", $dbuser, $dbpass);
+$dbh = DBI->connect("dbi:Pg:dbname=$dbname", $dbuser, $dbpass);
 
 $dbh->do( "CREATE TABLE builtin(
   bool_    bool,
@@ -73,7 +72,7 @@ $sth->finish;
 
 $dbh->disconnect;
 
-$dbh = DBI->connect("dbi:Pg:dbname=$dbmain;host=$dbhost", $dbuser, $dbpass);
+$dbh = DBI->connect("dbi:Pg:dbname=$dbmain", $dbuser, $dbpass);
 $dbh->do( "DROP DATABASE $dbname" );
 $dbh->disconnect;
 
