@@ -1,9 +1,9 @@
 /*---------------------------------------------------------
  *
- * $Id: dbdimp.c,v 1.16 1998/02/15 09:48:00 mergl Exp $
+ * $Id: dbdimp.c,v 1.17 1998/02/19 20:28:54 mergl Exp $
  *
  * Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
- * Portions Copyright (c) 1997                Edmund Mergl
+ * Portions Copyright (c) 1997,1998           Edmund Mergl
  *
  *---------------------------------------------------------
  */
@@ -656,12 +656,16 @@ dbd_st_fetch(sth, imp_sth)
 
     for(i = 0; i < num_fields; ++i) {
 
-        SV   *sv  = AvARRAY(av)[i];
-        char *val = (char*)PQgetvalue(imp_sth->result, imp_sth->cur_tuple, i);
-        if ('1' == imp_sth->is_bool[i]) {
-           *val = *val == 'f' ? '0' : '1'; /* bool: translate postgres into perl */
+        SV *sv  = AvARRAY(av)[i];
+        if (PQgetisnull(imp_sth->result, imp_sth->cur_tuple, i)) {
+            sv_setsv(sv, &sv_undef);
+        } else {
+            char *val = (char*)PQgetvalue(imp_sth->result, imp_sth->cur_tuple, i);
+            if ('1' == imp_sth->is_bool[i]) {
+               *val = (*val == 'f') ? '0' : '1'; /* bool: translate postgres into perl */
+            }
+            sv_setpv(sv, val);
         }
-        sv_setpv(sv, val);
     }
 
     imp_sth->cur_tuple += 1;

@@ -1,9 +1,9 @@
 #---------------------------------------------------------
 #
-# $Id: Makefile.PL,v 1.6 1997/10/05 18:25:55 mergl Exp $
+# $Id: Makefile.PL,v 1.7 1998/02/19 20:28:52 mergl Exp $
 #
 # Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
-# Portions Copyright (c) 1997                Edmund Mergl
+# Portions Copyright (c) 1997,1998           Edmund Mergl
 #
 #---------------------------------------------------------
 

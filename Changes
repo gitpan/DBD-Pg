@@ -1,5 +1,10 @@
 Revision history for Perl extension DBD-Pg.
 
+0.66  February 19, 1998
+	- remove defines in Pg.h so that
+	  it compiles also with postgresql-6.2.1
+	- changed ping method: set RaiseError=0
+
 0.65  February 14, 1998
 	- adapted to changes in DBI-0.91, so that the
 	  default setting for AutoCommit and PrintError is 

@@ -1,9 +1,9 @@
 #---------------------------------------------------------
 #
-# $Id: Pg.pm,v 1.13 1998/02/15 09:47:59 mergl Exp $
+# $Id: Pg.pm,v 1.15 1998/02/19 21:05:47 mergl Exp $
 #
 #  Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
-#  Portions Copyright (c) 1997                Edmund Mergl
+#  Portions Copyright (c) 1997,1998           Edmund Mergl
 #
 #---------------------------------------------------------
 
@@ -16,7 +16,7 @@ require 5.002;
     use DynaLoader ();
     @ISA = qw(DynaLoader);
 
-    $VERSION = '0.65';
+    $VERSION = '0.66';
 
     require_version DBI 0.91;
 
@@ -80,7 +80,7 @@ require 5.002;
 
     sub ping {
         my($dbh) = @_;
-
+        local $dbh->{RaiseError} = 0 if $dbh->{RaiseErrror};
         DBD::Pg::db::_ping($dbh);
     }
 

@@ -1,22 +1,18 @@
 /*---------------------------------------------------------
  *
- * $Id: Pg.h,v 1.11 1998/02/15 09:47:59 mergl Exp $
+ * $Id: Pg.h,v 1.12 1998/02/19 20:28:52 mergl Exp $
  *
  * Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
- * Portions Copyright (c) 1997                Edmund Mergl
+ * Portions Copyright (c) 1997,1998           Edmund Mergl
  *
  *---------------------------------------------------------
  */
 
 
-#ifdef bool
-#undef bool
-#endif
-
 #include "libpq-fe.h"
 #include <string.h>
 
-#if 0
+#if NEVER
 #include<sys/stat.h>
 #include "libpq/libpq-fs.h"
 #endif

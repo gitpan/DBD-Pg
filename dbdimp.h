@@ -1,9 +1,9 @@
 /*---------------------------------------------------------
  *
- * $Id: dbdimp.h,v 1.10 1998/02/15 09:48:01 mergl Exp $
+ * $Id: dbdimp.h,v 1.11 1998/02/19 20:28:54 mergl Exp $
  *
  * Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
- * Portions Copyright (c) 1997                Edmund Mergl
+ * Portions Copyright (c) 1997,1998           Edmund Mergl
  *
  *---------------------------------------------------------
  */

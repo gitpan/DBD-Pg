@@ -1,9 +1,9 @@
 /*---------------------------------------------------------
  *
- * $Id: Pg.xs,v 1.13 1998/02/15 09:47:59 mergl Exp $
+ * $Id: Pg.xs,v 1.14 1998/02/19 20:28:53 mergl Exp $
  *
  * Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
- * Portions Copyright (c) 1997                Edmund Mergl
+ * Portions Copyright (c) 1997,1998           Edmund Mergl
  *
  *---------------------------------------------------------
  */

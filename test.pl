@@ -2,10 +2,10 @@
 
 #---------------------------------------------------------
 #
-# $Id: test.pl,v 1.12 1998/02/01 18:40:35 mergl Exp $
+# $Id: test.pl,v 1.13 1998/02/19 20:28:55 mergl Exp $
 #
 # Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
-# Portions Copyright (c) 1997                Edmund Mergl
+# Portions Copyright (c) 1997,1998           Edmund Mergl
 #
 #---------------------------------------------------------
 
@@ -33,7 +33,7 @@ $dbhost = 'localhost';
 $dbuser = '';
 $dbpass = '';
 
-# DBI->trace(1); # make your choice
+#DBI->trace(2); # make your choice
 
 ######################### create test database
 
@@ -53,17 +53,19 @@ $dbh->disconnect;
     or  die $DBI::errstr;
 
 ( $dbh->do( "CREATE TABLE builtin ( 
-  bool_    bool,
-  char_    char,
-  char16_  char16,
-  text_    text,
-  date_    date,
-  int4_    int4,
-  int4a_   int4[],
-  float8_  float8,
-  point_   point,
-  lseg_    lseg,
-  box_     box
+  bool_      bool,
+  char_      char,
+  char16_    char16,
+  char12_    char(12),
+  varchar12_ varchar(12),
+  text_      text,
+  date_      date,
+  int4_      int4,
+  int4a_     int4[],
+  float8_    float8,
+  point_     point,
+  lseg_      lseg,
+  box_       box
   )" ) )
     and print "ok 3\n"
     or  die $DBI::errstr;
@@ -73,6 +75,8 @@ $dbh->disconnect;
 ( 1 == $dbh->do( "INSERT INTO builtin VALUES(
   't',
   'a',
+  'Edmund Mergl',
+  'Edmund Mergl',
   'Edmund Mergl',
   'Edmund Mergl',
   '08-03-1997',
@@ -87,8 +91,8 @@ $dbh->disconnect;
     or  die $DBI::errstr;
 
 ( $sth = $dbh->prepare( "INSERT INTO builtin 
-  ( bool_, char_, char16_, text_, date_, int4_, int4a_, float8_, point_, lseg_, box_ )
-  VALUES ( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )
+  ( bool_, char_, char16_, char12_, varchar12_, text_, date_, int4_, int4a_, float8_, point_, lseg_, box_ )
+  VALUES ( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )
   " ) )
     and print "ok 5\n"
     or  die $DBI::errstr;
@@ -96,8 +100,10 @@ $dbh->disconnect;
 ( $sth->execute (
   'f',
   'b',
-  'Halli Hallo',
-  'Halli Hallo',
+  'Halli  Hallo',
+  'Halli  Hallo',
+  'Halli  Hallo',
+  'Halli  Hallo',
   '06-01-1995',
   5678,
   '{5,6,7}',
@@ -112,8 +118,10 @@ $dbh->disconnect;
 ( $sth->execute (
   'f',
   'c',
-  'Potz Blitz',
-  'Potz Blitz',
+  'Potz   Blitz',
+  'Potz   Blitz',
+  'Potz   Blitz',
+  'Potz   Blitz',
   '05-10-1957',
   1357,
   '{1,3,5}',
@@ -156,34 +164,34 @@ $cmd_status = $sth->{'pg_cmd_status'};
     or  die $DBI::errstr;
 
 @row_ary = $sth->fetchrow_array;
-( join(" ", @row_ary) eq '1 a Edmund Mergl Edmund Mergl 08-03-1997 1234 {1,2,3} 1.234 (1,2) [(1,2),(3,4)] (3,4),(1,2)' ) 
+( join(" ", @row_ary) eq '1 a Edmund Mergl Edmund Mergl Edmund Mergl Edmund Mergl 08-03-1997 1234 {1,2,3} 1.234 (1,2) [(1,2),(3,4)] (3,4),(1,2)' ) 
     and print "ok 14\n"
     or  print "not ok 14: row = ", join(" ", @row_ary), "\n";
 
 $ary_ref = $sth->fetchrow_arrayref;
-( join(" ", @$ary_ref) eq '0 b Halli Hallo Halli Hallo 06-01-1995 5678 {5,6,7} 5.678 (4,5) [(4,5),(6,7)] (6,7),(4,5)' )
+( join(" ", @$ary_ref) eq '0 b Halli  Hallo Halli  Hallo Halli  Hallo Halli  Hallo 06-01-1995 5678 {5,6,7} 5.678 (4,5) [(4,5),(6,7)] (6,7),(4,5)' )
     and print "ok 15\n"
     or  print "not ok 15: ary_ref = ", join(" ", @$ary_ref), "\n";
 
 $hash_ref = $sth->fetchrow_hashref;
-( join(" ", (($key,$val) = each %$hash_ref)) eq 'text_ Potz Blitz' )
+( join(" ", (($key,$val) = each %$hash_ref)) eq 'char12_ Potz   Blitz' )
     and print "ok 16\n"
     or  print "not ok 16: key = $key, val = $val\n";
 
 # test various attributes
 
 @name = @{$sth->{'NAME'}};
-( join(" ", @name) eq 'bool_ char_ char16_ text_ date_ int4_ int4a_ float8_ point_ lseg_ box_' )
+( join(" ", @name) eq 'bool_ char_ char16_ char12_ varchar12_ text_ date_ int4_ int4a_ float8_ point_ lseg_ box_' )
     and print "ok 17\n"
     or  print "not ok 17: name = ", join(" ", @name), "\n";
 
 @type = @{$sth->{'TYPE'}};
-( join(" ", @type) eq '16 18 20 25 1082 23 1007 701 600 601 603' )
+( join(" ", @type) eq '16 18 20 1042 1043 25 1082 23 1007 701 600 601 603' )
     and print "ok 18\n"
     or  print "not ok 18: type = ", join(" ", @type), "\n";
 
 @size = @{$sth->{'SIZE'}};
-( join(" ", @size) eq '1 1 16 -1 4 4 -1 8 16 32 32' )
+( join(" ", @size) eq '1 1 16 -1 -1 -1 4 4 -1 8 16 32 32' )
     and print "ok 19\n"
     or  print "not ok 19: size = ", join(" ", @size), "\n";
 
@@ -199,13 +207,13 @@ print "ok 21\n";
     and print "ok 22\n"
     or die $DBI::errstr;
 
-( $sth->bind_columns(undef, \$bool, \$char, \$char16, \$text, \$date, \$int4, \$int4a, \$float8, \$point, \$lseg, \$box) )
+( $sth->bind_columns(undef, \$bool, \$char, \$char16, \$char12, \$vchar12, \$text, \$date, \$int4, \$int4a, \$float8, \$point, \$lseg, \$box) )
     and print "ok 23\n"
     or die $DBI::errstr;
 
 $sth->fetch;
-( "$bool, $char, $char16, $text, $date, $int4, $int4a, $float8, $point, $lseg, $box" eq 
-  '1, a, Edmund Mergl, Edmund Mergl, 08-03-1997, 1234, {1,2,3}, 1.234, (1,2), [(1,2),(3,4)], (3,4),(1,2)' )
+( "$bool, $char, $char16, $char12, $vchar12, $text, $date, $int4, $int4a, $float8, $point, $lseg, $box" eq 
+  '1, a, Edmund Mergl, Edmund Mergl, Edmund Mergl, Edmund Mergl, 08-03-1997, 1234, {1,2,3}, 1.234, (1,2), [(1,2),(3,4)], (3,4),(1,2)' )
     and print "ok 24\n"
     or  print "not ok 24: $bool, $char, $char16, $text, $date, $int4, $int4a, $float8, $point, $lseg, $box\n";
 
