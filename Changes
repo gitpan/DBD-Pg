@@ -1,5 +1,9 @@
 Revision history for Perl extension DBD-Pg.
 
+0.69 March  6, 1998
+	- expanded the search path for include files
+        - module is now linked with static libpq.a
+
 0.68  March 3, 1998
         - return to UNIX domain sockets in test-scripts
 

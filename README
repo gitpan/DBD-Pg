@@ -1,6 +1,6 @@
 #---------------------------------------------------------
 #
-# $Id: README,v 1.16 1998/03/03 21:04:53 mergl Exp $
+# $Id: README,v 1.17 1998/03/06 21:18:35 mergl Exp $
 #
 # Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 # Portions Copyright (c) 1997,1998           Edmund Mergl
@@ -12,7 +12,7 @@
 DESCRIPTION:
 ------------
 
-This is version 0.68 of DBD-Pg.
+This is version 0.69 of DBD-Pg.
 DBD-Pg is a PostgreSQL interface for Perl 5 using DBI.
 
 For further information about DBI look at:
@@ -116,6 +116,6 @@ FreeBSD users: if you get during make test the error message:
 
 ---------------------------------------------------------------------------
 
-   Edmund Mergl <E.Mergl@bawue.de>                       March  3, 1998
+   Edmund Mergl <E.Mergl@bawue.de>                       March  6, 1998
 
 ---------------------------------------------------------------------------

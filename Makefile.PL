@@ -1,6 +1,6 @@
 #---------------------------------------------------------
 #
-# $Id: Makefile.PL,v 1.9 1998/03/03 21:04:52 mergl Exp $
+# $Id: Makefile.PL,v 1.12 1998/03/06 21:57:11 mergl Exp $
 #
 # Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 # Portions Copyright (c) 1997,1998           Edmund Mergl
@@ -38,12 +38,8 @@ if (-d "$ENV{POSTGRES_HOME}/lib") {
 my %opts = (
     NAME         => 'DBD::Pg',
     VERSION_FROM => 'Pg.pm',
-    clean        => { FILES => 'Pg.xsi' },
-    dist         => { DIST_DEFAULT => 'clean distcheck disttest ci tardist',
-                      PREOP        => '$(MAKE) -f Makefile.old distdir' },
-    INC          =>  "-I$ENV{POSTGRES_HOME}/include -I$Config{archlib}/DBI -I$Config{sitearch}/auto/DBI",
-    LIBS         => ["-L$ENV{POSTGRES_HOME}/lib -lpq"],
-    OBJECT       => 'Pg$(OBJ_EXT) dbdimp$(OBJ_EXT)',
+    INC          => "-I$ENV{POSTGRES_HOME}/include -I/usr/local/include/pgsql -I/usr/include/pgsql -I$Config{archlib}/DBI -I$Config{sitearch}/auto/DBI",
+    OBJECT       => "Pg\$(OBJ_EXT) dbdimp\$(OBJ_EXT) $ENV{POSTGRES_HOME}/lib/libpq.a",
 );
 
 
