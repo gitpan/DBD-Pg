@@ -14,6 +14,9 @@ if (defined $ENV{DBI_DSN}) {
 	plan skip_all => 'Cannot run test unless DBI_DSN is defined. See the README file.';
 }
 
+## Define this here in case we get to the END block before a connection is made.
+my $pgversion = '?';
+
 # Trapping a connection error can be tricky, but we only have to do it 
 # this thoroughly one time. We are trapping two classes of errors:
 # the first is when we truly do not connect, usually a bad DBI_DSN;
@@ -36,7 +39,8 @@ if ($@) {
 
 pass('Established a connection to the database');
 
-my $pgversion = DBD::Pg::_pg_server_version($dbh);
+my $intversion = DBD::Pg::_pg_server_version($dbh);
+$pgversion = $dbh->{private_dbdpg}{dotted_version};
 
 ok( $dbh->disconnect(), 'Disconnect from the database');
 
@@ -50,7 +54,7 @@ ok( $dbh2 = DBI->connect($ENV{DBI_DSN}, $ENV{DBI_USER}, $ENV{DBI_PASS},
 												 {RaiseError => 1, PrintError => 0, AutoCommit => 0}),
 		'Connected with second database handle');
 
-my $sth = $dbh->prepare('SELECT * FROM dbd_pg_test');
+my $sth = $dbh->prepare('SELECT 123');
 ok ( $dbh->disconnect(), 'Disconnect with first database handle');
 ok ( $dbh2->disconnect(), 'Disconnect with second database handle');
 ok ( $dbh2->disconnect(), 'Disconnect again with second database handle');
@@ -61,10 +65,14 @@ eval {
 ok( $@, 'Execute fails on a disconnected statement');
 
 END {
-	diag "\n".
-	 "Program       Version\n".
-	 "DBD::Pg       $DBD::Pg::VERSION\n".
-	 "PostgreSQL    $pgversion\n".
-	 "DBI           $DBI::VERSION";
+	my $pv = sprintf("%vd", $^V);
+	my $schema = exists $ENV{DBD_SCHEMA} ? 
+		"\nDBD_SCHEMA        $ENV{DBD_SCHEMA}" : '';
+	diag 
+		"\nProgram           Version\n".
+		"Perl              $pv ($^O)\n".
+		"DBD::Pg           $DBD::Pg::VERSION\n".
+		"PostgreSQL        $pgversion\n".
+		"DBI               $DBI::VERSION\n".
+		"DBI_DSN           $ENV{DBI_DSN}$schema\n";
 }
-

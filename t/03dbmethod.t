@@ -4,21 +4,18 @@
 # The following methods are *not* currently tested here:
 # "clone"
 # "data_sources"
-# "do"
-# "prepare"
 # "disconnect"
-# "prepare_cached"
 # "take_imp_data"
 # "lo_import"
 # "lo_export"
 
 use Test::More;
-use DBI;
+use DBI qw(:sql_types);
 use strict;
 $|=1;
 
 if (defined $ENV{DBI_DSN}) {
-	plan tests => 139;
+	plan tests => 141;
 } else {
 	plan skip_all => 'Cannot run test unless DBI_DSN is defined. See the README file';
 }
@@ -27,13 +24,32 @@ my $dbh = DBI->connect($ENV{DBI_DSN}, $ENV{DBI_USER}, $ENV{DBI_PASS},
 											 {RaiseError => 1, PrintError => 0, AutoCommit => 0});
 ok( defined $dbh, "Connect to database for database handle method testing");
 
+my $schema = '';
+my $got73 = DBD::Pg::_pg_use_catalog($dbh);
+if ($got73) {
+	$schema = exists $ENV{DBD_SCHEMA} ? $ENV{DBD_SCHEMA} : 'public';
+	$dbh->do("SET search_path TO " . $dbh->quote_identifier($schema));
+}
+
 my ($SQL, $sth, $result, @result, $expected, $warning, $rows);
+
+# Quick simple "tests"
+
+$dbh->do(""); ## This used to break, so we keep it as a test...
+$SQL = "SELECT 123 FROM dbd_pg_test WHERE id=?";
+$sth = $dbh->prepare($SQL);
+$sth->finish();
+$sth = $dbh->prepare_cached($SQL);
+$sth->finish();
+
 
 # Populate the testing table for later use
 
 $dbh->do("DELETE FROM dbd_pg_test");
 $SQL = "INSERT INTO dbd_pg_test(id,val) VALUES (?,?)";
+
 $sth = $dbh->prepare($SQL);
+$sth->bind_param(1, 1, SQL_INTEGER);
 $sth->execute(10,'Roseapple');
 $sth->execute(11,'Pineapple');
 $sth->execute(12,'Kiwi');
@@ -42,9 +58,39 @@ $sth->execute(12,'Kiwi');
 # Test of the "last_insert_id" database handle method
 #
 
-TODO: {
-	local $TODO = 'DB handle method "last_insert_id" is not implemented yet';
-}
+$dbh->commit();
+eval {
+	$result = $dbh->last_insert_id(undef,undef,undef,undef);
+};
+ok( $@, 'DB handle method "last_insert_id" given an error when no arguments are given');
+
+eval {
+	$result = $dbh->last_insert_id(undef,undef,undef,undef,{sequence=>'dbd_pg_nonexistent_sequence_test'});
+};
+ok( $@, 'DB handle method "last_insert_id" fails when given a non-existent sequence');
+$dbh->rollback();
+
+eval {
+	$result = $dbh->last_insert_id(undef,undef,'dbd_pg_nonexistenttable_test',undef);
+};
+ok( $@, 'DB handle method "last_insert_id" fails when given a non-existent table');
+$dbh->rollback();
+
+eval {
+	$result = $dbh->last_insert_id(undef,undef,'dbd_pg_nonexistenttable_test',undef,{sequence=>'dbd_pg_sequence'});
+};
+ok( ! $@, 'DB handle method "last_insert_id" works when given a valid sequence and an invalid table');
+like( $result, qr{^\d+$}, 'DB handle method "last_insert_id" returns a numeric value');
+
+eval {
+	$result = $dbh->last_insert_id(undef,undef,'dbd_pg_test',undef);
+};
+ok( ! $@, 'DB handle method "last_insert_id" works when given a valid table');
+
+eval {
+	$result = $dbh->last_insert_id(undef,undef,'dbd_pg_test',undef);
+};
+ok( ! $@, 'DB handle method "last_insert_id" works when called twice (cached) given a valid table');
 
 #
 # Test of the "selectrow_array" database handle method
@@ -283,6 +329,7 @@ is_deeply( \%missing, {}, 'DB handle method "column_info" returns fields require
 
 # Check that pg_constraint was populated
 $result = $result->[0];
+use Data::Dumper; open(T, ">trace") and print T (Dumper $result);
 like( $result->{pg_constraint}, qr/score/, qq{DB handle method "column info" 'pg_constraint' returns a value for constrained columns});
 
 # Check that it is not populated for non-constrained columns
@@ -292,7 +339,6 @@ is( $result->{pg_constraint}, undef, qq{DB handle method "column info" 'pg_const
 
 # Check the rest of the custom "pg" columns
 is( $result->{pg_type}, 'integer', qq{DB handle method "column_info" returns good value for 'pg_type'});
-is( $result->{pg_type_only}, 'integer', qq{DB handle method "column_info" returns good value for 'pg_type_only'});
 
 ## Check some of the returned fields:
 is( $result->{TABLE_CAT}, undef, 'DB handle method "column_info" returns proper TABLE_CAT');
@@ -306,7 +352,6 @@ is( $result->{COLUMN_DEF}, undef, 'DB handle method "column_info" returns proper
 is( $result->{ORDINAL_POSITION}, 1, 'DB handle method "column_info" returns proper ORDINAL_POSITION');
 is( $result->{IS_NULLABLE}, 'NO', 'DB handle method "column_info" returns proper IS_NULLABLE');
 is( $result->{pg_type}, 'integer', 'DB handle method "column_info" returns proper pg_type');
-is( $result->{pg_type_only}, 'integer', 'DB handle method "column_info" returns proper pg_type_only');
 
 #
 # Test of the "primary_key_info" database handle method
@@ -341,6 +386,10 @@ cmp_ok( $result->{KEY_SEQ}, '>=', 1, 'DB handle method "primary_key_info" return
 $expected = ['id'];
 is_deeply( \@result, $expected, 'DB handle method "primary_key" works');
 
+@result = $dbh->primary_key('', '', 'dbd_pg_test_do_not_create_this_table');
+$expected = [];
+is_deeply( \@result, $expected, 'DB handle method "primary_key" returns empty list for invalid table');
+
 #
 # Test of the "foreign_key_info" database handle method
 #
@@ -350,19 +399,16 @@ $sth = $dbh->foreign_key_info(undef,undef,undef,undef,undef,undef);
 is ($sth, undef, 'DB handle method "foreign_key_info" returns undef: no pk / no fk');
 
 ## All foreign_key_info tests are meaningless for old servers
-my $pgversion = DBD::Pg::_pg_server_version($dbh);
-if (! DBD::Pg::_pg_check_version(7.3, $pgversion)) {
+if (! $got73) {
  SKIP: {
 		skip qq{Cannot test DB handle method "foreign_key_info" on pre-7.3 servers.}, 16;
 	}
 }
 else {
 
-# Since the schema name is part of our test, let's encourage 'public':
-$dbh->do("SET search_path TO 'public'");
-
 # Drop any tables that may exist
-$SQL = "SELECT relname FROM pg_catalog.pg_class WHERE relkind='r' AND relname LIKE 'dbd_pg_test_'";
+my $fktables = join "," => map { "'dbd_pg_test$_'" } (1..3);
+$SQL = "SELECT relname FROM pg_catalog.pg_class WHERE relkind='r' AND relname IN ($fktables)";
 for (@{$dbh->selectall_arrayref($SQL)}) {
 	$dbh->do("DROP TABLE $_->[0] CASCADE");
 }
@@ -436,11 +482,11 @@ $sth = $dbh->foreign_key_info(undef,undef,'dbd_pg_test1',undef,undef,undef);
 $result = $sth->fetchall_arrayref();
 my $fk1 = [
 					 undef,
-					 'public',
+					 $schema,
 					 'dbd_pg_test1',
 					 'a',
 					 undef,
-					 'public',
+					 $schema,
 					 'dbd_pg_test2',
 					 'f2',
 					 2,
@@ -476,11 +522,11 @@ $sth = $dbh->foreign_key_info(undef,undef,'dbd_pg_test1',undef,undef,undef);
 $result = $sth->fetchall_arrayref();
 my $fk2 = [
 					 undef,
-					 'public',
+					 $schema,
 					 'dbd_pg_test1',
 					 'b',
 					 undef,
-					 'public',
+					 $schema,
 					 'dbd_pg_test2',
 					 'f3',
 					 '3',
@@ -506,11 +552,11 @@ $sth = $dbh->foreign_key_info(undef,undef,'dbd_pg_test1',undef,undef,undef);
 $result = $sth->fetchall_arrayref();
 my $fk3 = [
 					 undef,
-					 'public',
+					 $schema,
 					 'dbd_pg_test1',
 					 'c',
 					 undef,
-					 'public',
+					 $schema,
 					 'dbd_pg_test2',
 					 'f3',
 					 '3',
@@ -538,11 +584,11 @@ $sth = $dbh->foreign_key_info(undef,undef,'dbd_pg_test1',undef,undef,undef);
 $result = $sth->fetchall_arrayref();
 my $fk4 = [
 					 undef,
-					 'public',
+					 $schema,
 					 'dbd_pg_test1',
 					 'a',
 					 undef,
-					 'public',
+					 $schema,
 					 'dbd_pg_test3',
 					 'ff1',
 					 '1',
@@ -577,11 +623,11 @@ $result = $sth->fetchall_arrayref();
 ## "dbd_pg_test2_fk4" FOREIGN KEY (f1, f3, f2) REFERENCES dbd_pg_test1(c, a, b)
 my $fk5 = [
 					 undef,
-					 'public',
+					 $schema,
 					 'dbd_pg_test1',
 					 'c',
 					 undef,
-					 'public',
+					 $schema,
 					 'dbd_pg_test2',
 					 'f1',
 					 '1',
@@ -608,12 +654,6 @@ $dbh->do("DROP TABLE dbd_pg_test3");
 $dbh->do("DROP TABLE dbd_pg_test2");
 $dbh->do("DROP TABLE dbd_pg_test1");
 
-# Reset the search path by reconnecting
-$dbh->disconnect();
-
-$dbh = DBI->connect($ENV{DBI_DSN}, $ENV{DBI_USER}, $ENV{DBI_PASS},
-										{RaiseError => 1, PrintError => 0, AutoCommit => 0});
-
 } # end giant foreign_key_info bypass
 
 #
@@ -623,8 +663,8 @@ $dbh = DBI->connect($ENV{DBI_DSN}, $ENV{DBI_USER}, $ENV{DBI_PASS},
 @result = $dbh->tables('', '', 'dbd_pg_test', '');
 like( $result[0], qr/dbd_pg_test/, 'DB handle method "tables" works');
 
-@result = $dbh->tables('', '', 'dbd_pg_test', '', {noprefix => 1});
-is( $result[0], 'dbd_pg_test', 'DB handle method "tables" works with a "noprefix" attribute');
+@result = $dbh->tables('', '', 'dbd_pg_test', '', {pg_noprefix => 1});
+is( $result[0], 'dbd_pg_test', 'DB handle method "tables" works with a "pg_noprefix" attribute');
 
 #
 # Test of the "type_info_all" database handle method
@@ -684,8 +724,13 @@ for (keys %quotetests) {
 	$result = $dbh->quote($_);
 	is( $result, $quotetests{$_}, qq{DB handle method "quote" works with a value of "$_"});
 }
-is( $dbh->quote(undef), q{NULL}, 'DB handle method "quote" works with an undefined value');
+my $foo;
+{
+	no warnings; ## Perl does not like undef args
+	is( $dbh->quote($foo), q{NULL}, 'DB handle method "quote" works with an undefined value');
+}
 is( $dbh->quote(1, 4), 1, 'DB handle method "quote" works with a supplied data type argument');
+
 
 #
 # Test of the "quote_identifier" database handle method
@@ -696,7 +741,7 @@ is( $dbh->quote(1, 4), 1, 'DB handle method "quote" works with a supplied data t
 									q{Ain't misbehaving } => q{"Ain't misbehaving "},
 									NULL => q{"NULL"},
 									"" => q{""},
-								 );
+							);
 for (keys %quotetests) {
 	$result = $dbh->quote_identifier($_);
 	is( $result, $quotetests{$_}, qq{DB handle method "quote_identifier" works with a value of "$_"});
@@ -777,7 +822,7 @@ ok( $result, 'DB handle method "lo_unlink" works');
 #
 
 # Older servers cannot handle column names in COPY
-if (! DBD::Pg::_pg_check_version(7.3, $pgversion)) {
+if (! $got73) {
  SKIP: {
 		skip qq{Cannot test DB handle method "putline" on pre-7.3 servers.}, 2;
 	}
@@ -804,7 +849,7 @@ is_deeply( $result, $expected, 'DB handle method "putline" copies strings to the
 # Test of the "getline" database handle method
 #
 
-if (! DBD::Pg::_pg_check_version(7.3, $pgversion)) {
+if (! $got73) {
  SKIP: {
 		skip qq{Cannot test DB handle method "getline" on pre-7.3 servers.}, 4;
 	}
@@ -846,28 +891,11 @@ ok( !$@, 'DB handle method "pg_notifies" does not throw an error');
 $result = $dbh->func('getfd');
 like( $result, qr/^\d+$/, 'DB handle method "getfd" returns a number');
 
-#
-# Test of the "pg_bool_tf" database handle method
-#
+## Test of the "state" database handle method
 
-$result = $dbh->{pg_bool_tf}=0;
-is( $result, 0, 'DB handle method "pg_bool_tf" starts as 0');
+$result = $dbh->state();
+like( $result, qr/^[A-Z0-9]{5}$/, qq{DB handle method returns a five-character code});
 
-$sth = $dbh->prepare("SELECT ?::bool");
-$sth->execute(1);
-$result = $sth->fetchall_arrayref()->[0][0];
-is( $result, "1", qq{DB handle method "pg_bool_tf" returns '1' for true when on});
-$sth->execute(0);
-$result = $sth->fetchall_arrayref()->[0][0];
-is( $result, "0", qq{DB handle method "pg_bool_tf" returns '0' for false when on});
-
-$dbh->{pg_bool_tf}=1;
-$sth->execute(1);
-$result = $sth->fetchall_arrayref()->[0][0];
-is( $result, 't', qq{DB handle method "pg_bool_tf" returns 't' for true when on});
-$sth->execute(0);
-$result = $sth->fetchall_arrayref()->[0][0];
-is( $result, 'f', qq{DB handle method "pg_bool_tf" returns 'f' for true when on});
 
 #
 # Test of the "ping" database handle method

@@ -8,7 +8,7 @@ use strict;
 $|=1;
 
 if (defined $ENV{DBI_DSN}) {
-	plan tests => 9;
+	plan tests => 15;
 } else {
 	plan skip_all => 'Cannot run test unless DBI_DSN is defined. See the README file';
 }
@@ -17,7 +17,28 @@ my $dbh = DBI->connect($ENV{DBI_DSN}, $ENV{DBI_USER}, $ENV{DBI_PASS},
 											 {RaiseError => 1, PrintError => 0, AutoCommit => 0});
 ok( defined $dbh, 'Connect to database for placeholder testing');
 
+if (DBD::Pg::_pg_use_catalog($dbh)) {
+	$dbh->do("SET search_path TO " . $dbh->quote_identifier
+					 (exists $ENV{DBD_SCHEMA} ? $ENV{DBD_SCHEMA} : 'public'));
+}
+
+# Make sure that quoting works properly.
 my $quo = $dbh->quote("\\'?:");
+is( $quo, "'\\\\''?:'", "Properly quoted");
+
+# Make sure that quoting works with a function call.
+# It has to be in this function, otherwise it doesn't fail the
+# way described in https://rt.cpan.org/Ticket/Display.html?id=4996.
+sub checkquote {
+    my $str = shift;
+    is( $dbh->quote(substr($str, 0, 10)), "'$str'", "First function quote");
+}
+
+checkquote('one');
+checkquote('two');
+checkquote('three');
+checkquote('four');
+
 my $sth = $dbh->prepare(qq{INSERT INTO dbd_pg_test (id,pname) VALUES (100,$quo)});
 $sth->execute();
 
@@ -75,6 +96,14 @@ eval {
 	$sth->execute('foo');
 };
 ok( $@, 'execute with quoted ?');
+
+## Test large number of placeholders
+$sql = 'SELECT 1 FROM dbd_pg_test WHERE id IN (' . '?,' x 300 . "?)";
+my @args = map { $_ } (1..301);
+$sth = $dbh->prepare($sql);
+my $count = $sth->execute(@args);
+$sth->finish();
+ok( $count >= 1, 'prepare with large number of parameters works');
 
 $sth->finish();
 $dbh->rollback();

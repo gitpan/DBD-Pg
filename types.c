@@ -1,26 +1,35 @@
+/*
+
+   $Id: types.c,v 1.13 2005/01/03 15:23:55 turnstep Exp $
+
+   Copyright (c) 2003-2005 PostgreSQL Global Development Group
+   
+   You may distribute under the terms of either the GNU General Public
+   License or the Artistic License, as specified in the Perl README file.
+
+*/
+
 #include "quote.h"
 
 #include "Pg.h"
 #include "types.h"
 
-
-
-
 #define DBDPG_TRUE 1
 #define DBDPG_FALSE 0
 
 /* For quoting/sql type mapping purposes this table only knows about
-   the types that DBD::Pg knew about before.  The other tyeps are just
+   the types that DBD::Pg knew about before.  The other types are just
    here for returning the field type.
 
-TODO:   - expand this for use with type_info() 
-	- map all types to closest sql type.
-	- set up quote functions for remaining types
-	- autogenerate this file.
+TODO: 
+ - expand this for use with type_info() 
+ - map all types to closest sql type.
+ - set up quote functions for remaining types
+ - autogenerate this file.
 */
 
 static sql_type_info_t pg_types[] = {
-	{BOOLOID, "bool", DBDPG_TRUE, quote_bool, dequote_bool, {SQL_INTEGER}},
+	{BOOLOID, "bool", DBDPG_TRUE, quote_bool, dequote_bool, {SQL_BOOLEAN}},
 	{BYTEAOID, "bytea", DBDPG_TRUE, quote_bytea, dequote_bytea, {SQL_BINARY}},
 	{CHAROID, "char", DBDPG_FALSE, quote_char, dequote_char, {0}},
 	{NAMEOID, "name", DBDPG_FALSE, null_quote, null_dequote, {SQL_VARCHAR}},
@@ -55,8 +64,8 @@ static sql_type_info_t pg_types[] = {
 	{ACLITEMOID, "aclitem", DBDPG_FALSE, null_quote, null_dequote, {0}},
 	{BPCHAROID, "bpchar", DBDPG_TRUE, quote_char, dequote_char, {SQL_CHAR}},
 	{VARCHAROID, "varchar", DBDPG_TRUE, quote_varchar, dequote_varchar, {SQL_VARCHAR}},
-	{DATEOID, "date", DBDPG_TRUE, null_quote, null_dequote, {0}},
-	{TIMEOID, "time", DBDPG_TRUE, null_quote, null_dequote, {0}},
+	{DATEOID, "date", DBDPG_TRUE, null_quote, null_dequote, {SQL_DATE}},
+	{TIMEOID, "time", DBDPG_TRUE, null_quote, null_dequote, {SQL_TYPE_TIME}},
 	{TIMESTAMPOID, "timestamp", DBDPG_TRUE, null_quote, null_dequote, {SQL_TYPE_TIMESTAMP}},
 	{TIMESTAMPTZOID, "datetime", DBDPG_TRUE, null_quote, null_dequote, {SQL_TYPE_TIMESTAMP_WITH_TIMEZONE}},
 	{INTERVALOID, "timespan", DBDPG_TRUE, null_quote, null_dequote, {0}},
@@ -155,9 +164,8 @@ pg_type_data(sql_type)
 
 
 
-
-/*  This table only knows about the types that dbd_pg knew about before
-    TODO: Put the rest of the sql types in here with mapping.
+/* This table only knows about the types that dbd_pg knew about before
+   TODO: Put the rest of the sql types in here with mapping.
 */
 static sql_type_info_t sql_types[] = {
 	{SQL_VARCHAR, "SQL_VARCHAR", DBDPG_TRUE,quote_varchar, dequote_varchar, {VARCHAROID}},
@@ -170,7 +178,11 @@ static sql_type_info_t sql_types[] = {
 	{SQL_REAL, "SQL_REAL", DBDPG_TRUE, null_quote, null_dequote, {FLOAT8OID}},
 	{SQL_DOUBLE, "SQL_DOUBLE", DBDPG_TRUE, null_quote, null_dequote, {INT8OID}},
 	{SQL_BINARY, "SQL_BINARY", DBDPG_TRUE, quote_sql_binary, dequote_sql_binary, {BYTEAOID}},
-
+	{SQL_TYPE_DATE, "SQL_TYPE_DATE", DBDPG_TRUE, quote_varchar, dequote_varchar, {DATEOID}},
+	{SQL_TYPE_TIME, "SQL_TYPE_TIME", DBDPG_TRUE, quote_varchar, dequote_varchar, {TIMEOID}},
+	{SQL_TYPE_TIMESTAMP, "SQL_TYPE_TIMESTAMP", DBDPG_TRUE, quote_varchar, dequote_varchar, {TIMESTAMPOID}},
+	{SQL_TYPE_TIMESTAMP_WITH_TIMEZONE, "SQL_TYPE_TIMESTAMP_WITH_TIMEZONE", DBDPG_TRUE, quote_varchar, dequote_varchar, {TIMESTAMPTZOID}},
+	{SQL_BOOLEAN, "SQL_BOOLEAN", DBDPG_TRUE,quote_bool, dequote_bool, {BOOLOID}},
 };
 
 sql_type_info_t*
@@ -178,16 +190,26 @@ sql_type_data(sql_type)
 	int sql_type;
 {
 	switch(sql_type) {
-		case SQL_VARCHAR:	return &sql_types[0];
-		case SQL_CHAR:		return &sql_types[1];
-		case SQL_NUMERIC:	return &sql_types[2];
-		case SQL_DECIMAL:	return &sql_types[3];
-		case SQL_INTEGER:	return &sql_types[4];
-		case SQL_SMALLINT:	return &sql_types[5];
-		case SQL_FLOAT:		return &sql_types[6];
-		case SQL_REAL:		return &sql_types[7];
-		case SQL_DOUBLE:	return &sql_types[8];
-		case SQL_BINARY:	return &sql_types[9];
-		default:		return NULL;
+	case SQL_VARCHAR: return &sql_types[0];
+	case SQL_CHAR: return &sql_types[1];
+	case SQL_NUMERIC: return &sql_types[2];
+	case SQL_DECIMAL: return &sql_types[3];
+	case SQL_INTEGER: return &sql_types[4];
+	case SQL_SMALLINT: return &sql_types[5];
+	case SQL_FLOAT: return &sql_types[6];
+	case SQL_REAL: return &sql_types[7];
+	case SQL_DOUBLE: return &sql_types[8];
+	case SQL_BINARY: return &sql_types[9];
+	case SQL_DATE:
+	case SQL_TYPE_DATE: return &sql_types[10];
+	case SQL_TIME:
+	case SQL_TYPE_TIME: return &sql_types[11];
+	case SQL_TIMESTAMP:
+	case SQL_TYPE_TIMESTAMP: return &sql_types[12];
+	case SQL_TYPE_TIMESTAMP_WITH_TIMEZONE: return &sql_types[13];
+	case SQL_BOOLEAN: return &sql_types[14];
+ default: return NULL;
 	}
 }
+
+/* end of types.c */

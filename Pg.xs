@@ -1,8 +1,9 @@
 /*
-   $Id: Pg.xs,v 1.16 2004/02/19 02:34:36 rlippan Exp $
+   $Id: Pg.xs,v 1.27 2005/01/03 15:23:37 turnstep Exp $
 
-   Copyright (c) 1997,1998,1999,2000 Edmund Mergl
-   Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
+   Copyright (c) 2000-2005 PostgreSQL Global Development Group
+   Portions Copyright (c) 1997-20000 Edmund Mergl
+   Portions Copyright (c) 1994-1997 Tim Bunce
 
    You may distribute under the terms of either the GNU General Public
    License or the Artistic License, as specified in the Perl README file.
@@ -52,10 +53,14 @@ constant(name=Nullch)
     PG_TIMESTAMP = 1296
     CODE:
     if (!ix) {
-        if (!name) name = GvNAME(CvGV(cv));
-            croak("Unknown DBD::Pg constant '%s'", name);
-        }
-    else RETVAL = ix;
+			if (!name) {
+				name = GvNAME(CvGV(cv));
+			}
+			Perl_croak("Unknown DBD::Pg constant '%s'", name);
+		}
+    else {
+			RETVAL = ix;
+		}
     OUTPUT:
     RETVAL
 
@@ -85,13 +90,14 @@ quote(dbh, to_quote_sv, type_sv=Nullsv)
         sql_type_info_t *type_info;
 
 
+				SvGETMAGIC(to_quote_sv);
         if(type_sv && SvOK(type_sv)) {
                 if SvMAGICAL(type_sv)
                         mg_get(type_sv);
 
                 type_info = sql_type_data(SvIV(type_sv));
 		if (!type_info) {
-			warn("Unknown type %i, "
+			warn("Unknown type %" IVdf ", "
 			    "defaulting to VARCHAR",SvIV(type_sv));
 
 			type_info = pg_type_data(VARCHAROID);
@@ -112,18 +118,24 @@ quote(dbh, to_quote_sv, type_sv=Nullsv)
                 to_quote = SvPV(to_quote_sv, len);
                 quoted = type_info->quote(to_quote, len, &retlen);
                 RETVAL = newSVpvn(quoted, retlen);
+								if (SvUTF8(to_quote_sv))
+									SvUTF8_on( RETVAL );
                 Safefree (quoted);
         }
     }
     OUTPUT:
     	RETVAL
 
-
-
 # ------------------------------------------------------------
 # database level interface PG specific
 # ------------------------------------------------------------
 MODULE = DBD::Pg  PACKAGE = DBD::Pg::db
+
+SV* state(dbh)
+	SV *dbh
+	CODE:
+	D_imp_dbh(dbh);
+	ST(0) = newSVpvn(imp_dbh->sqlstate, 5);
 
 int
 _ping(dbh)
@@ -293,6 +305,19 @@ endcopy(dbh)
     CODE:
         ST(0) = (-1 != pg_db_endcopy(dbh)) ? &sv_yes : &sv_no;
 
+void
+pg_server_trace(dbh,fh)
+    SV * dbh
+    FILE * fh
+    CODE:
+        pg_db_pg_server_trace(dbh,fh);
+
+void
+pg_server_untrace(dbh)
+    SV * dbh
+    CODE:
+        pg_db_pg_server_untrace(dbh);
+
 int
 _pg_type_info (type_sv=Nullsv)
     SV* type_sv
@@ -318,7 +343,16 @@ _pg_type_info (type_sv=Nullsv)
 # -- end of DBD::Pg::db
 
 
+# ------------------------------------------------------------
+# statement level interface PG specific
+# ------------------------------------------------------------
+MODULE = DBD::Pg  PACKAGE = DBD::Pg::st
 
-
+SV* state(sth)
+	SV *sth;
+	CODE:
+	D_imp_sth(sth);
+	D_imp_dbh_from_sth;
+	ST(0) = newSVpvn(imp_dbh->sqlstate, 5);
 
 # end of Pg.xs

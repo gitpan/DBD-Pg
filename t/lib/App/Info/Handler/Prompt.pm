@@ -1,6 +1,6 @@
 package App::Info::Handler::Prompt;
 
-# $Id: Prompt.pm,v 1.1 2002/11/26 19:47:33 theory Exp $
+# $Id: Prompt.pm,v 1.3 2005/01/08 07:18:58 theory Exp $
 
 =head1 NAME
 
@@ -45,12 +45,12 @@ events.
 use strict;
 use App::Info::Handler;
 use vars qw($VERSION @ISA);
-$VERSION = '0.22';
+$VERSION = '0.45';
 @ISA = qw(App::Info::Handler);
 
 # Register ourselves.
 App::Info::Handler->register_handler
-  ('prompt' => sub { __PACKAGE__->new('prompt') } );
+  ('prompt' => sub { __PACKAGE__->new } );
 
 =head1 INTERFACE
 
@@ -140,12 +140,12 @@ __END__
 
 =head1 BUGS
 
-Report all bugs via the CPAN Request Tracker at
+Please send bug reports to <bug-app-info@rt.cpan.org> or file them at
 L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=App-Info>.
 
 =head1 AUTHOR
 
-David Wheeler <L<david@wheeler.net|"david@wheeler.net">>
+David Wheeler <david@justatheory.com>
 
 =head1 SEE ALSO
 
@@ -162,7 +162,7 @@ App::Info event handlers.
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (c) 2002, David Wheeler. All Rights Reserved.
+Copyright (c) 2002-2004, David Wheeler. All Rights Reserved.
 
 This module is free software; you can redistribute it and/or modify it under the
 same terms as Perl itself.

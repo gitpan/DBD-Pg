@@ -1,9 +1,6 @@
 Changes
 dbdimp.c
 dbdimp.h
-eg/ApacheDBI.pl
-eg/lotest.pl
-eg/notify_test.patch
 large_object.c
 large_object.h
 Makefile.PL
@@ -12,7 +9,6 @@ Pg.h
 Pg.pm
 Pg.xs
 pg_typeOID.h
-prescan_stmt.c
 quote.c
 quote.h
 README
@@ -39,3 +35,4 @@ t/lib/App/Info/Util.pm
 TODO
 types.c
 types.h
+META.yml                                 Module meta-data (added by MakeMaker)

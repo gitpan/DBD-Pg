@@ -1,11 +1,11 @@
 
-# $Id: Makefile.PL,v 1.22 2004/02/19 03:46:40 turnstep Exp $
+# $Id: Makefile.PL,v 1.29 2004/11/10 15:48:11 turnstep Exp $
 
 use ExtUtils::MakeMaker;
 use Config;
 use strict;
 use 5.006001;
-use DBI 1.00;
+use DBI 1.35;
 use DBI::DBD;
 
 my $lib;
@@ -50,6 +50,12 @@ my $os = $^O;
 print "OS: $os\n";
 print "PostgreSQL version: $major_ver.$minor_ver.$patch\n";
 
+if ($os =~ /Win32/) {
+	for ($POSTGRES_INCLUDE, $POSTGRES_LIB) {
+		$_ = qq{"$_"} if index($_,'"');
+	}
+}
+
 ## Warn about older versions
 if ($major_ver < 7 or ($major_ver == 7 and $minor_ver < 2)) {
 	print "\n****************\n";
@@ -83,13 +89,20 @@ if ($major_ver == 7) {
         $comp_opts .= " -DHAVE_PQunescapeBytea -DHAVE_PQfreemem";
 }
 
+if ($major_ver > 7 or ($major_ver == 7 and $minor_ver >= 4)) {
+	$comp_opts .= " -DHAVE_PQprotocol";
+}
+if ($major_ver >= 8) {
+	$comp_opts .= " -DPG_VERSION8";
+}
+
 my %opts = (
     NAME         => 'DBD::Pg',
     VERSION_FROM => 'Pg.pm',
     INC          => "-I$POSTGRES_INCLUDE -I$dbi_arch_dir",
     OBJECT       => "Pg\$(OBJ_EXT) dbdimp\$(OBJ_EXT) quote\$(OBJ_EXT) types\$(OBJ_EXT)",
     LIBS         => ["-L$POSTGRES_LIB -lpq"],
-    AUTHOR       => 'http://gborg.postgresql.org/project/dbdpg/projdisplay.php',
+    AUTHOR       => 'http://gborg.postgresql.org/project/dbdpg/',
     ABSTRACT     => 'PostgreSQL database driver for the DBI module',
     PREREQ_PM    => { 'Test::Simple' => '0.17',  # Need Test::More.
                       'Test::Harness' => '2.03', # Need TODO tests.
@@ -104,6 +117,11 @@ if ($os eq 'hpux') {
         print "Warning: Forced to build static not dynamic on $os $osvers.\a\n";
         $opts{LINKTYPE} = 'static';
     }
+}
+elsif ($os =~ /Win32/) {
+	my $msdir = $POSTGRES_LIB;
+	$msdir =~ s#"$#/ms"#;
+	$opts{LIBS}[0] .= " -L$msdir";
 }
 
 if ($Config{dlsrc} =~ /dl_none/) {

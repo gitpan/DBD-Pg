@@ -8,12 +8,12 @@
 # "dump_results"
 
 use Test::More;
-use DBI;
+use DBI qw(:sql_types);
 use strict;
 $|=1;
 
 if (defined $ENV{DBI_DSN}) {
-	plan tests => 48;
+	plan tests => 50;
 } else {
 	plan skip_all => 'Cannot run test unless DBI_DSN is defined. See the README file';
 }
@@ -22,8 +22,75 @@ my $dbh = DBI->connect($ENV{DBI_DSN}, $ENV{DBI_USER}, $ENV{DBI_PASS},
 											 {RaiseError => 1, PrintError => 0, AutoCommit => 0});
 ok( defined $dbh, "Connect to database for statement handle method testing");
 
+my $got73 = DBD::Pg::_pg_use_catalog($dbh);
+if ($got73) {
+	$dbh->do("SET search_path TO " . $dbh->quote_identifier
+					 (exists $ENV{DBD_SCHEMA} ? $ENV{DBD_SCHEMA} : 'public'));
+}
+
 $dbh->do("DELETE FROM dbd_pg_test");
-my ($SQL, $sth, $result, @result, $expected, $warning, $rows);
+my ($SQL, $sth, $sth2, $result, @result, $expected, $warning, $rows);
+
+#
+# Test of the prepare flags
+#
+
+$SQL = "SELECT id FROM dbd_pg_test WHERE id = ?";
+$sth = $dbh->prepare($SQL);
+$sth->execute(1);
+ok( $sth->execute, 'Prepare/execute with no flags works');
+$dbh->{pg_server_prepare} = 0;
+$sth = $dbh->prepare($SQL);
+$sth->execute(1);
+ok( $sth->execute, 'Prepare/execute with pg_server_prepare off at database handle works');
+$dbh->{pg_server_prepare} = 1;
+$sth = $dbh->prepare($SQL);
+$sth->execute(1);
+ok( $sth->execute, 'Prepare/execute with pg_server_prepare on at database handle works');
+
+# Make sure that undefs are converted to NULL.
+$sth = $dbh->prepare('INSERT INTO dbd_pg_test (id, pdate) VALUES (?,?)');
+## Need a bind for 7.4 servers:
+$sth->bind_param(1, 401, SQL_INTEGER);
+$sth->bind_param(2, undef, SQL_TIMESTAMP);
+ok( $sth->execute(401, undef), "Prepare/execute with undef converted to NULL");
+
+$sth = $dbh->prepare($SQL, {pg_server_prepare => 0});
+$sth->execute(1);
+ok( $sth->execute, 'Prepare/execute with pg_server_prepare off at statement handle works');
+$sth = $dbh->prepare($SQL, {pg_server_prepare => 1});
+$sth->execute(1);
+ok( $sth->execute, 'Prepare/execute with pg_server_prepare on at statement handle works');
+$dbh->{pg_prepare_now} = 1;
+$sth = $dbh->prepare($SQL);
+$sth->execute(1);
+ok( $sth->execute, 'Prepare/execute with pg_prepare_now on at database handle works');
+$dbh->{pg_prepare_now} = 0;
+$sth = $dbh->prepare($SQL);
+$sth->execute(1);
+ok( $sth->execute, 'Prepare/execute with pg_prepare_now off at database handle works');
+$sth = $dbh->prepare($SQL, {pg_prepare_now => 0});
+$sth->execute(1);
+ok( $sth->execute, 'Prepare/execute with pg_prepare_now off at statement handle works');
+$sth = $dbh->prepare($SQL, {pg_prepare_now => 1});
+$sth->execute(1);
+ok( $sth->execute, 'Prepare/execute with pg_prepare_now on at statement handle works');
+
+# Test using our own prepared statements
+my $pgversion = DBD::Pg::_pg_server_version($dbh);
+if ($pgversion >= 70400) {
+	my $myname = "dbdpg_test_1";
+	$dbh->do("PREPARE $myname(int) AS SELECT COUNT(*) FROM pg_class WHERE reltuples > \$1", {pg_direct=> 1});
+  $sth = $dbh->prepare("SELECT ?");
+  $sth->bind_param(1, 1, SQL_INTEGER);
+  $sth->{pg_prepare_name} = $myname;
+	ok($sth->execute(1), 'Prepare/execute works with pg_prepare_name');
+	$dbh->do("DEALLOCATE $myname");
+}
+else {
+	pass("Skipping prepare statement tests for old servers");
+}
+
 
 #
 # Test of the "bind_param" statement handle method
@@ -36,30 +103,11 @@ ok( $sth->bind_param(1, 'foo'), 'Statement handle method "bind_param" works when
 
 # Check if the server is sending us warning messages
 # We assume that older servers are okay
-my $pgversion = DBD::Pg::_pg_server_version($dbh);
 my $client_level = '';
-if (DBD::Pg::_pg_check_version(7.3, $pgversion)) {
-	$sth = $dbh->prepare("SHOW client_min_messages");
-	$sth->execute();
-	$client_level = $sth->fetchall_arrayref()->[0][0];
-}
-
-# Make sure that we get warnings when we try to use SQL_BINARY.
-if ($client_level eq "error") {
- SKIP: {
-		skip "Cannot check warning on SQL_BINARY because client_min_messages is set to 'error'", 2;
-	}
-}
-else {
-	$dbh->{Warn} = 1;
-	my $warning;
-	{
-		local $SIG{__WARN__} = sub { $warning = "@_" };
-		$SQL = "SELECT id FROM dbd_pg_test WHERE id = ?";
-		$sth = $dbh->prepare($SQL);
-		$sth->bind_param(1, 'foo', DBI::SQL_BINARY);
-		like( $warning, qr/^Use of SQL_BINARY/, 'Statement handle method "bind_param" given a warning when binding SQL_BINARY');
-	}
+if ($got73) {
+	$sth2 = $dbh->prepare("SHOW client_min_messages");
+	$sth2->execute();
+	$client_level = $sth2->fetchall_arrayref()->[0][0];
 }
 
 #
@@ -68,8 +116,9 @@ else {
 
 $sth = $dbh->prepare('INSERT INTO dbd_pg_test (id, val) VALUES (?,?)');
 # Try with 1, 2, and 3 values. All should succeed
+
 eval {
-	$sth->bind_param_array(1, [ 30, 31, 32 ]);
+	$sth->bind_param_array(1, [ 30, 31, 32 ], SQL_INTEGER);
 };
 ok( !$@, 'Statement handle method "bind_param_array" works binding three values to the first placeholder');
 
@@ -97,7 +146,7 @@ ok( $@, 'Statement handle method "bind_param_array" fails when binding two value
 # Test of the "execute_array" statement handle method
 #
 
-$dbh->{RaiseError}=0;
+$dbh->{RaiseError}=1;
 my @tuple_status;
 $rows = $sth->execute_array( { ArrayTupleStatus => \@tuple_status });
 is_deeply( \@tuple_status, [1,1,1], 'Statement method handle "execute_array" works');
@@ -106,7 +155,7 @@ is( $rows, 3, 'Statement method handle "execute_array" returns correct number of
 # Test the ArrayTupleFetch attribute
 $sth = $dbh->prepare('INSERT INTO dbd_pg_test (id, val) VALUES (?,?)');
 # Try with 1, 2, and 3 values. All should succeed
-$sth->bind_param_array(1, [ 20, 21, 22 ]);
+$sth->bind_param_array(1, [ 20, 21, 22 ], SQL_INTEGER);
 $sth->bind_param_array(2, 'fruit');
 
 my $counter=0;
@@ -139,11 +188,15 @@ else {
 	$sth = $dbh->prepare("SELECT id+200, val FROM dbd_pg_test");
 	my $goodrows = $sth->execute();
 	my $sth2 = $dbh->prepare("INSERT INTO dbd_pg_test (id, val) VALUES (?,?)");
-	$sth2->execute();
+	$sth2->bind_param(1,'',SQL_INTEGER);
 	my $fetch_tuple_sub = sub { $sth->fetchrow_arrayref() };
 	undef @tuple_status;
 	$rows = $sth2->execute_for_fetch($fetch_tuple_sub, \@tuple_status);
+
 	is_deeply( \@tuple_status, [map{1}(1..$goodrows)], 'Statement handle method "execute_for_fetch" works');
+
+
+
 	is( $rows, $goodrows, 'Statement handle method "execute_for_fetch" returns correct number of rows');
 }
 
@@ -196,8 +249,6 @@ $sth->execute();
 $result = $sth->fetchall_arrayref();
 $expected = [[35,'Guava'],[36,'Lemon']];
 is_deeply( $result, $expected, 'Statement handle method "fetchall_arrayref" returns first row correctly');
-$result = $sth->fetchall_arrayref();
-is_deeply( $result, [], 'Statement handle method "fetchall_arrayref" returns an empty list when done');
 
 # Test of the 'slice' argument
 
@@ -258,7 +309,7 @@ is_deeply( $result, {}, qq{Statement handle method "fetchall_hashref" returns an
 
 $sth = $dbh->prepare("SELECT id, val FROM dbd_pg_test WHERE id IN (33,34)");
 $rows = $sth->rows();
-is( $rows, 0, 'Statement handle method "rows" returns 0 before an execute');
+is( $rows, -1, 'Statement handle method "rows" returns -1 before an execute');
 $sth->execute();
 $rows = $sth->rows();
 is( $rows, 2, 'Statement handle method "rows" returns correct number of rows');
@@ -292,57 +343,6 @@ $sth->fetch();
 $expected = [33, 'Peach'];
 is_deeply( [$bindme, $bindme2], $expected, 'Statement handle method "bind_columns" correctly binds parameters');
 $sth->finish();
-
-#
-# Test of the "pg_size" statement handle method
-#
-
-$SQL = 'SELECT id, pname, val, score, Fixed, pdate, "CaseTest" FROM dbd_pg_test';
-$sth = $dbh->prepare($SQL);
-$sth->execute();
-$result = $sth->{pg_size};
-$expected = [qw(4 -1 -1 8 -1 8 1)];
-is_deeply( $result, $expected, 'Statement handle method "pg_size" works');
-
-#
-# Test of the "pg_type" statement handle method
-#
-
-$sth->execute();
-$result = $sth->{pg_type};
-$expected = [qw(int4 varchar text float8 bpchar timestamp bool)];
-# Hack for old servers
-$expected->[5] = 'datetime' if (! DBD::Pg::_pg_check_version(7.3, $pgversion));
-is_deeply( $result, $expected, 'Statement handle method "pg_type" works');
-$sth->finish();
-
-#
-# Test of the "pg_oid_status" statement handle method
-#
-
-$SQL = "INSERT INTO dbd_pg_test (id, val) VALUES (?, 'lemon')";
-$sth = $dbh->prepare($SQL);
-$sth->execute(500);
-$result = $sth->{pg_oid_status};
-like( $result, qr/^\d+$/, 'Statement handle method "pg_oid_status" returned a numeric value after insert');
-
-#
-# Test of the "pg_cmd_status" statement handle method
-#
-
-## INSERT DELETE UPDATE SELECT
-for ("INSERT INTO dbd_pg_test (id,val) VALUES (400, 'lime')",
-		 "DELETE FROM dbd_pg_test WHERE id=1",
-		 "UPDATE dbd_pg_test SET id=2 WHERE id=2",
-		 "SELECT * FROM dbd_pg_test"
-		) {
-	my $expected = substr($_,0,6);
-	$sth = $dbh->prepare($_);
-	$sth->execute();
-	$result = $sth->{pg_cmd_status};
-	$sth->finish();
-	like ( $result, qr/^$expected/, qq{Statement handle method "pg_cmd_status" works for '$expected'});
-}
 
 $dbh->disconnect();
 
