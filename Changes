@@ -1,5 +1,9 @@
 Revision history for Perl extension DBD-Pg.
 
+0.52  August 15, 1997
+        - added support for literal $sth->{'TYPE'},
+          pg_type.pl / pg_type.pm.
+
 0.51  August 12, 1997
         - changed attributes to be DBI conformant:
           o OID_STATUS to pg_oid_status

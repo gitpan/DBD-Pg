@@ -1,0 +1,23 @@
+#---------------------------------------------------------
+#
+# $Id: README,v 1.1 1997/08/16 16:14:08 mergl Exp $
+#
+#---------------------------------------------------------
+
+The pg_type subdirectory contains a utility module to convert the numeric 
+output of $sth->{'TYPE'} into literal type names. This can be done in two 
+ways: either using an appropriate select or by looking into the appropriate 
+include file and providing an array for all types. Because the first method 
+is quite expensive we choose the second method. The module pg_type.pm 
+contains only this array and can be used to convert the numeric output from 
+$sth->{'TYPE'} - which is based on the libpq function PQftype() - into type 
+names. Because the numeric type OIDs are likely to change with a new version 
+of PostgreSQL, the script pg_type.pl is provided. It just greps through the 
+include file and builds pg_type.pm. It should be run whenever a new PostgreSQL 
+version is installed. 
+
+---------------------------------------------------------------------------
+
+   Edmund Mergl <E.Mergl@bawue.de>                     August 15, 1997
+
+---------------------------------------------------------------------------

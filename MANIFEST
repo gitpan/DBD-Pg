@@ -7,4 +7,8 @@ Pg.xs
 README
 dbdimp.c
 dbdimp.h
+pg_type/README
+pg_type/pg_type.pl
+pg_type/pg_type.pm
+pg_type/test.pl
 test.pl

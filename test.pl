@@ -2,7 +2,7 @@
 
 #---------------------------------------------------------
 #
-# $Id: test.pl,v 1.3 1997/08/12 02:43:40 mergl Exp $
+# $Id: test.pl,v 1.4 1997/08/16 16:14:04 mergl Exp $
 #
 # Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 # Portions Copyright (c) 1997                Edmund Mergl
@@ -70,9 +70,9 @@ $dbpass = '';
   char16  char16,
   text    text,
   date    date,
-  int     int,
-  int_ary int[],
-  float   float,
+  int4    int4,
+  _int4   int4[],
+  float8  float8,
   point   point,
   lseg    lseg,
   box     box
@@ -179,7 +179,7 @@ $hash_ref = $sth->fetchrow_hashref;
     or  print "not ok 24\n";
 
 @name = @{$sth->{'NAME'}};
-( join(" ", @name) eq 'bool char char16 text date int int_ary float point lseg box' )
+( join(" ", @name) eq 'bool char char16 text date int4 _int4 float8 point lseg box' )
     and print "ok 25\n"
     or  print "not ok 25\n";
 
@@ -197,9 +197,9 @@ $hash_ref = $sth->fetchrow_hashref;
     and print "ok 28\n"
     or exit;
 
-$sth->bind_columns(undef, \$bool, \$char, \$char16, \$text, \$date, \$int, \$int_ary, \$float, \$point, \$lseg, \$box);
+$sth->bind_columns(undef, \$bool, \$char, \$char16, \$text, \$date, \$int4, \$_int4, \$float8, \$point, \$lseg, \$box);
 $sth->fetch;
-( "$bool, $char, $char16, $text, $date, $int, $int_ary, $float, $point, $lseg, $box" eq 
+( "$bool, $char, $char16, $text, $date, $int4, $_int4, $float8, $point, $lseg, $box" eq 
   't, a, Edmund Mergl, Edmund Mergl, 08-03-1997, 1234, {1,2,3}, 1.234, (1,2), [(1,2),(3,4)], (3,4),(1,2)' )
     and print "ok 29\n"
     or  print "not ok 29\n";
@@ -208,11 +208,11 @@ $sth->fetch;
     and print "ok 30\n"
     or exit;
 
-( $dbh->do( "UPDATE builtin SET int = 3 WHERE text = 'Edmund Mergl'" ) )
+( $dbh->do( "UPDATE builtin SET int4 = 3 WHERE text = 'Edmund Mergl'" ) )
     and print "ok 31\n"
     or exit;;
 
-( $sth = $dbh->prepare( "UPDATE builtin SET int = int + 1" ) )
+( $sth = $dbh->prepare( "UPDATE builtin SET int4 = int4 + 1" ) )
     and print "ok 32\n"
     or exit;
 
@@ -224,7 +224,7 @@ $sth->fetch;
     and print "ok 34\n"
     or exit;
 
-( $dbh->do( "DELETE FROM builtin WHERE int = 3" ) )
+( $dbh->do( "DELETE FROM builtin WHERE int4 = 3" ) )
     and print "ok 35\n"
     or exit;
 

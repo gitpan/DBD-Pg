@@ -1,6 +1,6 @@
 #---------------------------------------------------------
 #
-# $Id: Makefile.PL,v 1.2 1997/08/09 16:01:11 mergl Exp $
+# $Id: Makefile.PL,v 1.3 1997/08/16 16:14:02 mergl Exp $
 #
 # Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
 # Portions Copyright (c) 1997                Edmund Mergl
@@ -13,7 +13,7 @@ use strict;
 
 
 if (! $ENV{POSTGRES_HOME}) {
-    print "\$POSTGRES_HOME not defined. Searching for Postgres...\n";
+    print "\$POSTGRES_HOME not defined. Searching for PostgreSQL...\n";
     foreach(qw(/usr/local/pgsql /usr/pgsql /home/pgsql /opt/pgsql /usr/local/postgres /usr/postgres /home/postgres /opt/postgres)) {
         if (-d "$_/lib") {
             $ENV{POSTGRES_HOME} = $_;
@@ -23,9 +23,9 @@ if (! $ENV{POSTGRES_HOME}) {
 }
 
 if (-d "$ENV{POSTGRES_HOME}/lib") {
-    print "Found Postgres in $ENV{POSTGRES_HOME}\n";
+    print "Found PostgreSQL in $ENV{POSTGRES_HOME}\n";
 } else {
-    die "Unable to find Postgres !\n";
+    die "Unable to find PostgreSQL\n";
 }
 
 
