@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 
-# $Id: test.pl,v 1.26 2001/04/09 17:44:18 mergl Exp $
+# $Id: test.pl,v 1.27 2001/04/20 21:01:17 mergl Exp $
 
 # Before `make install' is performed this script should be runnable with
 # `make test'. After `make install' it should work as `perl test.pl'
@@ -162,7 +162,7 @@ $dbh->do("INSERT INTO builtin VALUES(
   'f',
   'b',
   'Halli  Hallo',
-  'but  not  \164\150\151\163',
+  'no  \164  escape',
   'Halli  Hallo',
   'Halli  Hallo',
   '1995-01-06',
@@ -245,7 +245,7 @@ my @row_ary = $sth->fetchrow_array;
     or  print "\$sth->fetchrow_array ....... not ok: ", join(" ", @row_ary), "\n";
 
 my $ary_ref = $sth->fetchrow_arrayref;
-( join(" ", @$ary_ref) eq q{0 b Halli  Hallo but  not  this   Halli  Hallo Halli  Hallo 1995-01-06 5678 {5,6,7} 5.678 (4,5) [(4,5),(6,7)] (6,7),(4,5)} )
+( join(" ", @$ary_ref) eq q{0 b Halli  Hallo no  \\164  escape Halli  Hallo Halli  Hallo 1995-01-06 5678 {5,6,7} 5.678 (4,5) [(4,5),(6,7)] (6,7),(4,5)} )
     and print "\$sth->fetchrow_arrayref .... ok\n"
     or  print "\$sth->fetchrow_arrayref .... not ok: ", join(" ", @$ary_ref), "\n";
 

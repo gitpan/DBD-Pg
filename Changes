@@ -1,6 +1,15 @@
 Revision history for Perl extension DBD-Pg.
 
 
+0.97 Apr 09, 2001
+	- fix bug in connect method, which erroneously set the userid
+	  and the password to the environment variables DBI_USER and
+	  DBI_PASS.
+	- applied patch from Jan-Pieter Cornet <john@pc.xs4all.nl>,
+	  which removed the special handling of a backslash when
+	  used for octal presentation. Now a backslash always will
+	  be escaped.
+
 0.96 Apr 09, 2001
 	- remove memory-leak in ping function, bug-fix
 	  from Doug Perham <dperham@wgate.com>

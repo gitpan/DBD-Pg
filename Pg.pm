@@ -1,5 +1,5 @@
 
-#  $Id: Pg.pm,v 1.39 2001/04/09 17:44:18 mergl Exp $
+#  $Id: Pg.pm,v 1.40 2001/04/20 21:01:17 mergl Exp $
 #
 #  Copyright (c) 1997,1998,1999,2000 Edmund Mergl
 #  Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -10,7 +10,7 @@
 
 require 5.003;
 
-$DBD::Pg::VERSION = '0.96';
+$DBD::Pg::VERSION = '0.97';
 
 {
     package DBD::Pg;
@@ -82,8 +82,11 @@ $DBD::Pg::VERSION = '0.96';
         $user = "" unless defined($user);
         $auth = "" unless defined($auth);
 
-        $user = $ENV{DBI_USER} unless $user eq "";
-        $auth = $ENV{DBI_PASS} unless $auth eq "";
+        $user = $ENV{DBI_USER} if $user eq "";
+        $auth = $ENV{DBI_PASS} if $auth eq "";
+
+        $user = "" unless defined($user);
+        $auth = "" unless defined($auth);
 
         my($dbh) = DBI::_new_dbh($drh, {
             'Name' => $Name,
@@ -871,12 +874,12 @@ PostgreSQL specific attribute. If true, then quotes and backslashes in all
 parameters will be escaped in the following way: 
 
   escape quote with a quote (SQL)
-  escape backslash with a backslash except for octal presentation
+  escape backslash with a backslash
 
 The default is on. Note, that PostgreSQL also accepts quotes, which 
 are escaped by a backslash. Any other ASCII character can be used 
 directly in a string constant. 
-
+ 
 =item B<pg_INV_READ> (integer, read-only)
 
 Constant to be used for the mode in lo_creat and lo_open.
