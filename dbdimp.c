@@ -1,6 +1,6 @@
 
 /*
-   $Id: dbdimp.c,v 1.39 2001/05/27 14:10:13 mergl Exp $
+   $Id: dbdimp.c,v 1.40 2001/06/27 17:54:58 mergl Exp $
 
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -1125,7 +1125,7 @@ dbd_st_execute (sth, imp_sth)   /* <= -2:error, >=0:ok row count, (-1=unknown co
                 if (imp_dbh->pg_auto_escape) {
                     /* if the parameter was bound as SQL_BINARY, escape nonprintables */
                     if (phs->ftype == 17 && !isPRINT(*val)) { /* escape null character */
-                        dest+=snprintf(dest, strlen(imp_sth->statement) + max_len + (statement - dest), "\\\\%03o", *val);
+                        dest+=snprintf(dest, strlen(imp_sth->statement) + max_len + (statement - dest), "\\\\%03o", *((unsigned char *)val));
                         val++;
                         continue; /* do not copy the null */
                     }

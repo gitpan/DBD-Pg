@@ -1,5 +1,9 @@
 Revision history for Perl extension DBD-Pg.
 
+1.01 Jun 27, 2001
+	- fixed core dump when trying to use a BYTEA value with
+	  a byte outside 0..127  Alex Pilosov <alex@pilosoft.com>
+
 1.00 May 27, 2001
 	- Fetching all records now resets Active flag as it should.
 
