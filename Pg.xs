@@ -1,5 +1,5 @@
 /*
-   $Id: Pg.xs,v 1.1.1.1 2002/03/06 17:43:06 jwb Exp $
+   $Id: Pg.xs,v 1.7 2002/11/27 10:21:13 jason_e_stewart Exp $
 
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -24,6 +24,40 @@ DBISTATE_DECLARE;
 
 MODULE = DBD::Pg	PACKAGE = DBD::Pg
 
+I32
+constant(name=Nullch)
+    char *name
+    PROTOTYPE:
+    ALIAS:
+    PG_BOOL      = 16
+    PG_BYTEA     = 17
+    PG_CHAR      = 18
+    PG_INT8      = 20
+    PG_INT2      = 21
+    PG_INT4      = 23
+    PG_TEXT      = 25
+    PG_OID       = 26
+    PG_FLOAT4    = 700
+    PG_FLOAT8    = 701
+    PG_ABSTIME   = 702
+    PG_RELTIME   = 703
+    PG_TINTERVAL = 704
+    PG_BPCHAR    = 1042
+    PG_VARCHAR   = 1043
+    PG_DATE      = 1082
+    PG_TIME      = 1083
+    PG_DATETIME  = 1184
+    PG_TIMESPAN  = 1186
+    PG_TIMESTAMP = 1296
+    CODE:
+    if (!ix) {
+	if (!name) name = GvNAME(CvGV(cv));
+	croak("Unknown DBD::Pg constant '%s'", name);
+    }
+    else RETVAL = ix;
+    OUTPUT:
+    RETVAL
+
 PROTOTYPES: DISABLE
 
 BOOT:
@@ -41,7 +75,7 @@ BOOT:
 # ------------------------------------------------------------
 MODULE = DBD::Pg	PACKAGE = DBD::Pg::dr
 
-# disconnect_all renamed and ALIAS'd to avoid length clash on VMS :-(
+# disconnect_all renamed and ALIASed to avoid length clash on VMS :-(
 void
 discon_all_(drh)
     SV *	drh
@@ -81,6 +115,24 @@ _ping(dbh)
     else {
         XST_mIV(0, ret);
     }
+
+void
+getfd(dbh)
+    SV *	dbh
+    CODE:
+    int ret;
+    D_imp_dbh(dbh);
+
+    ret = dbd_db_getfd(dbh, imp_dbh);
+    ST(0) = sv_2mortal( newSViv( ret ) );
+
+void
+pg_notifies(dbh)
+    SV *	dbh
+    CODE:
+    D_imp_dbh(dbh);
+
+    ST(0) = dbd_db_pg_notifies(dbh, imp_dbh);
 
 void
 commit(dbh)
@@ -551,7 +603,7 @@ STORE(sth, keysv, valuesv)
     }
 
 
-# FETCH renamed and ALIAS'd to avoid case clash on VMS :-(
+# FETCH renamed and ALIASed to avoid case clash on VMS :-(
 void
 FETCH_attrib(sth, keysv)
     SV *	sth

@@ -1,6 +1,6 @@
 
 /*
-   $Id: dbdimp.c,v 1.2 2002/04/10 02:01:38 jwb Exp $
+   $Id: dbdimp.c,v 1.8 2002/11/27 02:02:39 theory Exp $
 
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Copyright (c) 2002 Jeffrey W. Baker
@@ -76,7 +76,7 @@ pg_error (h, error_num, error_msg)
     char *err, *src, *dst; 
     int  len  = strlen(error_msg);
 
-    err = (char *)malloc(strlen(error_msg) + 1);
+    err = (char *)malloc(len + 1);
     if (!err) {
       return;
     }
@@ -197,6 +197,47 @@ pg_db_login (dbh, imp_dbh, dbname, uid, pwd)
     return 1;
 }
 
+
+int 
+dbd_db_getfd (dbh, imp_dbh)
+    SV *dbh;
+    imp_dbh_t *imp_dbh;
+{
+    char id;
+    SV* retsv;
+
+    if (dbis->debug >= 1) { PerlIO_printf(DBILOGFP, "dbd_db_getfd\n"); }
+
+    return PQsocket(imp_dbh->conn);
+}
+
+SV * 
+dbd_db_pg_notifies (dbh, imp_dbh)
+    SV *dbh;
+    imp_dbh_t *imp_dbh;
+{
+    char id;
+    PGnotify* notify;
+    AV* ret;
+    SV* retsv;
+
+    if (dbis->debug >= 1) { PerlIO_printf(DBILOGFP, "dbd_db_pg_notifies\n"); }
+
+    PQconsumeInput(imp_dbh->conn);
+
+    notify = PQnotifies(imp_dbh->conn);
+
+    if (!notify) return &sv_undef; 
+
+    ret=newAV();
+
+    av_push(ret, newSVpv(notify->relname,0) );
+    av_push(ret, newSViv(notify->be_pid) );
+ 
+    retsv = newRV(sv_2mortal((SV*)ret));
+
+    return retsv;
+}
 
 int
 dbd_db_ping (dbh)
@@ -667,8 +708,14 @@ dbd_preparse (imp_sth, statement)
 
         if (in_literal) {
             /* check if literal ends but keep quotes in literal */
-            if (*src == in_literal && *(src-1) != '\\') {
-                in_literal = 0;
+            if (*src == in_literal) {
+                int bs=0;
+                char *str;
+                str = src-1;
+                while (*(str-bs) == '\\')
+                bs++;
+                if (!(bs & 1))
+                    in_literal = 0;
             }
             *dest++ = *src++;
             continue;
@@ -1011,6 +1058,10 @@ dbd_bind_ph (sth, imp_sth, ph_namesv, newvalue, sql_type, attribs, is_inout, max
             }
         }
         if (sql_type) {
+            /* SQL_BINARY (-2) is deprecated. */
+            if (sql_type == -2 && DBIc_WARN(imp_sth)) {
+                warn("Use of SQL type SQL_BINARY (%d) is deprecated. Use { pg_type => DBD::Pg::PG_BYTEA } instead.", sql_type);
+            }
             phs->ftype = pg_sql_type(imp_sth, phs->name, sql_type);
         }
     }   /* was first bind for this placeholder  */
@@ -1056,7 +1107,7 @@ dbd_st_execute (sth, imp_sth)   /* <= -2:error, >=0:ok row count, (-1=unknown co
     int ret = -2;
     int num_fields;
     int i;
-    int len;
+    STRLEN len;
     bool in_literal = FALSE;
     char in_comment = '\0';
     char *src;
@@ -1114,8 +1165,14 @@ dbd_st_execute (sth, imp_sth)   /* <= -2:error, >=0:ok row count, (-1=unknown co
 
             if (in_literal) {
                 /* check if literal ends but keep quotes in literal */
-                if (*src == in_literal && *(src-1) != '\\') {
-                    in_literal = 0;
+                if (*src == in_literal) {
+                    int bs=0;
+                    char *str;
+                    str = src-1;
+                    while (*(str-bs) == '\\')
+                    bs++;
+                    if (!(bs & 1))
+                        in_literal = 0;
                 }
                 *dest++ = *src++;
                 continue;
@@ -1183,7 +1240,7 @@ dbd_st_execute (sth, imp_sth)   /* <= -2:error, >=0:ok row count, (-1=unknown co
             }
             while (len--) {
                 if (imp_dbh->pg_auto_escape) {
-                    /* if the parameter was bound as SQL_BINARY, escape nonprintables */
+                    /* if the parameter was bound as PG_BYTEA, escape nonprintables */
                     if (phs->ftype == 17 && !isPRINT(*val)) { /* escape null character */
                         dest+=snprintf(dest, strlen(imp_sth->statement) + max_len + (statement - dest), "\\\\%03o", *((unsigned char *)val));
                         val++;

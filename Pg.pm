@@ -1,5 +1,5 @@
 
-#  $Id: Pg.pm,v 1.3 2002/04/10 02:01:38 jwb Exp $
+#  $Id: Pg.pm,v 1.13 2002/11/27 01:44:12 theory Exp $
 #
 #  Copyright (c) 1997,1998,1999,2000 Edmund Mergl
 #  Copyright (c) 2002 Jeffrey W. Baker
@@ -11,7 +11,7 @@
 
 require 5.004;
 
-$DBD::Pg::VERSION = '1.13';
+$DBD::Pg::VERSION = '1.20';
 
 {
     package DBD::Pg;
@@ -20,6 +20,15 @@ $DBD::Pg::VERSION = '1.13';
     use DynaLoader ();
     use Exporter ();
     @ISA = qw(DynaLoader Exporter);
+
+    %EXPORT_TAGS = (
+	pg_types => [ qw(
+           PG_BOOL PG_BYTEA PG_CHAR PG_INT8 PG_INT2 PG_INT4 PG_TEXT PG_OID
+           PG_FLOAT4 PG_FLOAT8 PG_ABSTIME PG_RELTIME PG_TINTERVAL PG_BPCHAR
+           PG_VARCHAR PG_DATE PG_TIME PG_DATETIME PG_TIMESPAN PG_TIMESTAMP
+	)]);
+
+    Exporter::export_ok_tags('pg_types');
 
     require_version DBI 1.00;
 
@@ -105,17 +114,7 @@ $DBD::Pg::VERSION = '1.13';
 
 {   package DBD::Pg::db; # ====== DATABASE ======
     use strict;
-
-    # Characters that need to be escaped by quote().
-    my %esc = ( "'"  => '\\047', # '\\' . sprintf("%03o", ord("'")), # ISO SQL 2
-                '\\' => '\\134', # '\\' . sprintf("%03o", ord("\\")),
-                "\0" => '\\000'  # '\\' . sprintf("%03o", ord("\0")),
-              );
-
-    # Set up lookup for SQL types we don't want to escape.
-    my @no_escape;
-    grep { $no_escape[$_] = 1 } DBI::SQL_INTEGER, DBI::SQL_SMALLINT, DBI::SQL_DECIMAL,
-      DBI::SQL_FLOAT, DBI::SQL_REAL, DBI::SQL_DOUBLE, DBI::SQL_NUMERIC;
+    use Carp ();
 
     sub prepare {
         my($dbh, $statement, @attribs)= @_;
@@ -142,39 +141,383 @@ $DBD::Pg::VERSION = '1.13';
         return $ret;
     }
 
+	# Column expected in statement handle returned.
+	# table_cat, table_schem, table_name, column_name, data_type, type_name,
+	# column_size, buffer_length, DECIMAL_DIGITS, NUM_PREC_RADIX, NULLABLE,
+	# REMARKS, COLUMN_DEF, SQL_DATA_TYPE, SQL_DATETIME_SUB, CHAR_OCTET_LENGTH,
+	# ORDINAL_POSITION, IS_NULLABLE
+	# The result set is ordered by TABLE_CAT, TABLE_SCHEM, 
+	# TABLE_NAME and ORDINAL_POSITION.
+
+	sub column_info {
+		my ($dbh) = shift;
+		my @attrs = @_;
+		# my ($dbh, $catalog, $schema, $table, $column) = @_;
+
+		my @wh = ();
+		my @flds = qw/catname u.usename c.relname a.attname/;
+
+		for my $idx (0 .. $#attrs) {
+			next if ($flds[$idx] eq 'catname'); # Skip catalog
+			if(defined $attrs[$idx]) {
+# Insure that the value is enclosed in single quotes.
+				$attrs[$idx] =~ s/^'?(\w+)'?$/'$1'/;
+				if ($attrs[$idx] =~ m/[,%]/) {
+					# contains a meta character.
+					push( @wh, q{( } . join ( " OR "
+						, map { m/\%/ 
+							? qq{$flds[$idx] ILIKE $_ }
+							: qq{$flds[$idx]    = $_ }
+							} (split /,/, $attrs[$idx]) )
+							. q{ )}
+						);
+				}
+				else {
+					push( @wh, qq{$flds[$idx] = $attrs[$idx]} );
+				}
+			}
+		}
+
+		my $wh = ""; # ();
+		$wh = join( " and ", '', @wh ) if (@wh);
+		my $col_info_sql = qq{
+			select
+				  NULL::text    AS "TABLE_CAT"
+				, u.usename     AS "TABLE_SCHEM"
+				, c.relname		AS "TABLE_NAME"
+				, a.attname		AS "COLUMN_NAME"
+				, t.typname		AS "DATA_TYPE"
+				, NULL::text	AS "TYPE_NAME"
+				, a.attlen		AS "COLUMN_SIZE"
+				, NULL::text	AS "BUFFER_LENGTH"
+				, NULL::text	AS "DECIMAL_DIGITS"
+				, NULL::text	AS "NUM_PREC_RADIX"
+				, a.attnotnull	AS "NULLABLE"
+				, NULL::text	AS "REMARKS"
+				, a.atthasdef	AS "COLUMN_DEF"
+				, NULL::text	AS "SQL_DATA_TYPE"
+				, NULL::text	AS "SQL_DATETIME_SUB"
+				, NULL::text	AS "CHAR_OCTET_LENGTH"
+				, a.attnum		AS "ORDINAL_POSITION"
+				, a.attnotnull  AS "IS_NULLABLE"
+				, a.atttypmod	as atttypmod
+				, a.attnotnull	as attnotnull
+				, a.atthasdef	as atthasdef
+				, a.attnum		as attnum
+			from 
+				  pg_attribute	a
+				, pg_class		c
+				, pg_type		t
+				, pg_user		u
+			where
+					a.attrelid = c.oid
+				and a.attnum  >= 0
+				and t.oid      = a.atttypid
+				and c.relkind  in ('r','v')
+				and c.relowner = u.usesysid 
+				$wh
+			order by u.usename, c.relname, a.attnum
+		};
+
+				# and c.relname !~ '^pg_' # Removing the restriction on the
+				# system tables.
+		my $sth = $dbh->prepare( $col_info_sql ) or
+			return undef;
+        $sth->execute();
+
+        return $sth;
+	}
+
+	sub primary_key_info {
+        my $dbh = shift;
+		my ($catalog, $schema, $table) = @_;
+		my @attrs = @_;
+
+		# TABLE_CAT:, TABLE_SCHEM:, TABLE_NAME:, COLUMN_NAME:, KEY_SEQ:
+		# , PK_NAME:
+
+		my @wh = (); my @dat = ();  # Used to hold data for the attributes.
+		my @flds = qw/catname u.usename bc.relname/;
+
+		for my $idx (0 .. $#attrs) {
+			next if ($flds[$idx] eq 'catname'); # Skip catalog
+			if(defined $attrs[$idx]) {
+				if ($attrs[$idx] =~ m/[,%_?]/) {
+					# contains a meta character.
+					push( @wh, q{( } . join ( " OR "
+						, map { push(@dat, $_);
+							m/[%_?]/ 
+							? qq{$flds[$idx] iLIKE ? }
+							: qq{$flds[$idx]    = ?  }
+							} (split /,/, $attrs[$idx]) )
+							. q{ )}
+						);
+				}
+				else {
+					push( @dat, $attrs[$idx] );
+					push( @wh, qq{$flds[$idx] = ? } );
+				}
+			}
+		}
+
+		my $wh = '';
+		$wh = join( " and ", '', @wh ) if (@wh);
+
+		# Base primary key selection query borrowed from phpPgAdmin.
+		my $pri_key_sql = qq{
+			SELECT
+				NULL::text		AS "TABLE_CAT"
+				, u.usename		AS "TABLE_SCHEM"
+				, bc.relname	AS "TABLE_NAME"
+				, a.attname		AS "COLUMN_NAME"
+				, a.attnum		AS "KEY_SEQ"
+				, ic.relname	AS "PK_NAME"
+			FROM
+				  pg_class bc
+				, pg_class ic
+				, pg_index i
+				, pg_attribute a
+				, pg_user	u
+			WHERE
+				i.indrelid = bc.oid
+			and i.indexrelid = ic.oid
+			and
+			(
+				i.indkey[0] = a.attnum
+				or
+				i.indkey[1] = a.attnum
+				or
+				i.indkey[2] = a.attnum
+				or
+				i.indkey[3] = a.attnum
+				or
+				i.indkey[4] = a.attnum
+				or
+				i.indkey[5] = a.attnum
+				or
+				i.indkey[6] = a.attnum
+				or
+				i.indkey[7] = a.attnum
+				or
+				i.indkey[8] = a.attnum
+				or
+				i.indkey[9] = a.attnum
+				or
+				i.indkey[10] = a.attnum
+				or
+				i.indkey[11] = a.attnum
+				or
+				i.indkey[12] = a.attnum
+			)
+			and a.attrelid = bc.oid
+			and i.indproc = '0'::oid
+			and i.indisprimary = 't' 
+			and bc.relowner    =  u.usesysid
+			$wh
+			order by
+				u.usename, bc.relname, a.attnum
+		};
+
+        my $sth = $dbh->prepare( $pri_key_sql ) or
+			return undef;
+        $sth->execute(@dat);
+
+        return $sth;
+	}
+
 
     sub table_info {         # DBI spec: TABLE_CAT, TABLE_SCHEM, TABLE_NAME, TABLE_TYPE, REMARKS
-        my($dbh) = @_;
+        my $dbh = shift;
+		my ($catalog, $schema, $table, $type) = @_;
+		my @attrs = @_;
 
-        my $sth = $dbh->prepare(qq{
-            SELECT NULL::text    AS "TABLE_CAT"
-                 , u.usename     AS "TABLE_SCHEM"
-                 , c.relname     AS "TABLE_NAME"
-                 , 'TABLE'       AS "TABLE_TYPE"
-                 , d.description AS "REMARKS"
-            FROM pg_user  u
-               , pg_class c LEFT OUTER JOIN pg_description AS d ON c.relfilenode = d.objoid and d.objsubid = 0
-            WHERE c.relkind     =  'r'
-              AND c.relhasrules =  FALSE
-              AND c.relname     !~ '^pg_'
-              AND c.relname     !~ '^xin[vx][0-9]+'
-              AND c.relowner    =  u.usesysid
-            UNION
-            SELECT NULL::text
-	             , u.usename
-	             , c.relname
-	             , 'VIEW'
-	             , d.description 
-            FROM pg_user u
-               , pg_class c LEFT OUTER JOIN pg_description AS d ON c.relfilenode = d.objoid and d.objsubid = 0
-            WHERE c.relkind = 'v' 
-            AND   c.relhasrules = TRUE
-            AND   c.relname !~ '^pg_' 
-            AND   c.relname !~ '^xin[vx][0-9]+' 
-            AND   c.relowner = u.usesysid 
-            ORDER BY 2, 3, 4
-        }) or return undef;
+		my $tbl_sql = ();
 
+		if ( # Rules 19a
+			    (defined $catalog and $catalog eq '%')
+			and (defined $schema  and $schema  eq  '')
+			and (defined $table   and $table   eq  '')
+			) {
+				$tbl_sql = q{
+					SELECT 
+					   NULL::text    AS "TABLE_CAT"
+					 , NULL::text    AS "TABLE_SCHEM"
+					 , NULL::text    AS "TABLE_NAME"
+					 , NULL::text    AS "TABLE_TYPE"
+					 , NULL::text    AS "REMARKS"
+					};
+		}
+		elsif (# Rules 19b
+			    (defined $catalog and $catalog eq  '')
+			and (defined $schema  and $schema  eq '%')
+			and (defined $table   and $table   eq  '')
+			) {
+				$tbl_sql = q{
+					SELECT 
+					   NULL::text    AS "TABLE_CAT"
+					 , u.usename     AS "TABLE_SCHEM"
+					 , NULL::text    AS "TABLE_NAME"
+					 , NULL::text    AS "TABLE_TYPE"
+					 , NULL::text    AS "REMARKS"
+					from pg_user u
+					order by u.usename
+				};
+		}
+		elsif (# Rules 19c
+			    (defined $catalog and $catalog eq  '')
+			and (defined $schema  and $schema  eq  '')
+			and (defined $table   and $table   eq  '')
+			and (defined $type    and $type    eq  '%')
+			) {
+				# From the postgresql 7.2.1 manual 3.5 pg_class
+				#  'r' = ordinary table
+				#, 'i' = index
+				#, 'S' = sequence
+				#, 'v' = view
+				#, 's' = special
+				#, 't' = secondary TOAST table 
+				$tbl_sql = q{
+					SELECT 
+					   NULL::text    AS "TABLE_CAT"
+					 , NULL::text    AS "TABLE_SCHEM"
+					 , NULL::text    AS "TABLE_NAME"
+					 , 'table'       AS "TABLE_TYPE"
+					 , 'ordinary table - r'    AS "REMARKS"
+					union
+					SELECT 
+					   NULL::text    AS "TABLE_CAT"
+					 , NULL::text    AS "TABLE_SCHEM"
+					 , NULL::text    AS "TABLE_NAME"
+					 , 'index'       AS "TABLE_TYPE"
+					 , 'index - i'    AS "REMARKS"
+					union
+					SELECT 
+					   NULL::text    AS "TABLE_CAT"
+					 , NULL::text    AS "TABLE_SCHEM"
+					 , NULL::text    AS "TABLE_NAME"
+					 , 'sequence'       AS "TABLE_TYPE"
+					 , 'sequence - S'    AS "REMARKS"
+					union
+					SELECT 
+					   NULL::text    AS "TABLE_CAT"
+					 , NULL::text    AS "TABLE_SCHEM"
+					 , NULL::text    AS "TABLE_NAME"
+					 , 'view'       AS "TABLE_TYPE"
+					 , 'view - v'    AS "REMARKS"
+					union
+					SELECT 
+					   NULL::text    AS "TABLE_CAT"
+					 , NULL::text    AS "TABLE_SCHEM"
+					 , NULL::text    AS "TABLE_NAME"
+					 , 'special'       AS "TABLE_TYPE"
+					 , 'special - s'    AS "REMARKS"
+					union
+					SELECT 
+					   NULL::text    AS "TABLE_CAT"
+					 , NULL::text    AS "TABLE_SCHEM"
+					 , NULL::text    AS "TABLE_NAME"
+					 , 'secondary'   AS "TABLE_TYPE"
+					 , 'secondary TOAST table - t'    AS "REMARKS"
+				};
+		}
+		else {
+				# Default SQL
+				$tbl_sql = qq{
+				SELECT NULL::text    AS "TABLE_CAT"
+					 , u.usename     AS "TABLE_SCHEM"
+					 , c.relname     AS "TABLE_NAME"
+					 , CASE
+					 	 WHEN c.relkind = 'v' THEN 'VIEW'
+					  	 ELSE 'TABLE'
+						END			 AS "TABLE_TYPE"
+					 , d.description AS "REMARKS"
+				FROM pg_user		AS u
+				   , pg_class		AS c LEFT OUTER JOIN 
+					 pg_description	AS d 
+						ON c.relfilenode = d.objoid and d.objsubid = 0
+				WHERE 
+					  ((c.relkind     =  'r'
+				  AND c.relhasrules =  FALSE) OR
+					  (c.relkind     =  'v'
+				  AND c.relhasrules =  TRUE))
+				  AND c.relname     !~ '^xin[vx][0-9]+'
+				  AND c.relowner    =  u.usesysid
+				ORDER BY 2, 3
+				};
+
+				#   AND c.relname     !~ '^pg_' Removed the restrcition from
+				#   viewing the system tables.
+
+			# Did we receive any arguments?
+			if (@attrs) {
+				my @wh = ();
+				my @flds = qw/catname u.usename c.relname c.relkind/;
+
+				for my $idx (0 .. $#attrs) {
+					next if ($flds[$idx] eq 'catname'); # Skip catalog
+					if(defined $attrs[$idx]) {
+						# Change the "name" of the types to the real value.
+						if ($flds[$idx]  =~ m/relkind/) {
+							$attrs[$idx] =~ s/^\'?table\'?/'r'/i;
+							$attrs[$idx] =~ s/^\'?index\'?/'i'/i;
+							$attrs[$idx] =~ s/^\'?sequence\'?/'S'/i;
+							$attrs[$idx] =~ s/^\'?view\'?/'v'/i;
+							$attrs[$idx] =~ s/^\'?special\'?/'s'/i;
+							$attrs[$idx] =~ s/^\'?secondary\'?/'t'/i;
+						}
+# Insure that the value is enclosed in single quotes.
+						$attrs[$idx] =~ s/^'?(\w+)'?$/'$1'/;
+						if ($attrs[$idx] =~ m/[,%]/) {
+							# contains a meta character.
+							push( @wh, q{( } . join ( " OR "
+								, map { m/\%/ 
+									? qq{$flds[$idx] LIKE $_ }
+									: qq{$flds[$idx]    = $_ }
+									} (split /,/, $attrs[$idx]) )
+									. q{ )}
+								);
+						}
+						else {
+							push( @wh, qq{$flds[$idx] = $attrs[$idx]} );
+						}
+					}
+				}
+
+				my $wh = ();
+				if (@wh) {
+					$wh = join( " and ",'', @wh );
+
+					$tbl_sql = qq{
+					SELECT NULL::text    AS "TABLE_CAT"
+						 , u.usename     AS "TABLE_SCHEM"
+						 , c.relname     AS "TABLE_NAME"
+						 , CASE
+							 WHEN c.relkind = 'r' THEN 'TABLE'
+							 WHEN c.relkind = 'v' THEN 'VIEW'
+							 WHEN c.relkind = 'i' THEN 'INDEX'
+							 WHEN c.relkind = 'S' THEN 'SEQUENCE'
+							 WHEN c.relkind = 's' THEN 'SPECIAL'
+							 WHEN c.relkind = 't' THEN 'SECONDARY'
+							 ELSE 'UNKNOWN'
+							END			 AS "TABLE_TYPE"
+						 , d.description AS "REMARKS"
+					FROM pg_user		AS u
+					   , pg_class		AS c LEFT OUTER JOIN 
+						 pg_description	AS d 
+							ON c.relfilenode = d.objoid and d.objsubid = 0
+					WHERE 
+					  	  c.relname     !~ '^xin[vx][0-9]+'
+					  AND c.relowner    =  u.usesysid
+					  $wh
+					ORDER BY 2, 3
+					};
+# c.relname     !~ '^pg_'
+				}
+			}
+		}
+
+        my $sth = $dbh->prepare( $tbl_sql ) or
+			return undef;
         $sth->execute();
 
         return $sth;
@@ -188,10 +531,10 @@ $DBD::Pg::VERSION = '1.13';
             select relname  AS \"TABLE_NAME\"
             from   pg_class 
             where  relkind = 'r' 
-            and    relname !~ '^pg_' 
             and    relname !~ '^xin[vx][0-9]+' 
             order by 1 
         ") or return undef;
+            # and    relname !~ '^pg_' 
         $sth->execute or return undef;
         my (@tables, @relname);
         while (@relname = $sth->fetchrow_array) {
@@ -211,24 +554,45 @@ $DBD::Pg::VERSION = '1.13';
               from pg_attribute a,
                    pg_class     c,
                    pg_type      t
-              where c.relname  = '$table'
+              where c.relname  = ?
                 and a.attrelid = c.oid
                 and a.attnum  >= 0
                 and t.oid      = a.atttypid
                 order by 1 
-             ");
+             ", undef, $table);
     
         return $result unless scalar(@$attrs);
 
+	# Select the array value for tables primary key.
+	my $pk_key_sql = qq{SELECT pg_index.indkey
+                            FROM   pg_class, pg_index
+                            WHERE
+                                   pg_class.oid          = pg_index.indrelid
+                            AND    pg_class.relname      = '$table'
+                            AND    pg_index.indisprimary = 't'
+			};
+	# Expand this (returned as a string) a real array.
+	my @pk;
+	foreach (split( /\s+/, $dbh->selectrow_array( $pk_key_sql)))
+	{
+		push @pk, $_;
+	}
+
+	my $pk_bt = 
+		(@pk)   ? "AND    pg_attribute.attnum in (" . join ( ", ", @pk ) . ")"
+			: "";
+		
         # Get the primary key
-        my ($pri_key) = $dbh->selectrow_array("SELECT pg_attribute.attname
+        my $pri_key = $dbh->selectcol_arrayref("SELECT pg_attribute.attname
                                                FROM   pg_class, pg_attribute, pg_index
                                                WHERE  pg_class.oid          = pg_attribute.attrelid 
                                                AND    pg_class.oid          = pg_index.indrelid 
-                                               AND    pg_index.indkey[0]    = pg_attribute.attnum
+					       $pk_bt
                                                AND    pg_index.indisprimary = 't'
-                                               AND    pg_class.relname      = '$table'");
-        $pri_key = '' unless $pri_key;
+                                               AND    pg_class.relname      = ?
+					       order by pg_attribute.attnum
+					       ", undef, $table );
+        $pri_key = [] unless $pri_key;
 
         foreach my $attr (reverse @$attrs) {
             my ($col_name, $col_type, $size, $mod, $notnull, $hasdef, $attnum) = @$attr;
@@ -256,7 +620,7 @@ $DBD::Pg::VERSION = '1.13';
             $constraint = '' unless $constraint;
 
             # Check to see if this is the primary key
-            my $is_primary_key = (lc $pri_key eq lc $col_name) ? 1 : 0;
+            my $is_primary_key = scalar(grep { /^$col_name$/i } @$pri_key) ? 1 : 0;
 
             push @$result,
                 { NAME        => $col_name,
@@ -383,11 +747,24 @@ $DBD::Pg::VERSION = '1.13';
     }
 
 
+    # Characters that need to be escaped by quote().
+    my %esc = ( "'"  => '\\047', # '\\' . sprintf("%03o", ord("'")), # ISO SQL 2
+                '\\' => '\\134', # '\\' . sprintf("%03o", ord("\\")),
+              );
+
+    # Set up lookup for SQL types we don't want to escape.
+    my %no_escape = map { $_ => 1 }
+      DBI::SQL_INTEGER, DBI::SQL_SMALLINT, DBI::SQL_DECIMAL,
+      DBI::SQL_FLOAT, DBI::SQL_REAL, DBI::SQL_DOUBLE, DBI::SQL_NUMERIC;
+
     sub quote {
         my ($dbh, $str, $data_type) = @_;
         return "NULL" unless defined $str;
+	return $str if $data_type && $no_escape{$data_type};
 
-	return $str if $data_type && $no_escape[$data_type];
+        $dbh->DBI::set_err(1, "Use of SQL_BINARY invalid in quote()")
+          if $data_type && $data_type == DBI::SQL_BINARY;
+
 	$str =~ s/(['\\\0])/$esc{$1}/g;
 	return "'$str'";
     }
@@ -403,11 +780,9 @@ $DBD::Pg::VERSION = '1.13';
 
 __END__
 
-
 =head1 NAME
 
 DBD::Pg - PostgreSQL database driver for the DBI module
-
 
 =head1 SYNOPSIS
 
@@ -415,21 +790,21 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
   $dbh = DBI->connect("dbi:Pg:dbname=$dbname", "", "");
 
-  # See the DBI module documentation for full details
+  # for some advanced uses you may need PostgreSQL type values:
+  use DBD::Oracle qw(:pg_types);
 
+  # See the DBI module documentation for full details
 
 =head1 DESCRIPTION
 
-DBD::Pg is a Perl module which works with the DBI module to provide
-access to PostgreSQL databases.
-
+DBD::Pg is a Perl module which works with the DBI module to provide access to
+PostgreSQL databases.
 
 =head1 MODULE DOCUMENTATION
 
-This documentation describes driver specific behavior and restrictions. 
-It is not supposed to be used as the only reference for the user. In any 
-case consult the DBI documentation first !
-
+This documentation describes driver specific behavior and restrictions. It is
+not supposed to be used as the only reference for the user. In any case
+consult the DBI documentation first!
 
 =head1 THE DBI CLASS
 
@@ -439,20 +814,21 @@ case consult the DBI documentation first !
 
 =item B<connect>
 
-To connect to a database with a minimum of parameters, use the 
-following syntax: 
+To connect to a database with a minimum of parameters, use the following
+syntax:
 
-   $dbh = DBI->connect("dbi:Pg:dbname=$dbname", "", "");
+  $dbh = DBI->connect("dbi:Pg:dbname=$dbname", "", "");
 
-This connects to the database $dbname at localhost without any user 
-authentication. This is sufficient for the defaults of PostgreSQL. 
+This connects to the database $dbname at localhost without any user
+authentication. This is sufficient for the defaults of PostgreSQL.
 
-The following connect statement shows all possible parameters: 
+The following connect statement shows all possible parameters:
 
-  $dbh = DBI->connect("dbi:Pg:dbname=$dbname;host=$host;port=$port;options=$options;tty=$tty", "$username", "$password");
+  $dbh = DBI->connect("dbi:Pg:dbname=$dbname;host=$host;port=$port;" .
+                      "options=$options;tty=$tty", "$username", "$password");
 
-If a parameter is undefined PostgreSQL first looks for specific environment 
-variables and then it uses hard coded defaults: 
+If a parameter is undefined PostgreSQL first looks for specific environment
+variables and then it uses hard coded defaults:
 
     parameter  environment variable  hard coded default
     --------------------------------------------------
@@ -464,21 +840,21 @@ variables and then it uses hard coded defaults:
     username   PGUSER                current userid
     password   PGPASSWORD            ""
 
-If a host is specified, the postmaster on this host needs to be 
-started with the C<-i> option (TCP/IP sockets). 
+If a host is specified, the postmaster on this host needs to be started with
+the C<-i> option (TCP/IP sockets).
 
-The options parameter specifies runtime options for the Postgres 
-backend. Common usage is to increase the number of buffers with 
-the C<-B> option. Also important is the C<-F> option, which disables 
-automatiic fsync() call after each transaction. For further details 
-please refer to the L<postgres>. 
+The options parameter specifies runtime options for the Postgres
+backend. Common usage is to increase the number of buffers with the C<-B>
+option. Also important is the C<-F> option, which disables automatiic fsync()
+call after each transaction. For further details please refer to the
+L<postgres>.
 
-For authentication with username and password appropriate entries have 
-to be made in pg_hba.conf. Please refer to the L<pg_hba.conf> and the 
-L<pg_passwd> for the different types of authentication. Note that for 
-these two parameters DBI distinguishes between empty and undefined. If 
-these parameters are undefined DBI substitutes the values of the environment 
-variables DBI_USER and DBI_PASS if present. 
+For authentication with username and password appropriate entries have to be
+made in pg_hba.conf. Please refer to the L<pg_hba.conf> and the L<pg_passwd>
+for the different types of authentication. Note that for these two parameters
+DBI distinguishes between empty and undefined. If these parameters are
+undefined DBI substitutes the values of the environment variables DBI_USER and
+DBI_PASS if present.
 
 =item B<available_drivers>
 
@@ -490,10 +866,10 @@ Implemented by DBI, no driver-specific impact.
 
   @data_sources = DBI->data_sources('Pg');
 
-The driver supports this method. Note, that the necessary database 
-connect to the database template1 will be done on the localhost 
-without any user-authentication. Other preferences can only be set 
-with the environment variables PGHOST, DBI_USER and DBI_PASS. 
+The driver supports this method. Note, that the necessary database connect to
+the database template1 will be done on the localhost without any
+user-authentication. Other preferences can only be set with the environment
+variables PGHOST, DBI_USER and DBI_PASS.
 
 =item B<trace>
 
@@ -503,11 +879,9 @@ Implemented by DBI, no driver-specific impact.
 
 =back
 
-
 =head2 DBI Dynamic Attributes
 
-See Common Methods. 
-
+See Common Methods.
 
 =head1 METHODS COMMON TO ALL HANDLES
 
@@ -517,22 +891,21 @@ See Common Methods.
 
   $rv = $h->err;
 
-Supported by the driver as proposed by DBI. For the connect 
-method it returns PQstatus. In all other cases it returns 
-PQresultStatus of the current handle. 
+Supported by the driver as proposed by DBI. For the connect method it returns
+PQstatus. In all other cases it returns PQresultStatus of the current handle.
 
 =item B<errstr>
 
   $str = $h->errstr;
 
-Supported by the driver as proposed by DBI. It returns the 
-PQerrorMessage related to the current handle. 
+Supported by the driver as proposed by DBI. It returns the PQerrorMessage
+related to the current handle.
 
 =item B<state>
 
   $str = $h->state;
 
-This driver does not (yet) support the state method. 
+This driver does not (yet) support the state method.
 
 =item B<trace>
 
@@ -548,27 +921,26 @@ Implemented by DBI, no driver-specific impact.
 
 =item B<func>
 
-This driver supports a variety of driver specific functions 
-accessible via the func interface:
+This driver supports a variety of driver specific functions accessible via the
+func interface:
 
   $attrs = $dbh->func($table, 'table_attributes');
 
-This method returns for the given table a reference to an 
-array of hashes:
+This method returns for the given table a reference to an array of hashes:
 
   NAME        attribute name
   TYPE        attribute type
   SIZE        attribute size (-1 for variable size)
   NULLABLE    flag nullable
-  DEFAULT     default value 
+  DEFAULT     default value
   CONSTRAINT  constraint
   PRIMARY_KEY flag is_primary_key
 
   $lobjId = $dbh->func($mode, 'lo_creat');
 
-Creates a new large object and returns the object-id. $mode is a 
-bit-mask describing different attributes of the new object. Use 
-the following constants:
+Creates a new large object and returns the object-id. $mode is a bit-mask
+describing different attributes of the new object. Use the following
+constants:
 
   $dbh->{pg_INV_WRITE}
   $dbh->{pg_INV_READ}
@@ -577,70 +949,75 @@ Upon failure it returns undef.
 
   $lobj_fd = $dbh->func($lobjId, $mode, 'lo_open');
 
-Opens an existing large object and returns an object-descriptor 
-for use in subsequent lo_* calls. 
-For the mode bits see lo_create. Returns undef upon failure.
-Note, that 0 is a perfectly correct object descriptor !
+Opens an existing large object and returns an object-descriptor for use in
+subsequent lo_* calls. For the mode bits see lo_create. Returns undef upon
+failure. Note that 0 is a perfectly correct object descriptor!
 
   $nbytes = $dbh->func($lobj_fd, $buf, $len, 'lo_write');
 
-Writes $len bytes of $buf into the large object $lobj_fd.
-Returns the number of bytes written and undef upon failure.
+Writes $len bytes of $buf into the large object $lobj_fd. Returns the number
+of bytes written and undef upon failure.
 
   $nbytes = $dbh->func($lobj_fd, $buf, $len, 'lo_read');
 
-Reads $len bytes into $buf from large object $lobj_fd.
-Returns the number of bytes read and undef upon failure.
+Reads $len bytes into $buf from large object $lobj_fd. Returns the number of
+bytes read and undef upon failure.
 
   $loc = $dbh->func($lobj_fd, $offset, $whence, 'lo_lseek');
 
-Change the current read or write location on the large
-object $obj_id. Currently $whence can only be 0 (L_SET).
-Returns the current location and undef upon failure. 
+Change the current read or write location on the large object
+$obj_id. Currently $whence can only be 0 (L_SET). Returns the current location
+and undef upon failure.
 
   $loc = $dbh->func($lobj_fd, 'lo_tell');
 
-Returns the current read or write location on the large
-object $lobj_fd and undef upon failure.
+Returns the current read or write location on the large object $lobj_fd and
+undef upon failure.
 
   $lobj_fd = $dbh->func($lobj_fd, 'lo_close');
 
-Closes an existing large object. Returns true upon success
-and false upon failure.
+Closes an existing large object. Returns true upon success and false upon
+failure.
 
   $lobj_fd = $dbh->func($lobj_fd, 'lo_unlink');
 
-Deletes an existing large object. Returns true upon success
-and false upon failure.
+Deletes an existing large object. Returns true upon success and false upon
+failure.
 
   $lobjId = $dbh->func($filename, 'lo_import');
 
-Imports a Unix file as large object and returns the object
-id of the new object or undef upon failure. 
+Imports a Unix file as large object and returns the object id of the new
+object or undef upon failure.
 
   $ret = $dbh->func($lobjId, 'lo_export', 'filename');
 
-Exports a large object into a Unix file.  Returns false upon
-failure, true otherwise.
+Exports a large object into a Unix file. Returns false upon failure, true
+otherwise.
 
   $ret = $dbh->func($line, 'putline');
 
-Used together with the SQL-command 'COPY table FROM STDIN' to 
-copy large amount of data into a table avoiding the overhead 
-of using single insert-comands. The application must explicitly 
-send the two characters "\." to indicate to the backend that 
-it has finished sending its data. See test.pl for an example 
-on how to use this function. 
+Used together with the SQL-command 'COPY table FROM STDIN' to copy large
+amount of data into a table avoiding the overhead of using single
+insert-comands. The application must explicitly send the two characters "\."
+to indicate to the backend that it has finished sending its data. See test.pl
+for an example on how to use this function.
 
   $ret = $dbh->func($buffer, length, 'getline');
 
-Used together with the SQL-command 'COPY table TO STDOUT' to 
-dump a complete table. See test.pl for an example on how to use 
-this function. 
+Used together with the SQL-command 'COPY table TO STDOUT' to dump a complete
+table. See test.pl for an example on how to use this function.
 
+  $ret = $dbh->func('pg_notifies');
+
+Returns either undef or a reference to two-element array [ $table,
+$backend_pid ] of asynchronous notifications received.
+
+  $fd = $dbh->func('getfd');
+
+Returns fd of the actual connection to server. Can be used with select() and
+func('pg_notifies').
 
 =back
-
 
 =head1 ATTRIBUTES COMMON TO ALL HANDLES
 
@@ -652,9 +1029,8 @@ Implemented by DBI, no driver-specific impact.
 
 =item B<Active> (boolean, read-only)
 
-Supported by the driver as proposed by DBI. A database 
-handle is active while it is connected and  statement 
-handle is active until it is finished. 
+Supported by the driver as proposed by DBI. A database handle is active while
+it is connected and statement handle is active until it is finished.
 
 =item B<Kids> (integer, read-only)
 
@@ -670,7 +1046,7 @@ Implemented by DBI, no driver-specific impact.
 
 =item B<CompatMode> (boolean, inherited)
 
-Not used by this driver. 
+Not used by this driver.
 
 =item B<InactiveDestroy> (boolean)
 
@@ -684,10 +1060,14 @@ Implemented by DBI, no driver-specific impact.
 
 Implemented by DBI, no driver-specific impact.
 
+=item B<HandleError> (boolean, inherited)
+
+Implemented by DBI, no driver-specific impact.
+
 =item B<ChopBlanks> (boolean, inherited)
 
-Supported by the driver as proposed by DBI. This 
-method is similar to the SQL-function RTRIM. 
+Supported by the driver as proposed by DBI. This method is similar to the
+SQL-function RTRIM.
 
 =item B<LongReadLen> (integer, inherited)
 
@@ -706,7 +1086,6 @@ Implemented by DBI, no driver-specific impact.
 Implemented by DBI, no driver-specific impact.
 
 =back
-
 
 =head1 DBI DATABASE HANDLE OBJECTS
 
@@ -736,83 +1115,77 @@ Implemented by DBI, no driver-specific impact.
 
   $sth = $dbh->prepare($statement, \%attr);
 
-PostgreSQL does not have the concept of preparing 
-a statement. Hence the prepare method just stores 
-the statement after checking for place-holders. 
-No information about the statement is available 
-after preparing it. 
+PostgreSQL does not have the concept of preparing a statement. Hence the
+prepare method just stores the statement after checking for place-holders. No
+information about the statement is available after preparing it.
 
 =item B<prepare_cached>
 
   $sth = $dbh->prepare_cached($statement, \%attr);
 
-Implemented by DBI, no driver-specific impact. 
-This method is not useful for this driver, because 
-preparing a statement has no database interaction. 
+Implemented by DBI, no driver-specific impact. This method is not useful for
+this driver, because preparing a statement has no database interaction.
 
 =item B<do>
 
   $rv  = $dbh->do($statement, \%attr, @bind_values);
 
-Implemented by DBI, no driver-specific impact. See the 
-notes for the execute method elsewhere in this document. 
+Implemented by DBI, no driver-specific impact. See the notes for the execute
+method elsewhere in this document.
 
 =item B<commit>
 
   $rc  = $dbh->commit;
 
-Supported by the driver as proposed by DBI. See also the 
-notes about B<Transactions> elsewhere in this document. 
+Supported by the driver as proposed by DBI. See also the notes about
+B<Transactions> elsewhere in this document.
 
 =item B<rollback>
 
   $rc  = $dbh->rollback;
 
-Supported by the driver as proposed by DBI. See also the 
-notes about B<Transactions> elsewhere in this document. 
+Supported by the driver as proposed by DBI. See also the notes about
+B<Transactions> elsewhere in this document.
 
 =item B<disconnect>
 
   $rc  = $dbh->disconnect;
 
-Supported by the driver as proposed by DBI. 
+Supported by the driver as proposed by DBI.
 
 =item B<ping>
 
   $rc = $dbh->ping;
 
-This driver supports the ping-method, which can be used to check the 
-validity of a database-handle. The ping method issues an empty query 
-and checks the result status. 
+This driver supports the ping-method, which can be used to check the validity
+of a database-handle. The ping method issues an empty query and checks the
+result status.
 
 =item B<table_info>
 
   $sth = $dbh->table_info;
 
-Supported by the driver as proposed by DBI. This 
-method returns all tables and views which are owned by the 
-current user. It does not select any indices and sequences. 
-Also System tables are not selected. As TABLE_QUALIFIER the 
-reltype attribute is returned and the REMARKS are undefined. 
+Supported by the driver as proposed by DBI. This method returns all tables and
+views which are owned by the current user. It does not select any indices and
+sequences. Also System tables are not selected. As TABLE_QUALIFIER the reltype
+attribute is returned and the REMARKS are undefined.
 
 =item B<tables>
 
   @names = $dbh->tables;
 
-Supported by the driver as proposed by DBI. This 
-method returns all tables and views which are owned by the 
-current user. It does not select any indices and sequences. 
-Also system tables are not selected. 
+Supported by the driver as proposed by DBI. This method returns all tables and
+views which are owned by the current user. It does not select any indices and
+sequences. Also system tables are not selected.
 
 =item B<type_info_all>
 
   $type_info_all = $dbh->type_info_all;
 
-Supported by the driver as proposed by DBI. 
-Only for SQL data-types and for frequently used data-types 
-information is provided. The mapping between the PostgreSQL typename 
-and the SQL92 data-type (if possible) has been done according to the 
-following table: 
+Supported by the driver as proposed by DBI. Only for SQL data-types and for
+frequently used data-types information is provided. The mapping between the
+PostgreSQL typename and the SQL92 data-type (if possible) has been done
+according to the following table:
 
 	+---------------+------------------------------------+
 	| typname       | SQL92                              |
@@ -837,25 +1210,30 @@ following table:
 	| timestamp     | TIMESTAMP                          |
 	+---------------+------------------------------------+
 
-For further details concerning the PostgreSQL specific data-types 
-please read the L<pgbuiltin>. 
+For further details concerning the PostgreSQL specific data-types please read
+the L<pgbuiltin>.
 
 =item B<type_info>
 
   @type_info = $dbh->type_info($data_type);
 
-Implemented by DBI, no driver-specific impact. 
+Implemented by DBI, no driver-specific impact.
 
 =item B<quote>
 
   $sql = $dbh->quote($value, $data_type);
 
-This module implements it's own quote method. In addition to the 
-DBI method it doubles also the backslash, because PostgreSQL treats 
-a backslash as an escape character. 
+This module implements its own quote method. In addition to the DBI method it
+also doubles the backslash, because PostgreSQL treats a backslash as an escape
+character.
+
+B<NOTE:> The undocumented (and invalid) support for the C<SQL_BINARY> data
+type is officially deprecated. Use C<PG_BYTEA> with C<bind_param()> instead:
+
+  $rv = $sth->bind_param($param_num, $bind_value,
+                         { pg_type => DBD::Pg::PG_BYTEA });
 
 =back
-
 
 =head2 Database Handle Attributes
 
@@ -863,26 +1241,25 @@ a backslash as an escape character.
 
 =item B<AutoCommit>  (boolean)
 
-Supported by the driver as proposed by DBI. According to the 
-classification of DBI, PostgreSQL is a database, in which a 
-transaction must be explicitly started. Without starting a 
-transaction, every change to the database becomes immediately 
-permanent. The default of AutoCommit is on, which corresponds 
-to the default behavior of PostgreSQL. When setting AutoCommit 
-to off, a transaction will be started and every commit or rollback 
-will automatically start a new transaction. For details see the 
-notes about B<Transactions> elsewhere in this document. 
+Supported by the driver as proposed by DBI. According to the classification of
+DBI, PostgreSQL is a database, in which a transaction must be explicitly
+started. Without starting a transaction, every change to the database becomes
+immediately permanent. The default of AutoCommit is on, which corresponds to
+the default behavior of PostgreSQL. When setting AutoCommit to off, a
+transaction will be started and every commit or rollback will automatically
+start a new transaction. For details see the notes about B<Transactions>
+elsewhere in this document.
 
 =item B<Driver>  (handle)
 
-Implemented by DBI, no driver-specific impact. 
+Implemented by DBI, no driver-specific impact.
 
 =item B<Name>  (string, read-only)
 
-The default method of DBI is overridden by a driver specific 
-method, which returns only the database name. Anything else 
-from the connection string is stripped off. Note, that here 
-the method is read-only in contrast to the DBI specs. 
+The default method of DBI is overridden by a driver specific method, which
+returns only the database name. Anything else from the connection string is
+stripped off. Note, that here the method is read-only in contrast to the DBI
+specs.
 
 =item B<RowCacheSize>  (integer)
 
@@ -890,16 +1267,16 @@ Implemented by DBI, not used by the driver.
 
 =item B<pg_auto_escape> (boolean)
 
-PostgreSQL specific attribute. If true, then quotes and backslashes in all 
-parameters will be escaped in the following way: 
+PostgreSQL specific attribute. If true, then quotes and backslashes in all
+parameters will be escaped in the following way:
 
   escape quote with a quote (SQL)
   escape backslash with a backslash
 
-The default is on. Note, that PostgreSQL also accepts quotes, which 
-are escaped by a backslash. Any other ASCII character can be used 
-directly in a string constant. 
- 
+The default is on. Note, that PostgreSQL also accepts quotes, which are
+escaped by a backslash. Any other ASCII character can be used directly in a
+string constant.
+
 =item B<pg_INV_READ> (integer, read-only)
 
 Constant to be used for the mode in lo_creat and lo_open.
@@ -909,7 +1286,6 @@ Constant to be used for the mode in lo_creat and lo_open.
 Constant to be used for the mode in lo_creat and lo_open.
 
 =back
-
 
 =head1 DBI STATEMENT HANDLE OBJECTS
 
@@ -921,105 +1297,108 @@ Constant to be used for the mode in lo_creat and lo_open.
 
   $rv = $sth->bind_param($param_num, $bind_value, \%attr);
 
-Supported by the driver as proposed by DBI. 
+Supported by the driver as proposed by DBI.
+
+B<NOTE:> The undocumented (and invalid) support for the C<SQL_BINARY>
+SQL type is officially deprecated. Use C<PG_BYTEA> instead:
+
+  $rv = $sth->bind_param($param_num, $bind_value,
+                         { pg_type => DBD::Pg::PG_BYTEA });
 
 =item B<bind_param_inout>
 
-Not supported by this driver. 
+Not supported by this driver.
 
 =item B<execute>
 
   $rv = $sth->execute(@bind_values);
 
-Supported by the driver as proposed by DBI. 
-In addition to 'UPDATE', 'DELETE', 'INSERT' statements, for 
-which it returns always the number of affected rows, the execute 
-method can also be used for 'SELECT ... INTO table' statements. 
+Supported by the driver as proposed by DBI. In addition to 'UPDATE', 'DELETE',
+'INSERT' statements, for which it returns always the number of affected rows,
+the execute method can also be used for 'SELECT ... INTO table' statements.
 
 =item B<fetchrow_arrayref>
 
   $ary_ref = $sth->fetchrow_arrayref;
 
-Supported by the driver as proposed by DBI. 
+Supported by the driver as proposed by DBI.
 
 =item B<fetchrow_array>
 
   @ary = $sth->fetchrow_array;
 
-Supported by the driver as proposed by DBI. 
+Supported by the driver as proposed by DBI.
 
 =item B<fetchrow_hashref>
 
   $hash_ref = $sth->fetchrow_hashref;
 
-Supported by the driver as proposed by DBI. 
+Supported by the driver as proposed by DBI.
 
 =item B<fetchall_arrayref>
 
   $tbl_ary_ref = $sth->fetchall_arrayref;
 
-Implemented by DBI, no driver-specific impact. 
+Implemented by DBI, no driver-specific impact.
 
 =item B<finish>
 
   $rc = $sth->finish;
 
-Supported by the driver as proposed by DBI. 
+Supported by the driver as proposed by DBI.
 
 =item B<rows>
 
   $rv = $sth->rows;
 
-Supported by the driver as proposed by DBI. 
-In contrast to many other drivers the number of rows is 
-available immediately after executing the statement. 
+Supported by the driver as proposed by DBI. In contrast to many other drivers
+the number of rows is available immediately after executing the statement.
 
 =item B<bind_col>
 
   $rc = $sth->bind_col($column_number, \$var_to_bind, \%attr);
 
-Supported by the driver as proposed by DBI. 
+Supported by the driver as proposed by DBI.
 
 =item B<bind_columns>
 
   $rc = $sth->bind_columns(\%attr, @list_of_refs_to_vars_to_bind);
 
-Supported by the driver as proposed by DBI. 
+Supported by the driver as proposed by DBI.
 
 =item B<dump_results>
 
   $rows = $sth->dump_results($maxlen, $lsep, $fsep, $fh);
 
-Implemented by DBI, no driver-specific impact. 
+Implemented by DBI, no driver-specific impact.
 
 =item B<blob_read>
 
   $blob = $sth->blob_read($id, $offset, $len);
 
-Supported by this driver as proposed by DBI. Implemented by DBI 
-but not documented, so this method might change. 
+Supported by this driver as proposed by DBI. Implemented by DBI but not
+documented, so this method might change.
 
-This method seems to be heavily influenced by the current implementation 
-of blobs in Oracle. Nevertheless we try to be as compatible as possible. 
-Whereas Oracle suffers from the limitation that blobs are related to tables 
-and every table can have only one blob (data-type LONG), PostgreSQL handles 
-its blobs independent of any table by using so called object identifiers. 
-This explains why the blob_read method is blessed into the STATEMENT package 
-and not part of the DATABASE package. Here the field parameter has been used 
-to handle this object identifier. The offset and len parameter may be set to 
-zero, in which case the driver fetches the whole blob at once. 
+This method seems to be heavily influenced by the current implementation of
+blobs in Oracle. Nevertheless we try to be as compatible as possible. Whereas
+Oracle suffers from the limitation that blobs are related to tables and every
+table can have only one blob (data-type LONG), PostgreSQL handles its blobs
+independent of any table by using so called object identifiers. This explains
+why the blob_read method is blessed into the STATEMENT package and not part of
+the DATABASE package. Here the field parameter has been used to handle this
+object identifier. The offset and len parameter may be set to zero, in which
+case the driver fetches the whole blob at once.
 
-Starting with PostgreSQL-6.5 every access to a blob has to be put into a 
+Starting with PostgreSQL-6.5 every access to a blob has to be put into a
 transaction. This holds even for a read-only access.
 
-See also the PostgreSQL-specific functions concerning blobs which are 
-available via the func-interface. 
+See also the PostgreSQL-specific functions concerning blobs which are
+available via the func-interface.
 
-For further information and examples about blobs, please read the chapter 
-about Large Objects in the PostgreSQL Programmer's Guide. 
+For further information and examples about blobs, please read the chapter
+about Large Objects in the PostgreSQL Programmer's Guide.
 
 =back
-
 
 =head2 Statement Handle Attributes
 
@@ -1027,159 +1406,140 @@ about Large Objects in the PostgreSQL Programmer's Guide.
 
 =item B<NUM_OF_FIELDS>  (integer, read-only)
 
-Implemented by DBI, no driver-specific impact. 
+Implemented by DBI, no driver-specific impact.
 
 =item B<NUM_OF_PARAMS>  (integer, read-only)
 
-Implemented by DBI, no driver-specific impact. 
+Implemented by DBI, no driver-specific impact.
 
 =item B<NAME>  (array-ref, read-only)
 
-Supported by the driver as proposed by DBI. 
+Supported by the driver as proposed by DBI.
 
 =item B<NAME_lc>  (array-ref, read-only)
 
-Implemented by DBI, no driver-specific impact. 
+Implemented by DBI, no driver-specific impact.
 
 =item B<NAME_uc>  (array-ref, read-only)
 
-Implemented by DBI, no driver-specific impact. 
+Implemented by DBI, no driver-specific impact.
 
 =item B<TYPE>  (array-ref, read-only)
 
-Supported by the driver as proposed by DBI, with 
-the restriction, that the types are PostgreSQL 
-specific data-types which do not correspond to 
+Supported by the driver as proposed by DBI, with the restriction, that the
+types are PostgreSQL specific data-types which do not correspond to
 international standards.
 
 =item B<PRECISION>  (array-ref, read-only)
 
-Not supported by the driver. 
+Not supported by the driver.
 
 =item B<SCALE>  (array-ref, read-only)
 
-Not supported by the driver. 
+Not supported by the driver.
 
 =item B<NULLABLE>  (array-ref, read-only)
 
-Not supported by the driver. 
+Not supported by the driver.
 
 =item B<CursorName>  (string, read-only)
 
-Not supported by the driver. See the note about 
-B<Cursors> elsewhere in this document. 
+Not supported by the driver. See the note about B<Cursors> elsewhere in this
+document.
 
 =item B<Statement>  (string, read-only)
 
-Supported by the driver as proposed by DBI. 
+Supported by the driver as proposed by DBI.
 
 =item B<RowCache>  (integer, read-only)
 
-Not supported by the driver. 
+Not supported by the driver.
 
 =item B<pg_size>  (array-ref, read-only)
 
-PostgreSQL specific attribute. It returns a reference to an 
-array of integer values for each column. The integer shows 
-the size of the column in bytes. Variable length columns 
-are indicated by -1. 
+PostgreSQL specific attribute. It returns a reference to an array of integer
+values for each column. The integer shows the size of the column in
+bytes. Variable length columns are indicated by -1.
 
 =item B<pg_type>  (hash-ref, read-only)
 
-PostgreSQL specific attribute. It returns a reference to an 
-array of strings for each column. The string shows the name 
-of the data_type. 
+PostgreSQL specific attribute. It returns a reference to an array of strings
+for each column. The string shows the name of the data_type.
 
 =item B<pg_oid_status> (integer, read-only)
 
-PostgreSQL specific attribute. It returns the OID of the last 
-INSERT command. 
+PostgreSQL specific attribute. It returns the OID of the last INSERT command.
 
 =item B<pg_cmd_status> (integer, read-only)
 
-PostgreSQL specific attribute. It returns the type of the last 
-command. Possible types are: INSERT, DELETE, UPDATE, SELECT. 
+PostgreSQL specific attribute. It returns the type of the last
+command. Possible types are: INSERT, DELETE, UPDATE, SELECT.
 
 =back
-
 
 =head1 FURTHER INFORMATION
 
 =head2 Transactions
 
-The transaction behavior is now controlled with the attribute AutoCommit. 
-For a complete definition of AutoCommit please refer to the DBI documentation. 
+The transaction behavior is now controlled with the attribute AutoCommit. For
+a complete definition of AutoCommit please refer to the DBI documentation.
 
-According to the DBI specification the default for AutoCommit is TRUE. 
-In this mode, any change to the database becomes valid immediately. Any 
-'begin', 'commit' or 'rollback' statement will be rejected. 
+According to the DBI specification the default for AutoCommit is TRUE. In this
+mode, any change to the database becomes valid immediately. Any 'begin',
+'commit' or 'rollback' statement will be rejected.
 
-If AutoCommit is switched-off, immediately a transaction will be started by 
-issuing a 'begin' statement. Any 'commit' or 'rollback' will start a new 
-transaction. A disconnect will issue a 'rollback' statement. 
-
+If AutoCommit is switched-off, immediately a transaction will be started by
+issuing a 'begin' statement. Any 'commit' or 'rollback' will start a new
+transaction. A disconnect will issue a 'rollback' statement.
 
 =head2 Large Objects
 
-The driver supports all large-objects related functions provided by 
-libpq via the func-interface. Please note, that starting with 
-PoostgreSQL-65. any access to a large object - even read-only - 
-has to be put into a transaction ! 
-
+The driver supports all large-objects related functions provided by libpq via
+the func-interface. Please note, that starting with PoostgreSQL-65. any access
+to a large object - even read-only - has to be put into a transaction!
 
 =head2 Cursors
 
-Although PostgreSQL has a cursor concept, it has not 
-been used in the current implementation. Cursors in 
-PostgreSQL can only be used inside a transaction block. 
-Because only one transaction block at a time is allowed, 
-this would have implied the restriction, not to use 
-any nested SELECT statements. Hence the execute method 
-fetches all data at once into data structures located 
-in the frontend application. This has to be considered 
-when selecting large amounts of data ! 
-
+Although PostgreSQL has a cursor concept, it has not been used in the current
+implementation. Cursors in PostgreSQL can only be used inside a transaction
+block. Because only one transaction block at a time is allowed, this would
+have implied the restriction, not to use any nested SELECT statements. Hence
+the execute method fetches all data at once into data structures located in
+the frontend application. This has to be considered when selecting large
+amounts of data!
 
 =head2 Data-Type bool
 
-The current implementation of PostgreSQL returns 't' for true and 'f' for 
-false. From the perl point of view a rather unfortunate choice. The DBD-Pg 
-module translates the result for the data-type bool in a perl-ish like manner: 
-'f' -> '0' and 't' -> '1'. This way the application does not have to check 
-the database-specific returned values for the data-type bool, because perl 
-treats '0' as false and '1' as true. 
+The current implementation of PostgreSQL returns 't' for true and 'f' for
+false. From the perl point of view a rather unfortunate choice. The DBD-Pg
+module translates the result for the data-type bool in a perl-ish like manner:
+'f' -> '0' and 't' -> '1'. This way the application does not have to check the
+database-specific returned values for the data-type bool, because perl treats
+'0' as false and '1' as true.
 
-PostgreSQL Version 6.2 considers the input 't' as true 
-and anything else as false. 
-PostgreSQL Version 6.3 considers the input 't', '1' and 1 as true 
-and anything else as false. 
-PostgreSQL Version 6.4 considers the input 't', '1' and 'y' as true 
-and any other character as false. 
-
+PostgreSQL Version 6.2 considers the input 't' as true and anything else as
+false. PostgreSQL Version 6.3 considers the input 't', '1' and 1 as true and
+anything else as false. PostgreSQL Version 6.4 considers the input 't', '1'
+and 'y' as true and any other character as false.
 
 =head1 SEE ALSO
 
 L<DBI>
 
-
 =head1 AUTHORS
 
-=item *
 DBI and DBD-Oracle by Tim Bunce (Tim.Bunce@ig.co.uk)
 
-=item *
-DBD-Pg by Edmund Mergl (E.Mergl@bawue.de) 
-and Jeffrey W. Baker (jwbaker@acm.org)
+DBD-Pg by Edmund Mergl (E.Mergl@bawue.de) and Jeffrey W. Baker
+(jwbaker@acm.org)
 
 Major parts of this package have been copied from DBI and DBD-Oracle.
 
-
 =head1 COPYRIGHT
 
-The DBD::Pg module is free software. 
-You may distribute under the terms of either the GNU General Public
-License or the Artistic License, as specified in the Perl README file.
-
+The DBD::Pg module is free software. You may distribute under the terms of
+either the GNU General Public License or the Artistic License, as specified in
+the Perl README file.
 
 =head1 ACKNOWLEDGMENTS
 

@@ -1,5 +1,5 @@
 /*
-   $Id: Pg.h,v 1.1.1.1 2002/03/06 17:43:06 jwb Exp $
+   $Id: Pg.h,v 1.1.1.1 2002/10/15 19:20:04 bmomjian Exp $
 
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce

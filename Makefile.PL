@@ -1,12 +1,26 @@
 
-# $Id: Makefile.PL,v 1.2 2002/03/06 23:02:51 jwb Exp $
+# $Id: Makefile.PL,v 1.7 2002/11/27 17:01:32 theory Exp $
 
 use ExtUtils::MakeMaker;
 use Config;
 use strict;
+
 use DBI 1.00;
 use DBI::DBD;
 
+my $lib;
+BEGIN {
+    my %sep = (MacOS   => ':',
+               MSWin32 => '\\',
+               os2     => '\\',
+               VMS     => '\\',
+               NetWare => '\\',
+               dos     => '\\');
+    my $s = $sep{$^O} || '/';
+    $lib = join $s, 't', 'lib';
+}
+
+use lib $lib;
 print "Configuring Pg\n";
 print "Remember to actually read the README file !\n";
 
@@ -14,7 +28,13 @@ my $POSTGRES_INCLUDE;
 my $POSTGRES_LIB;
 
 if ((!$ENV{POSTGRES_INCLUDE} or !$ENV{POSTGRES_LIB}) and !$ENV{POSTGRES_HOME}) {
-    die "please set environment variables POSTGRES_INCLUDE and POSTGRES_LIB !\n";
+    # Use App::Info to get the data we need.
+    require App::Info::RDBMS::PostgreSQL;
+    require App::Info::Handler::Prompt;
+    my $p = App::Info::Handler::Prompt->new;
+    my $pg = App::Info::RDBMS::PostgreSQL->new(on_unknown => $p);
+    $POSTGRES_INCLUDE = $pg->inc_dir;
+    $POSTGRES_LIB     = $pg->lib_dir;
 } elsif ((!$ENV{POSTGRES_INCLUDE} or !$ENV{POSTGRES_LIB}) and $ENV{POSTGRES_HOME}) {
     $POSTGRES_INCLUDE = "$ENV{POSTGRES_HOME}/include";
     $POSTGRES_LIB     = "$ENV{POSTGRES_HOME}/lib";
@@ -39,8 +59,9 @@ my %opts = (
     INC          => "-I$POSTGRES_INCLUDE -I$dbi_arch_dir",
     OBJECT       => "Pg\$(OBJ_EXT) dbdimp\$(OBJ_EXT)",
     LIBS         => ["-L$POSTGRES_LIB -lpq"],
-    AUTHOR       => 'Edmund Mergl (E.Mergl@bawue.de) and Jeffrey W. Baker (jwbaker@acm.org)',
+    AUTHOR       => 'http://gborg.postgresql.org/project/dbdpg/projdisplay.php',
     ABSTRACT     => 'PostgreSQL database driver for the DBI module',
+    PREREQ_PM	 => { 'Test::Simple' => 0.17 }, # Need Test::More
 );
 
 if ($os eq 'hpux') {
@@ -54,7 +75,6 @@ if ($os eq 'hpux') {
 if ($Config{dlsrc} =~ /dl_none/) {
     $opts{LINKTYPE} = 'static';
 }
-
 
 WriteMakefile(%opts);
 

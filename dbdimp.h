@@ -1,5 +1,5 @@
 /*
-   $Id: dbdimp.h,v 1.1.1.1 2002/03/06 17:43:06 jwb Exp $
+   $Id: dbdimp.h,v 1.3 2002/11/27 10:21:46 jason_e_stewart Exp $
 
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
    Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
@@ -69,5 +69,7 @@ struct phs_st {  	/* scalar placeholder EXPERIMENTAL	*/
     char name[1];	/* struct is malloc'd bigger as needed	*/
 };
 
+
+SV * dbd_db_pg_notifies (SV *dbh, imp_dbh_t *imp_dbh);
 
 /* end of dbdimp.h */
