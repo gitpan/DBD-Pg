@@ -1,5 +1,5 @@
 /*
-   $Id: Pg.h,v 1.5 2005/04/01 23:37:23 turnstep Exp $
+   $Id: Pg.h,v 1.6 2005/05/07 03:59:46 turnstep Exp $
 
    Copyright (c) 2000-2004 PostgreSQL Global Development Group
    Copyright (c) 1997,1998,1999,2000 Edmund Mergl
@@ -26,6 +26,11 @@ static int errno;
 #endif
 #ifndef INV_WRITE
 #define INV_WRITE 0x00020000
+#endif
+
+/* For versions of DBI older than 1.41 */
+#ifndef DBIcf_Executed
+#define DBIcf_Executed 0x080000
 #endif
 
 #ifdef BUFSIZ

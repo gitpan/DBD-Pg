@@ -1,6 +1,6 @@
 /*
 
-   $Id: large_object.c,v 1.6 2005/01/03 15:23:49 turnstep Exp $
+   $Id: large_object.c,v 1.8 2005/05/05 10:37:53 turnstep Exp $
 
    Copyright (c) 2003-2005 PostgreSQL Global Development Group
    
@@ -35,7 +35,7 @@ pg_db_lo_read (dbh, fd, buf, len)
 		SV *dbh;
 		int fd;
 		char *buf;
-		int len;
+		unsigned int len;
 {
 		D_imp_dbh(dbh);
 		return lo_read(imp_dbh->conn, fd, buf, len);
@@ -47,7 +47,7 @@ pg_db_lo_write (dbh, fd, buf, len)
 		SV *dbh;
 		int fd;
 		char *buf;
-		int len;
+		unsigned int len;
 {
 		D_imp_dbh(dbh);
 		return lo_write(imp_dbh->conn, fd, buf, len);
@@ -116,7 +116,6 @@ pg_db_lo_export (dbh, lobjId, filename)
 		return lo_export(imp_dbh->conn, lobjId, filename);
 }
 
-
 int
 dbd_st_blob_read (sth, imp_sth, lobjId, offset, len, destrv, destoffset)
 		SV *sth;
@@ -128,7 +127,8 @@ dbd_st_blob_read (sth, imp_sth, lobjId, offset, len, destrv, destoffset)
 		long destoffset;
 {
 		D_imp_dbh_from_sth;
-		int ret, lobj_fd, nbytes, nread;
+		int ret, lobj_fd, nbytes;
+		STRLEN nread;
 		/* PGresult* result;
 		ExecStatusType status; */
 		SV *bufsv;
@@ -174,7 +174,7 @@ dbd_st_blob_read (sth, imp_sth, lobjId, offset, len, destrv, destoffset)
 		*/
 
 		/* open large object */
-		lobj_fd = lo_open(imp_dbh->conn, lobjId, INV_READ);
+		lobj_fd = lo_open(imp_dbh->conn, (unsigned)lobjId, INV_READ);
 		if (lobj_fd < 0) {
 				pg_error(sth, -1, PQerrorMessage(imp_dbh->conn));
 				return 0;
@@ -196,7 +196,7 @@ dbd_st_blob_read (sth, imp_sth, lobjId, offset, len, destrv, destoffset)
 		while ((nbytes = lo_read(imp_dbh->conn, lobj_fd, tmp, BUFSIZ)) > 0) {
 				nread += nbytes;
 				/* break if user wants only a specified chunk */
-				if (len > 0 && nread > len) {
+				if (len > 0 && (int)nread > len) {
 						nread = len;
 						break;
 				}

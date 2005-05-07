@@ -1,6 +1,6 @@
 /*
 
-   $Id: types.c,v 1.13 2005/01/03 15:23:55 turnstep Exp $
+   $Id: types.c,v 1.14 2005/04/13 00:50:10 turnstep Exp $
 
    Copyright (c) 2003-2005 PostgreSQL Global Development Group
    
@@ -55,7 +55,7 @@ static sql_type_info_t pg_types[] = {
 	{ABSTIMEOID, "abstime", DBDPG_TRUE, null_quote, null_dequote, {0}},
 	{RELTIMEOID, "reltime", DBDPG_TRUE, null_quote, null_dequote, {0}},
 	{TINTERVALOID, "tinterval", DBDPG_TRUE, null_quote, null_dequote, {0}},
-	{UNKNOWNOID, "unknown", DBDPG_FALSE, null_quote, null_dequote, {0}},
+	{UNKNOWNOID, "unknown", DBDPG_FALSE, quote_varchar, dequote_varchar, {0}},
 	{CIRCLEOID, "circle", DBDPG_FALSE, null_quote, null_dequote, {0}},
 	{CASHOID, "money", DBDPG_TRUE, null_quote, null_dequote, {0}},
 	{MACADDROID, "MAC address", DBDPG_TRUE, quote_varchar,dequote_varchar, {0}},

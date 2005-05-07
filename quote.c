@@ -1,6 +1,6 @@
 /*
 
-   $Id: quote.c,v 1.28 2005/04/03 23:35:07 turnstep Exp $
+   $Id: quote.c,v 1.29 2005/04/25 21:25:36 turnstep Exp $
 
    Copyright (c) 2003-2005 PostgreSQL Global Development Group
    
@@ -374,6 +374,7 @@ quote_bool(value, len, retlen)
 	long int int_value;
 	STRLEN	max_len=6;
 	
+	len = 0;
 	if (isDIGIT(*(char*)value)) {
  		/* For now -- will go away when quote* take SVs */
 		int_value = atoi(value);
@@ -404,8 +405,9 @@ quote_integer(value, len, retlen)
 		 STRLEN	*retlen;
 {
 	char *result;
-	STRLEN	max_len=6;
-	
+	STRLEN max_len=6;
+	len = 0;
+
 	New(0, result, max_len, char);
 	
 	if (0 == *((int*)value) )
