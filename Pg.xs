@@ -1,5 +1,5 @@
 /*
-   $Id: Pg.xs,v 1.35 2005/05/02 14:48:51 turnstep Exp $
+   $Id: Pg.xs,v 1.36 2005/05/13 20:57:28 turnstep Exp $
 
    Copyright (c) 2000-2005 PostgreSQL Global Development Group
    Portions Copyright (c) 1997-20000 Edmund Mergl
@@ -87,7 +87,6 @@ quote(dbh, to_quote_sv, type_sv=Nullsv)
         STRLEN retlen=0;
         char *quoted;
         sql_type_info_t *type_info;
-
 
 				SvGETMAGIC(to_quote_sv);
         if(type_sv && SvOK(type_sv)) {
@@ -228,7 +227,7 @@ lo_read(dbh, fd, buf, len)
         if (ret > 0) {
             SvCUR_set(bufsv, ret);
             *SvEND(bufsv) = '\0';
-            sv_setpvn(ST(2), buf, ret);
+            sv_setpvn(ST(2), buf, (unsigned)ret);
             SvSETMAGIC(ST(2));
         }
         ST(0) = (-1 != ret) ? sv_2mortal(newSViv(ret)) : &sv_undef;
@@ -288,7 +287,7 @@ lo_import(dbh, filename)
     char * filename
     CODE:
         unsigned int ret = pg_db_lo_import(dbh, filename);
-        ST(0) = (ret) ? sv_2mortal(newSViv(ret)) : &sv_undef;
+        ST(0) = (ret) ? sv_2mortal(newSViv((int)ret)) : &sv_undef;
 
 
 void

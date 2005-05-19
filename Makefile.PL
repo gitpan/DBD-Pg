@@ -1,5 +1,5 @@
 
-# $Id: Makefile.PL,v 1.38 2005/05/04 20:04:49 turnstep Exp $
+# $Id: Makefile.PL,v 1.40 2005/05/19 03:16:49 turnstep Exp $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -8,7 +8,7 @@ use 5.006001;
 use DBI 1.38;
 use DBI::DBD;
 
-my $VERSION = "1.41_1";
+my $VERSION = "1.41_2";
 
 my $lib;
 BEGIN {
@@ -103,7 +103,6 @@ my %opts =
 	 PERL_MALLOC_OK => 1,
 	 NEEDS_LINKING  => 1,
 	 clean          => { FILES => 'trace' },
-	 depend         => { 'dbdimp.o' => 'large_object.c' },
 );
 
 if ($os eq 'hpux') {

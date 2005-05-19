@@ -8,7 +8,7 @@ use strict;
 $|=1;
 
 if (defined $ENV{DBI_DSN}) {
-	plan tests => 24;
+	plan tests => 26;
 } else {
 	plan skip_all => 'Cannot run test unless DBI_DSN is defined. See the README file';
 }
@@ -19,6 +19,7 @@ ok( defined $dbh, "Connect to database for bytea testing");
 
 my ($sth,$count,$result,$expected,@data);
 my $pglibversion = $dbh->{pg_lib_version};
+my $pgversion = $dbh->{pg_server_version};
 my $table = 'dbd_pg_test4';
 
 ## (Re)create a second test table with few columns to test a "bare" COPY
@@ -155,6 +156,30 @@ SKIP: {
 
 } ## end SKIP
 
+SKIP: {
+	skip "Cannot test commit copy reset with pre-7.4 servers", 2 if $pgversion < 70400;
+
+	#
+	# Make sure rollback and commit reset our internal copystate tracking
+	#
+
+	$dbh->do("COPY $table TO STDOUT");
+	$dbh->commit();
+	eval {
+		$dbh->do("SELECT 'dbdpg_copytest'");
+	};
+	ok(!$@, 'commit resets COPY state');
+
+	$dbh->do("COPY $table TO STDOUT");
+	$dbh->rollback();
+	eval {
+		$dbh->do("SELECT 'dbdpg_copytest'");
+	};
+	ok(!$@, 'rollback resets COPY state');
+
+} ## end SKIP
+
+
 #
 # Keep oldstyle calls around for backwards compatibility
 #
@@ -172,4 +197,3 @@ is ($result, 1, "old-style dbh->func(var, length, 'getline') still works");
 $dbh->do("DROP TABLE $table");
 $dbh->commit();
 ok( $dbh->disconnect(), 'Disconnect from database');
-
