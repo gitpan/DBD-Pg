@@ -1,12 +1,12 @@
 
 DBD::Pg  --  the DBI PostgreSQL interface for Perl
 
-# $Id: README,v 1.39 2005/05/19 03:16:49 turnstep Exp $
+# $Id: README,v 1.40 2005/05/21 14:36:05 turnstep Exp $
 
 DESCRIPTION:
 ------------
 
-This is version 1.41_2 of DBD-Pg.  The web site for this interface is at:
+This is version 1.42 of DBD-Pg.  The web site for this interface is at:
 
 	http://gborg.postgresql.org/project/dbdpg/projdisplay.php
 

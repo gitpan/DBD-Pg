@@ -1,5 +1,5 @@
 
-# $Id: Makefile.PL,v 1.40 2005/05/19 03:16:49 turnstep Exp $
+# $Id: Makefile.PL,v 1.41 2005/05/21 14:43:17 turnstep Exp $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -97,7 +97,7 @@ my %opts =
 	 AUTHOR         => 'http://gborg.postgresql.org/project/dbdpg/',
 	 ABSTRACT       => 'PostgreSQL database driver for the DBI module',
 	 PREREQ_PM      => { 'Test::Simple' => '0.17',  # Need Test::More.
-										 'Test::Harness' => '2.03', # Need TODO tests.
+											 'Test::Harness' => '2.03', # Need TODO tests.
 									 },
 	 CCFLAGS        => $comp_opts,
 	 PERL_MALLOC_OK => 1,
