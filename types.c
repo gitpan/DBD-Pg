@@ -1,6 +1,6 @@
 /*
 
-   $Id: types.c,v 1.14 2005/04/13 00:50:10 turnstep Exp $
+   $Id: types.c,v 1.15 2005/05/23 21:26:07 turnstep Exp $
 
    Copyright (c) 2003-2005 PostgreSQL Global Development Group
    
@@ -8,8 +8,6 @@
    License or the Artistic License, as specified in the Perl README file.
 
 */
-
-#include "quote.h"
 
 #include "Pg.h"
 #include "types.h"

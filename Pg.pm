@@ -1,5 +1,5 @@
 # -*-cperl-*-
-#  $Id: Pg.pm,v 1.159 2005/05/21 14:36:05 turnstep Exp $
+#  $Id: Pg.pm,v 1.161 2005/05/27 14:14:45 turnstep Exp $
 #
 #  Copyright (c) 2002-2005 PostgreSQL Global Development Group
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -16,7 +16,7 @@ use 5.006001;
 
 { package DBD::Pg;
 
-	our $VERSION = '1.42';
+	our $VERSION = '1.42_1';
 
 	use DBI ();
 	use DynaLoader ();
@@ -1268,9 +1268,8 @@ use 5.006001;
 			return $version >= 70300 ? 63 : 31;
 		}
 		elsif ($ans eq 'ODBCVERSION') {
-			my $version = $dbh->{private_dbdpg}{version};
-			my $dotted = $version =~ /(\d\d?)\.(\d\d)(\d\d)$/ ? "$1.$2.$4" : "0.0.0";
-			return sprintf "%02d.%02d.%1d%1d%1d%1d", split (/\./, "$dotted.0.0.0.0.0.0");
+			return "00.00.0000" unless $version =~ /^(\d\d?)(\d\d)(\d\d)$/o;
+			return sprintf "%02d.%02d.%.2d00", $1,$2,$3;
 		}
 		elsif ($ans eq 'DBDVERSION') {
 			my $simpleversion = $DBD::Pg::VERSION;

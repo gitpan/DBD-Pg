@@ -13,7 +13,7 @@ use strict;
 $|=1;
 
 if (defined $ENV{DBI_DSN}) {
-	plan tests => 50;
+	plan tests => 52;
 } else {
 	plan skip_all => 'Cannot run test unless DBI_DSN is defined. See the README file';
 }
@@ -351,7 +351,24 @@ $expected = [33, 'Peach'];
 is_deeply( [$bindme, $bindme2], $expected, 'Statement handle method "bind_columns" correctly binds parameters');
 $sth->finish();
 
+#
+# Test of the statement handle method "state"
+#
+
+$result = $sth->state();
+if ($pglibversion >= 70400 and $pgversion >= 70400) {
+	is( $result, "", qq{Statement handle method "state" returns an empty string on success});
+}
+else {
+	is( $result, "S1000", qq{Statement handle method "state" returns S1000 (old server)});
+}
+
+eval {
+	$sth = $dbh->prepare("SELECT dbdpg_throws_an_error");
+	$sth->execute();
+};
+$result = $sth->state();
+like( $result, qr/^[A-Z0-9]{5}$/, qq{Statement handle method "state" returns a five-character code on error});
+$dbh->rollback();
+
 $dbh->disconnect();
-
-
-

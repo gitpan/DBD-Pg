@@ -1,6 +1,6 @@
 /*
 
-   $Id: quote.c,v 1.31 2005/05/19 02:48:00 turnstep Exp $
+   $Id: quote.c,v 1.34 2005/05/24 19:14:24 turnstep Exp $
 
    Copyright (c) 2003-2005 PostgreSQL Global Development Group
    
@@ -11,7 +11,7 @@
 
 #include "Pg.h"
 #include "types.h"
-#include <assert.h>
+
 
 /* This section was stolen from libpq */
 #if PGLIBVERSION < 70200
@@ -160,8 +160,8 @@ PQescapeBytea(const unsigned char *bintext, STRLEN binlen, STRLEN *bytealen)
 #define ISOCTDIGIT(CH) ((CH) >= '0' && (CH) <= '7')
 #define OCTVAL(CH) ((CH) - '0')
 
-unsigned char *
-PQunescapeBytea(const unsigned char *strtext, STRLEN *retbuflen)
+unsigned char * PQunescapeBytea(const unsigned char *strtext, STRLEN *retbuflen);
+unsigned char * PQunescapeBytea(const unsigned char *strtext, STRLEN *retbuflen)
 {
 	STRLEN strtextlen, buflen;
 	unsigned char *buffer;
@@ -170,7 +170,7 @@ PQunescapeBytea(const unsigned char *strtext, STRLEN *retbuflen)
 	if (NULL == strtext)
 		return NULL;
 
-	strtextlen = strlen((char *)strtext);
+	strtextlen = strlen(strtext);
 
 	/*
 	 * Length of input is max length of output, but add one to avoid
@@ -230,10 +230,8 @@ PQunescapeBytea(const unsigned char *strtext, STRLEN *retbuflen)
 #endif
 
 
-
-char *
-null_quote(string, len, retlen)
-	void *string;
+char * null_quote(string, len, retlen)
+	char *string;
 	STRLEN len;
 	STRLEN *retlen;
 {
@@ -246,8 +244,7 @@ null_quote(string, len, retlen)
 }
 
 
-char *
-quote_varchar(string, len, retlen)
+char * quote_varchar(string, len, retlen)
 		 char *string;
 		 STRLEN len;
 		 STRLEN *retlen;
@@ -270,7 +267,7 @@ quote_varchar(string, len, retlen)
 
 char *
 quote_char(string, len, retlen)
-		 void *string;
+		 char *string;
 		 STRLEN len;
 		 STRLEN *retlen;
 {
@@ -296,7 +293,7 @@ quote_char(string, len, retlen)
 
 char *
 quote_bytea(string, len, retlen)
-		 void* string;
+		 unsigned char* string;
 		 STRLEN len;
 		 STRLEN *retlen;
 {
@@ -310,7 +307,7 @@ quote_bytea(string, len, retlen)
  	dest = result;
 	
 	Copy("'", dest++, 1, char);
-	strcpy(dest,intermead);
+	strncpy(dest,intermead,strlen(intermead));
 	strcat(dest,"\'");
 	
 #if PGLIBVERSION >= 70400
@@ -326,7 +323,7 @@ quote_bytea(string, len, retlen)
 
 char *
 quote_sql_binary( string, len, retlen)
-		 void *string;
+		 unsigned char *string;
 		 STRLEN	len;
 		 STRLEN	*retlen;
 {
@@ -366,7 +363,7 @@ quote_sql_binary( string, len, retlen)
 
 char *
 quote_bool(value, len, retlen) 
-		 void *value;
+		 char *value;
 		 STRLEN	len;
 		 STRLEN	*retlen;
 {
@@ -384,9 +381,9 @@ quote_bool(value, len, retlen)
 	New(0, result, max_len, char);
 	
 	if (0 == int_value)
-		strcpy(result,"FALSE");
+		strncpy(result,"FALSE\0",6);
 	else if (1 == int_value)
-		strcpy(result,"TRUE");
+		strncpy(result,"TRUE\0",5);
 	else
 		croak("Error: Bool must be either 1 or 0");
 	
@@ -400,7 +397,7 @@ quote_bool(value, len, retlen)
 
 char *
 quote_integer(value, len, retlen) 
-		 void *value;
+		 char *value;
 		 STRLEN	len;
 		 STRLEN	*retlen;
 {
@@ -411,9 +408,9 @@ quote_integer(value, len, retlen)
 	New(0, result, max_len, char);
 	
 	if (0 == *((int*)value) )
-		strcpy(result,"FALSE");
+		strncpy(result,"FALSE\0",6);
 	if (1 == *((int*)value))
-		strcpy(result,"TRUE");
+		strncpy(result,"TRUE\0",5);
 	
 	*retlen = strlen(result);
 	assert(*retlen+1 <= max_len);

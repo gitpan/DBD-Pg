@@ -17,7 +17,7 @@ use strict;
 $|=1;
 
 if (defined $ENV{DBI_DSN}) {
-	plan tests => 137;
+	plan tests => 139;
 } else {
 	plan skip_all => 'Cannot run test unless DBI_DSN is defined. See the README file';
 }
@@ -266,6 +266,10 @@ for (keys %get_info) {
 	ok( defined $forth, qq{DB handle method "get_info" works with a value of "$get_info{$_}"});
 	is( $back, $forth, qq{DB handle method "get_info" returned matching values});
 }
+
+# Make sure odbcversion looks normal
+my $odbcversion = $dbh->get_info(18);
+like( $odbcversion, qr{^([1-9]\d|\d[1-9])\.\d\d\.\d\d00$}, qq{DB handle method "get info" returns a valid looking ODBCVERSION string});
 
 #
 # Test of the "table_info" database handle method
@@ -854,11 +858,25 @@ ok( !$@, 'DB handle method "pg_notifies" does not throw an error');
 $result = $dbh->func('getfd');
 like( $result, qr/^\d+$/, 'DB handle method "getfd" returns a number');
 
-## Test of the "state" database handle method
+#
+# Test of the "state" database handle method
+#
 
+my ($pglibversion,$pgversion) = ($dbh->{pg_lib_version},$dbh->{pg_server_version});
 $result = $dbh->state();
-like( $result, qr/^[A-Z0-9]{5}$/, qq{DB handle method returns a five-character code});
+if ($pglibversion >= 70400 and $pgversion >= 70400) {
+	is( $result, "", qq{DB handle method "state" returns an empty string on success});
+}
+else {
+	is( $result, "S1000", qq{DB handle method "state" returns S1000 on success (old server)});
+}
 
+eval {
+	$dbh->do("SELECT dbdpg_throws_an_error");
+};
+$result = $dbh->state();
+like( $result, qr/^[A-Z0-9]{5}$/, qq{DB handle method "state" returns a five-character code on error});
+$dbh->rollback();
 
 #
 # Test of the "ping" database handle method
