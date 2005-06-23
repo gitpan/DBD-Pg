@@ -1,5 +1,5 @@
 # -*-cperl-*-
-#  $Id: Pg.pm,v 1.161 2005/05/27 14:14:45 turnstep Exp $
+#  $Id: Pg.pm,v 1.162 2005/06/23 12:02:02 turnstep Exp $
 #
 #  Copyright (c) 2002-2005 PostgreSQL Global Development Group
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -16,7 +16,7 @@ use 5.006001;
 
 { package DBD::Pg;
 
-	our $VERSION = '1.42_1';
+	our $VERSION = '1.43';
 
 	use DBI ();
 	use DynaLoader ();
