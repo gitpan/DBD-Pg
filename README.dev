@@ -1,5 +1,5 @@
 
-## $Id: README.dev,v 1.10 2005/06/22 00:16:00 turnstep Exp $
+## $Id: README.dev,v 1.18 2005/09/11 18:54:59 turnstep Exp $
 
 This file is for those interested in developing DBD::Pg. It is hoped that it 
 will be a good introduction as well as a continual reference. Suggestions 
@@ -51,7 +51,9 @@ Here is what each file in the distribution does:
 
 Changes - lists changes made to each version. Please be consistent and use 
 tabs, not spaces, to indent. Try to list who found the bug, and who 
-fixed it (if not the same person). This file contains a version number.
+fixed it (if not the same person). Put the CPAN bug # in parenthesis, 
+and put the person who made the actual changes in brackets. This file 
+contains a version number.
 
 README.dev - you are reading it.
 
@@ -95,8 +97,8 @@ dbdimp.h - Helper file for dbdimp.c.
 
 Pg.pm - The main perl file, which contains all the DBD::Pg packages and code 
 for the methods. Often times code here calls code from Pg.xs and dbdimp.c.
-This file contains a version number. The main documentation for the module 
-lives here, as POD information.
+This file contains a version number in two places (once in the code, once 
+in the POD). The main documentation for the module lives here, as POD information.
 
 Pg.xs - The Perl "glue" file for DBD::Pg. This file basically tells Perl how 
 to handle various methods. It makes many calls to dbdimp.c
@@ -112,12 +114,10 @@ of PostgreSQL.
 
 quote.h - Helper file for quote.c
 
-types.c - Lists all known data types for PostgreSQL. Needs updating.
+types.c - Lists all known data types for PostgreSQL.
+Run as a perl script to check for new types.
 
 types.h - Helper file for types.c
-
-pg_typeOID.h - Quick listing of datatypes and their internal numbers. 
-Used by Pg.xs.
 
 * Test files:
 
@@ -192,13 +192,13 @@ $comp_opts .= " -Wextra -Wdeclaration-after-statement -Wendif-labels -Wpointer-a
 $comp_opts .= " -Wbad-function-cast -Wcast-qual -Wcast-align -Wconversion -Wsign-compare -Waggregate-return";
 $comp_opts .= " -Wmissing-prototypes -Wmissing-declarations -Wmissing-format-attribute -Wpacked -Winline -Winvalid-pch";
 $comp_opts .= " -Wdisabled-optimization"; ## Not terribly useful
+$comp_opts .= " -Wnested-externs"; ## Does not like Perl__notused (from DBIXS;)
 
 ## These options produce a few hits, but are still pretty useful:
 $comp_opts .= " -Wswitch-default"; ## Complains on any Newz declaration
 $comp_opts .= " -Wfloat-equal"; ## Some perl stuff we cannot catch from Pg.h -> DBIXS.h -> perl.h -> math.h -> bits/mathinline.h
 $comp_opts .= " -Wstrict-prototypes"; ## Still hits a couple places in types.h that need fixing (then move to above)
 $comp_opts .= " -Wmissing-noreturn"; ## Raises a few warnings for <=7.4 libraries, as we croak on purpose for some
-$comp_opts .= " -Wnested-externs"; ## Does not like Perl__notused (from DBIXS;)
 
 ## These options tend to produce lots of hits outside of our code, but may still be useful:
 $comp_opts .= " -Wsystem-headers"; ## when used with -Wconversion, creates a lot of hits 
@@ -358,7 +358,7 @@ information and allows to easily stick in a piece of code for testing. It should
 
 BEGIN {
 	my $out = `make 2>&1`;
-	if ($out =~ /^\w+\.[cx]s?:\d+:/ms) {
+	if ($out =~ /^\w+\.[cx]s?:\d+:/ms or $out =~ /^Error/ms) {
 		for (split /\n/ => $out) {
 			print "MAKE ERROR: $_\n" if /^[\w\.]+:/;
 		}
@@ -459,7 +459,7 @@ beta version as 1.41_1. A second beta would be 1.41_2, etc.
 Version numbers are currently set in four files:
 
 README
-Pg.pm
+Pg.pm (two places!)
 Changes
 Makefile.PL
 
@@ -474,7 +474,7 @@ see the ** Making a New Release section.
 If you are adding a new file to the distribution (and this should be a rare event), 
 please check that you have done the following items:
 
-* Created a standard header for the file, with a $Id: README.dev,v 1.10 2005/06/22 00:16:00 turnstep Exp $ line
+* Created a standard header for the file, with a $Id: README.dev,v 1.18 2005/09/11 18:54:59 turnstep Exp $ line
 
 * Added it to cvs via 'cvs add filename' and 'cvs commit filename'
 
@@ -507,7 +507,7 @@ other sections referenced herein (indicated with **)
 
 * Make sure everything is up to date in cvs
 
-* Update the versions (see ** Version Numbers) in README, Pg.pm, Makefile.PL, and Changes
+* Update the versions (see ** Version Numbers) in README, Pg.pm (2 places!), Makefile.PL, and Changes
 
 * Update the Changes file
 
@@ -553,6 +553,14 @@ To add a symbolic tag to a particular version of a file use:
 
 cvs admin -nRel-1_42_1:1.19 filename
 
+To add a symbolic tag to the latest version of a file use:
+
+cvs admin -nRel-1_42_1: filename
+
+To reposition a symbolic tag to the latest version of a file use:
+
+cvs admin -NRel-1_42_1: filename
+
 * Make checksums
 
 Generate md5 and sha1 checksums of the tarball. Include this in your emails.
@@ -588,6 +596,24 @@ Subject line: Name of module, version
 Short note of changes, link to CPAN directory.
 
 Checksums for the file.
+
+* Post to pgsql-announce if this is a major or important version.
+
+* Post to the "PostgreSQL news"
+
+On the main page, there is a link named "Submit News" which points to:
+
+http://www.postgresql.org/about/submitnews
+
+The content should be roughly the same as the announcement.
+
+* PostgreSQL weekly news summary
+
+The maintainers of the weekly news are usually pretty good about catching the update 
+and adding it in. If not, bug them.
+
+http://www.postgresql.org/community/weeklynews/
+
 
 * If a non-beta, clean out any CPAN bugs
 
@@ -719,6 +745,7 @@ This is the module that does all the introductory magic:
 
 perldoc ExtUtils::MakeMaker
 
+
 The all important testing suite:
 
 perldoc Test;
@@ -727,8 +754,14 @@ perldoc Test::Simple;
 perldoc Test::More;
 perldoc Test::Pod;
 
+
 This is a guide for DBD authors. It's fairly old and incomplete however, but listed here for 
 completeness:
 
 perldoc DBI::DBD
+
+
+A handy module to know about:
+
+perldoc DBI::Profile
 

@@ -1,5 +1,5 @@
 /*
-	$Id: dbdimp.h,v 1.41 2005/06/20 00:36:29 turnstep Exp $
+	$Id: dbdimp.h,v 1.44 2005/08/26 01:40:06 turnstep Exp $
 	
 	Copyright (c) 2000-2005 PostgreSQL Global Development Group
 	Portions Copyright (c) 1997-2000 Edmund Mergl
@@ -65,14 +65,6 @@ typedef struct ph_st ph_t;
 struct imp_sth_st {
 	dbih_stc_t com;         /* MUST be first element in structure */
 
-	bool   prepare_now;      /* prepare this statement right away, even if it has placeholders */
-	bool   prepared_by_us;   /* false if {prepare_name} set directly */
-	bool   direct;           /* allow bypassing of the statement parsing */
-	bool   is_dml;           /* is this SELECT/INSERT/UPDATE/DELETE? */
-	bool   has_binary;       /* does it have one or more binary placeholders? */
-
-	STRLEN totalsize;        /* total string length of the statement (with no placeholders)*/
-
 	int    server_prepare;   /* inherited from dbh. 3 states: 0=no 1=yes 2=smart */
 	int    placeholder_type; /* which style is being used 1=? 2=$1 3=:foo */
 	int    numsegs;          /* how many segments this statement has */
@@ -80,6 +72,8 @@ struct imp_sth_st {
 	int    numbound;         /* how many placeholders were explicitly bound by the client, not us */
 	int    cur_tuple;        /* current tuple being fetched */
 	int    rows;             /* number of affected rows */
+
+	STRLEN totalsize;        /* total string length of the statement (with no placeholders)*/
 
   char   *statement;       /* the rewritten statement, for passing to PQexecP.. */
 	char   *prepare_name;    /* name of the prepared query; NULL if not prepared */
@@ -90,6 +84,13 @@ struct imp_sth_st {
 
 	seg_t  *seg;             /* linked list of segments */
 	ph_t   *ph;              /* linked list of placeholders */
+
+	bool   prepare_now;      /* prepare this statement right away, even if it has placeholders */
+	bool   prepared_by_us;   /* false if {prepare_name} set directly */
+	bool   onetime;          /* this statement is guaranteed not to be run again - so don't use SSP */
+	bool   direct;           /* allow bypassing of the statement parsing */
+	bool   is_dml;           /* is this SELECT/INSERT/UPDATE/DELETE? */
+	bool   has_binary;       /* does it have one or more binary placeholders? */
 };
 
 /* Other (non-static) functions we have added to dbdimp.c */
@@ -115,9 +116,7 @@ int pg_db_lo_tell (SV *dbh, int fd);
 int pg_db_lo_unlink (SV *dbh, unsigned int lobjId);
 unsigned int pg_db_lo_import (SV *dbh, char *filename);
 int pg_db_lo_export (SV *dbh, unsigned int lobjId, char *filename);
+int pg_quickexec (SV *dbh, const char *sql);
 
 /* end of dbdimp.h */
-
-
-
 

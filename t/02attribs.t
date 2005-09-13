@@ -8,7 +8,7 @@ use strict;
 $|=1;
 
 if (defined $ENV{DBI_DSN}) {
-	plan tests => 120;
+	plan tests => 122;
 } else {
 	plan skip_all => 'Cannot run test unless DBI_DSN is defined. See the README file';
 }
@@ -18,6 +18,7 @@ my $dbh = DBI->connect($ENV{DBI_DSN}, $ENV{DBI_USER}, $ENV{DBI_PASS},
 ok( defined $dbh, "Connect to database for handle attributes testing");
 
 my $version = $dbh->{pg_server_version};
+my $pglibversion = $dbh->{pg_lib_version};
 my $got73 = $version >= 70300 ? 1 : 0;
 if ($got73) {
 	$dbh->do("SET search_path TO " . $dbh->quote_identifier
@@ -52,6 +53,7 @@ d pg_db
 d pg_user
 d pg_pass
 d pg_port
+d pg_default_port
 d pg_options
 d pg_socket
 d pg_pid
@@ -290,6 +292,9 @@ ok( defined $result, qq{DB handle attribute "pg_pass" returns a value});
 
 $result = $dbh->{pg_port};
 like( $result, qr/^\d+$/, qq{DB handle attribute "pg_port" returns a number});
+
+$result = $dbh->{pg_default_port};
+like( $result, qr/^\d+$/, qq{DB handle attribute "pg_default_port" returns a number});
 
 $result = $dbh->{pg_options};
 ok (defined $result, qq{DB handle attribute "pg_options" returns a value});
@@ -641,6 +646,7 @@ if ($client_level ne "error") {
 	};
 	like($@, qr/^Slonik/, 'Database handle attribute "HandleError" modifies error messages');
 	$dbh->{HandleError}= undef;
+	$dbh->rollback();
 }
 
 
@@ -805,7 +811,7 @@ else {
 				my $val = $dbh->selectall_arrayref($SQL)->[0][0];
 				is( $val, $answer, qq{Parent in fork test is working properly ("InactiveDestroy" = $destroy)});
 				# Let the child exit
-				select(undef,undef,undef,0.2);
+				select(undef,undef,undef,0.3);
 			}
 			else { # Child
 				select(undef,undef,undef,0.1); # Age before beauty
@@ -819,8 +825,15 @@ else {
 			else {
 				# The database handle should be dead
 				ok ( !$dbh->ping(), qq{Ping fails after the child has exited ("InactiveDestroy" = $destroy)});
+				if ($pglibversion < 70400) {
+				SKIP: {
+						skip "Can't determine advanced ping with old 7.2 server libraries", 1;
+					}
+				}
+				else {
+					ok ( -2==$dbh->pg_ping(), qq{pg_ping gives an error code of -2 after the child has exited ("InactiveDestroy" = $destroy)});
+				}
 			}
-
 		}
 	}
 }

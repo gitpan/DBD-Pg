@@ -1,6 +1,31 @@
 ('GSM' is Greg Sabino Mullane, greg@turnstep.com)
 
-1.43 
+1.44
+	- Added $dbh->{pg_default_port} method [GSM]
+	- Overhaul get_info data, add many more values [GSM]
+	- Overhaul type_info data (fixes CPAN bug #13806) [GSM]
+	- Explicitly prevent any parsing of statements for placeholders 
+		unless they begin with "SELECT", "INSERT", "UPDATE", or "DELETE"
+		Suggested by (and fixes) CPAN bug #13608 [GSM]
+	- Rewrite some of the quoting functions, reduce dependence 
+		on libpq versions. [GSM]
+	- Rewrite and optimize the do() method. Should be much faster 
+		when called without placeholders. Thanks to Tom Lane 
+		for suggesting this. [GSM]
+	- Double check PQserverVersion return and use alternate 
+		method if it returns 0 (CPAN bug #14302)
+	- Add support for specifying type in $dbh->quote(), 
+		such as $dbh->quote($var, {pg_type => DBD::Pg::PG_BYTEA}).
+		Also support type => SQL_xx [GSM] (fixes CPAN bug #13942)
+	- Fix pg_notifies() bug (CPAN bug #14232) [door@lcpi.ru] 
+	- Add pg_ping() method [GSM]
+	- Make sure ping returns true, even if in failed transaction state.
+		[thanks to Bill Moseley] [GSM]
+	- Fix COPY-related core dump [GSM]
+	- Fix strncpy bug in quote.c [Jun Kuriyama]
+	- Fix error in is_high_bit_set(). [Alexey Tourbin] (CPAN bug #13406)
+
+1.43 June 23, 2005
 	- Added README.dev file. [GSM]
 	- Fix statement-name related core dump. [GSM]
 	- Ensure state() returns an empty string, not 00000 on success.
