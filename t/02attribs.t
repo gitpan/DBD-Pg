@@ -8,8 +8,9 @@ use strict;
 $|=1;
 
 if (defined $ENV{DBI_DSN}) {
-	plan tests => 122;
-} else {
+	plan tests => 130;
+}
+else {
 	plan skip_all => 'Cannot run test unless DBI_DSN is defined. See the README file';
 }
 
@@ -43,6 +44,7 @@ d Driver
 d Name
 d RowCacheSize
 d Username
+d PrintWarn
 d pg_INV_READ
 d pg_INV_WRITE
 d pg_protocol
@@ -186,8 +188,8 @@ is( $attrib, 'Pg', '$dbh->{Driver}{Name} returns correct value of "Pg"');
 # Test of the database handle attribute "Name"
 #
 
-if ($ENV{DBI_DSN} !~ /dbname\s*=\s*\"([^"]+)/o and 
-		$ENV{DBI_DSN} !~ /dbname\s*=\s*([^;]+)/o) {
+if ($ENV{DBI_DSN} !~ /(?:dbname|database|db)\s*=\s*\"([^"]+)/o and 
+		$ENV{DBI_DSN} !~ /(?:dbname|database|db)\s*=\s*([^;]+)/o) {
  SKIP: {
 		skip 'Cannot test DB handle attribute "Name": DBI_DSN has no dbname', 1;
 	}
@@ -220,6 +222,39 @@ else {
 	$attrib = $dbh->{Username};
 	is( $attrib, $ENV{DBI_USER}, 'DB handle attribute "Username" returns the same value as DBI_USER');
 }
+
+#
+# Test of the "PrintWarn" database handle attribute
+#
+
+my $value = $dbh->{PrintWarn};
+is ($value, 1, qq{DB handle attribute "PrintWarn" defaults to on});
+
+{
+
+local $SIG{__WARN__} = sub { $warning = shift; };
+
+$warning = q{};
+eval {
+	$dbh->do("CREATE TEMP TABLE dbd_pg_test_temp(id INT PRIMARY KEY)");
+};
+ok (!$@, qq{DB handle attribute "PrintWarn" works when on});
+like($warning, qr{dbd_pg_test_temp}, qq{DB handle attribute "PrintWarn" shows warnings when on});
+
+$dbh->rollback();
+$dbh->{PrintWarn}=0;
+$warning = q{};
+eval {
+	$dbh->do("CREATE TEMP TABLE dbd_pg_test_temp(id INT PRIMARY KEY)");
+};
+ok (!$@, qq{DB handle attribute "PrintWarn" works when on});
+is($warning, q{}, qq{DB handle attribute "PrintWarn" shows warnings when on});
+
+$dbh->{PrintWarn}=1;
+$dbh->rollback();
+
+}
+
 
 #
 # Test of the database handle attributes "pg_INV_WRITE" and "pg_INV_READ"
@@ -780,9 +815,6 @@ ok( $dbh->disconnect(), 'Disconnect from database');
 $attrib = $dbh->{Active};
 is( $attrib, '', 'Database handle attribute "Active" is false after disconnect');
 
-my $answer = 42;
-$SQL = "SELECT $answer";
-
 if ($^O =~ /MSWin/) {
  SKIP: {
 		skip 'Cannot test database handle "InactiveDestroy" on a non-forking system', 4;
@@ -798,22 +830,30 @@ else {
 	else {
 
 		# Test of forking. Hang on to your hats
+
+		my $answer = 42;
+		$SQL = "SELECT $answer FROM dbd_pg_test WHERE id > ? LIMIT 1";
+
 		for my $destroy (0,1) {
 
 			$dbh = DBI->connect($ENV{DBI_DSN}, $ENV{DBI_USER}, $ENV{DBI_PASS},
 													{RaiseError => 0, PrintError => 0, AutoCommit => 1});
 
-			$dbh->{InactiveDestroy} = $destroy;
+			$sth = $dbh->prepare($SQL);
+			$sth->execute(1);
+			$sth->finish();
 
 			# Desired flow: parent test, child test, child kill, parent test
 
 			if (fork) {
-				my $val = $dbh->selectall_arrayref($SQL)->[0][0];
+				$sth->execute(1);
+				my $val = $sth->fetchall_arrayref()->[0][0];
 				is( $val, $answer, qq{Parent in fork test is working properly ("InactiveDestroy" = $destroy)});
 				# Let the child exit
 				select(undef,undef,undef,0.3);
 			}
 			else { # Child
+				$dbh->{InactiveDestroy} = $destroy;
 				select(undef,undef,undef,0.1); # Age before beauty
 				exit; ## Calls disconnect via DESTROY unless InactiveDestroy set
 			}
@@ -821,10 +861,18 @@ else {
 			if ($destroy) {
 				# The database handle should still be active
 				ok ( $dbh->ping(), qq{Ping works after the child has exited ("InactiveDestroy" = $destroy)});
+				my $state = $dbh->state();
+				is( $state, '', qq{Successful ping returns a SQLSTATE code of 00000 (empty string)});
+				## The statement handle should still be usable
+				$sth->execute(1);
+				my $val = $sth->fetchall_arrayref()->[0][0];
+				is ($val, $answer, qq{Statement handle works after forking});
 			}
 			else {
 				# The database handle should be dead
 				ok ( !$dbh->ping(), qq{Ping fails after the child has exited ("InactiveDestroy" = $destroy)});
+				my $state = $dbh->state();
+				is( $state, 'S8006', qq{Failed ping returns a SQLSTATE code of S8006});
 				if ($pglibversion < 70400) {
 				SKIP: {
 						skip "Can't determine advanced ping with old 7.2 server libraries", 1;

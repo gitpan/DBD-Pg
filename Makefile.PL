@@ -1,4 +1,4 @@
-# $Id: Makefile.PL,v 1.46 2005/09/11 17:34:21 turnstep Exp $
+# $Id: Makefile.PL,v 1.49 2006/01/29 20:44:22 turnstep Exp $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -7,7 +7,7 @@ use 5.006001;
 use DBI 1.38;
 use DBI::DBD;
 
-my $VERSION = "1.43_1";
+my $VERSION = "1.43_2";
 
 my $lib;
 BEGIN {
@@ -22,6 +22,10 @@ BEGIN {
 }
 
 use lib $lib;
+if ($VERSION =~ /_/) {
+	print "WARNING! This is a test version ($VERSION) and should not be used in production!\n";
+}
+
 print "Configuring DBD::Pg $VERSION\n";
 print "Remember to actually read the README file!\n";
 
@@ -53,6 +57,13 @@ my $os = $^O;
 print "OS: $os\n";
 print "PostgreSQL version: $serverversion (default port: $defaultport)\n";
 
+if ($serverversion < 1) {
+	die "Could not determine the PostgreSQL library version.\n".
+		"Please ensure that a valid path is given to the 'pg_config' command,\n".
+			"either manually or by setting the environment variables\n".
+				"POSTGRES_DATA, PSOTGRES_INCLUDE, and POSTGRES_LIB\n";
+}
+
 if ($os =~ /Win32/) {
 	for ($POSTGRES_INCLUDE, $POSTGRES_LIB) {
 		$_ = qq{"$_"} if index($_,'"');
@@ -64,10 +75,10 @@ if ($serverversion < 70200) {
 	print "\n****************\n";
 	print "WARNING! DBD::Pg no longer supports versions less than 7.2.\n";
 	print "It is highly recommended that you upgrade PostgreSQL to a newer version.\n";
+	print "If you continue, DBD::Pg may not work.\n";
 	print "****************\n\n";
 }
-
-if ($serverversion < 70400) {
+elsif ($serverversion < 70400) {
 	print "\n****************\n";
 	print "WARNING! Support for servers older than version 7.4 will soon end.\n";
 	print "It is highly recommended that you upgrade PostgreSQL to a newer version.\n";
@@ -86,6 +97,24 @@ else {
 }
 
 my $comp_opts = $Config{q{ccflags}} . " -DPGLIBVERSION=$serverversion -DPGDEFPORT=$defaultport";
+
+if ($ENV{DBDPG_GCCDEBUG}) {
+	warn "Enabling many compiler options\n";
+	$comp_opts .= " -Wchar-subscripts -Wcomment";
+	$comp_opts .= " -Wformat=2"; ## does -Wformat,-Wformat-y2k,-Wformat-nonliteral,-Wformat-security
+	$comp_opts .= " -Wnonnull";
+	$comp_opts .= " -Wuninitialized -Winit-self"; ## latter requires the former
+	$comp_opts .= " -Wimplicit"; ## does -Wimplicit-int and -Wimplicit-function-declaration
+	$comp_opts .= " -Wmain -Wmissing-braces -Wparentheses -Wsequence-point -Wreturn-type -Wswitch -Wswitch-enum -Wtrigraphs";
+	$comp_opts .= " -Wunused"; ## contains -Wunused- function,label,parameter,variable,value
+	$comp_opts .= " -Wunknown-pragmas -Wstrict-aliasing";
+	$comp_opts .= " -Wall"; ## all of above, but we enumerate anyway
+	$comp_opts .= " -Wextra -Wdeclaration-after-statement -Wendif-labels -Wpointer-arith";
+	$comp_opts .= " -Wbad-function-cast -Wcast-qual -Wcast-align -Wconversion -Wsign-compare -Waggregate-return";
+	$comp_opts .= " -Wmissing-prototypes -Wmissing-declarations -Wmissing-format-attribute -Wpacked -Winline -Winvalid-pch";
+	$comp_opts .= " -Wdisabled-optimization"; ## Not terribly useful
+	$comp_opts .= " -Wnested-externs"; ## Does not like Perl__notused (from DBIXS;)
+}
 
 my %opts = 
 	(

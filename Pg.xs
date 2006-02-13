@@ -1,7 +1,7 @@
 /*
-  $Id: Pg.xs,v 1.45 2005/08/25 01:57:56 turnstep Exp $
+  $Id: Pg.xs,v 1.48 2006/01/30 03:12:50 turnstep Exp $
 
-  Copyright (c) 2000-2005 PostgreSQL Global Development Group
+  Copyright (c) 2000-2006 PostgreSQL Global Development Group
   Portions Copyright (c) 1997-2000 Edmund Mergl
   Portions Copyright (c) 1994-1997 Tim Bunce
 
@@ -79,7 +79,7 @@ quote(dbh, to_quote_sv, type_sv=Nullsv)
 		sql_type_info_t *type_info;
 		char *to_quote;
 		char *quoted;
-		STRLEN len;
+		STRLEN len=0;
 		STRLEN retlen=0;
 		SV **svp;
 			
@@ -348,9 +348,8 @@ lo_import(dbh, filename)
 	SV * dbh
 	char * filename
 	CODE:
-		unsigned int ret = pg_db_lo_import(dbh, filename);
-		ST(0) = (ret!=0) ? sv_2mortal(newSViv((int)ret)) : &sv_undef;
-
+		int ret = pg_db_lo_import(dbh, filename);
+		ST(0) = (-1 != ret) ? sv_2mortal(newSViv((int)ret)) : &sv_undef;
 
 void
 lo_export(dbh, lobjId, filename)

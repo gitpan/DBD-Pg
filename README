@@ -1,12 +1,23 @@
 
+===================================================
+WARNING!!
+
+THIS IS A TEST VERSION (1.43_2) AND SHOULD BE USED 
+FOR TESTING PURPOSED ONLY. PLEASE USE A STABLE 
+VERSION (no underscore) BY VISITING:
+
+http://search.cpan.org/~dbdpg/
+===================================================
+
+
 DBD::Pg  --  the DBI PostgreSQL interface for Perl
 
-# $Id: README,v 1.43 2005/06/23 18:47:42 turnstep Exp $
+# $Id: README,v 1.46 2006/01/29 00:05:45 turnstep Exp $
 
 DESCRIPTION:
 ------------
 
-This is version 1.43_1 of DBD-Pg.  The web site for this interface is at:
+This is version 1.43_2 of DBD-Pg.  The web site for this interface is at:
 
 	http://gborg.postgresql.org/project/dbdpg/projdisplay.php
 
@@ -22,7 +33,7 @@ For information about PostgreSQL, visit:
 COPYRIGHT:
 ----------
 
-	Copyright (c) 2002-2005 PostgreSQL Global Development Group
+	Copyright (c) 2002-2006 PostgreSQL Global Development Group
 	Portions Copyright (c) 2002 Jeffrey W. Baker
 	Portions Copyright (c) 1997-2001 Edmund Mergl
 	Portions Copyright (c) 1994-1997 Tim Bunce
@@ -34,12 +45,9 @@ License or the Artistic License, as specified in the Perl README file.
 HOW TO GET THE LATEST VERSION:
 ------------------------------
 
-Use the following URLs to look for new versions of this module: 
+Use the following URL to look for new versions of this module: 
 
-	http://www.perl.com/CPAN/modules/by-module/DBD/
-	http://gborg.postgresql.org/project/dbdpg/projdisplay.php
-
-Note that the former will redirect you to the nearest CPAN site.
+http://search.cpan.org/~dbdpg/
 
 
 IF YOU HAVE PROBLEMS OR COMMENTS:
@@ -54,8 +62,12 @@ perl, PostgreSQL, DBI, and DBD-PG in your bug report.
 BUG REPORTS
 -----------
 
-If you feel certain you have found a bug, you can file a bug report here:
-http://rt.cpan.org/NoAuth/Bugs.html?Dist=DBD-Pg
+If you feel certain you have found a bug, you can file a bug report 
+by visiting:
+http://rt.cpan.org/Public/Dist/Display.html?Name=DBD-Pg
+and selecting the "Report a new bug" link. Please check that the bug 
+has not already been reported first.
+
 
 REQUIREMENTS:
 -------------
@@ -244,6 +256,15 @@ on the server side:
 You may need to add "-lssl" and "-lcrypto" to your LIB variable 
 before compiling.
 (thanks to <rob at cabrion dot com>)
+
+If having problems compiling, try running:
+
+env -i command
+
+This trick stops 'command' from inheriting environment variables from 
+the shell process, which more often than not fixes up such weird build 
+errors without having to do anything else in particular.
+(thanks to David Landgren <david at landgren dot net>)
 
 
 * SCO issues:

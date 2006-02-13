@@ -17,8 +17,9 @@ use strict;
 $|=1;
 
 if (defined $ENV{DBI_DSN}) {
-	plan tests => 158;
-} else {
+	plan tests => 160;
+}
+else {
 	plan skip_all => 'Cannot run test unless DBI_DSN is defined. See the README file';
 }
 
@@ -38,7 +39,7 @@ my ($SQL, $sth, $result, @result, $expected, $warning, $rows);
 # Quick simple "tests"
 
 $dbh->do(""); ## This used to break, so we keep it as a test...
-$SQL = "SELECT 123 FROM dbd_pg_test WHERE id=?";
+$SQL = "SELECT '2529DF6AB8F79407E94445B4BC9B906714964AC8' FROM dbd_pg_test WHERE id=?";
 $sth = $dbh->prepare($SQL);
 $sth->finish();
 $sth = $dbh->prepare_cached($SQL);
@@ -95,6 +96,11 @@ eval {
 	$result = $dbh->last_insert_id(undef,undef,'dbd_pg_test',undef);
 };
 ok( ! $@, 'DB handle method "last_insert_id" works when given a valid table');
+
+eval {
+	$result = $dbh->last_insert_id(undef,undef,'dbd_pg_test',undef,'');
+};
+ok( ! $@, 'DB handle method "last_insert_id" works when given an empty attrib');
 
 eval {
 	$result = $dbh->last_insert_id(undef,undef,'dbd_pg_test',undef);
@@ -750,6 +756,12 @@ for (keys %quotetests) {
 	$result = $dbh->quote($_);
 	is( $result, $quotetests{$_}, qq{DB handle method "quote" works with a value of "$_"});
 }
+
+## Test timestamp - should quote as a string
+my $tstype = 93;
+my $testtime = "2006-01-28 11:12:13";
+is( $dbh->quote( $testtime, $tstype ), qq{'$testtime'}, qq{DB handle method "quote" work on timestamp});
+
 my $foo;
 {
 	no warnings; ## Perl does not like undef args
@@ -869,12 +881,7 @@ like( $result, qr/^\d+$/, 'DB handle method "getfd" returns a number');
 
 my ($pglibversion,$pgversion) = ($dbh->{pg_lib_version},$dbh->{pg_server_version});
 $result = $dbh->state();
-if ($pglibversion >= 70400 and $pgversion >= 70400) {
-	is( $result, "", qq{DB handle method "state" returns an empty string on success});
-}
-else {
-	is( $result, "S1000", qq{DB handle method "state" returns S1000 on success (old server)});
-}
+is( $result, "", qq{DB handle method "state" returns an empty string on success});
 
 eval {
 	$dbh->do("SELECT dbdpg_throws_an_error");

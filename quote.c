@@ -1,8 +1,8 @@
 /*
 
-   $Id: quote.c,v 1.41 2005/08/31 02:23:17 turnstep Exp $
+   $Id: quote.c,v 1.42 2006/01/02 15:33:01 turnstep Exp $
 
-   Copyright (c) 2003-2005 PostgreSQL Global Development Group
+   Copyright (c) 2003-2006 PostgreSQL Global Development Group
    
    You may distribute under the terms of either the GNU General Public
    License or the Artistic License, as specified in the Perl README file.

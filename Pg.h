@@ -1,9 +1,9 @@
 /*
-   $Id: Pg.h,v 1.11 2005/08/26 01:39:46 turnstep Exp $
+   $Id: Pg.h,v 1.13 2006/01/30 03:11:56 turnstep Exp $
 
-   Copyright (c) 2000-2004 PostgreSQL Global Development Group
-   Copyright (c) 1997,1998,1999,2000 Edmund Mergl
-   Portions Copyright (c) 1994,1995,1996,1997 Tim Bunce
+   Copyright (c) 2000-2006 PostgreSQL Global Development Group
+   Copyright (c) 1997-2000 Edmund Mergl
+   Portions Copyright (c) 1994-1997 Tim Bunce
 
    You may distribute under the terms of either the GNU General Public
    License or the Artistic License, as specified in the Perl README file.
@@ -15,8 +15,8 @@
 static int errno;
 #endif
 
-#define DBDPG_TRUE 1
-#define DBDPG_FALSE 0
+#define DBDPG_TRUE (bool)1
+#define DBDPG_FALSE (bool)0
 
 #include "libpq-fe.h"
 
@@ -56,5 +56,6 @@ static int errno;
 /* defines for Driver.xst to let it know what functions to include */
 #define dbd_st_rows dbd_st_rows
 #define dbd_discon_all dbd_discon_all
+#define dbd_st_fetchrow_hashref valid
 
 /* end of Pg.h */

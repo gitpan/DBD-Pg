@@ -1,8 +1,10 @@
+SIGNATURE
 Changes
 dbdimp.c
 dbdimp.h
 Makefile.PL
 MANIFEST
+MANIFEST.SKIP
 Pg.h
 Pg.pm
 Pg.xs
@@ -12,6 +14,7 @@ README
 README.win32
 README.dev
 win32.mak
+t/00-signature.t
 t/00basic.t
 t/01connect.t
 t/01constants.t

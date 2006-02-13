@@ -1,7 +1,7 @@
 # -*-cperl-*-
-#  $Id: Pg.pm,v 1.174 2005/09/11 17:34:21 turnstep Exp $
+#  $Id: Pg.pm,v 1.184 2006/02/04 21:52:55 turnstep Exp $
 #
-#  Copyright (c) 2002-2005 PostgreSQL Global Development Group
+#  Copyright (c) 2002-2006 PostgreSQL Global Development Group
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
 #  Portions Copyright (c) 1997-2001 Edmund Mergl
 #  Portions Copyright (c) 1994-1997 Tim Bunce
@@ -13,15 +13,15 @@
 use 5.006001;
 
 
+{
+	package DBD::Pg;
 
-{ package DBD::Pg;
-
-	our $VERSION = '1.43_1';
+	our $VERSION = '1.43_2';
 	
 	use DBI ();
 	use DynaLoader ();
 	use Exporter ();
-	use vars qw(@ISA %EXPORT_TAGS $err $errstr $sqlstate $drh $dbh);
+	use vars qw(@ISA %EXPORT_TAGS $err $errstr $sqlstate $drh $dbh $DBDPG_DEFAULT);
 	@ISA = qw(DynaLoader Exporter);
 
 	%EXPORT_TAGS = 
@@ -33,7 +33,13 @@ use 5.006001;
 		)]
 	);
 
+	{
+		package DBD::Pg::DefaultValue;
+		sub new { my $self = {}; return bless $self, shift; }
+	}
+	$DBDPG_DEFAULT = DBD::Pg::DefaultValue->new();
 	Exporter::export_ok_tags('pg_types');
+	@EXPORT = qw($DBDPG_DEFAULT);
 
 	require_version DBI 1.38;
 
@@ -95,7 +101,8 @@ use 5.006001;
 }
 
 
-{ package DBD::Pg::dr;
+{
+	package DBD::Pg::dr;
 
 	use strict;
 
@@ -160,12 +167,12 @@ use 5.006001;
 }
 
 
-{ package DBD::Pg::db;
+{
+	package DBD::Pg::db;
 
 	use DBI qw(:sql_types);
 
 	use strict;
-
 	
 	sub prepare {
 		my($dbh, $statement, @attribs) = @_;
@@ -1392,7 +1399,8 @@ use 5.006001;
 } 
 
 
-{ package DBD::Pg::st;
+{
+	package DBD::Pg::st;
 
 	sub bind_param_array { ## The DBI version is broken, so we implement a near-copy here
 		my $sth = shift;
@@ -1438,7 +1446,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 1.43_1 of the DBD::Pg module
+This documents version 1.43_2 of the DBD::Pg module
 
 =head1 SYNOPSIS
 
@@ -1558,8 +1566,13 @@ related to the current handle.
   $str = $h->state;
 
 Supported by this driver. Returns a five-character "SQLSTATE" code.
-PostgreSQL servers version less than 7.4 will always return a generic
-"S1000" code. Success is indicated by a "00000" code.
+Success is indicated by a "00000" code, which gets mapped to an 
+empty string by DBI. A code of S8006 indicates a connection failure, 
+usually because the connection to the PostgreSQL server has been lost.
+Note that this can be called as both $sth->state and $dbh->state.
+
+PostgreSQL servers version less than 7.4 will return a small subset 
+of the available codes, and should not be relied upon.
 
 The list of codes used by PostgreSQL can be found at:
 L<http://www.postgresql.org/docs/current/static/errcodes-appendix.html>
@@ -1812,6 +1825,10 @@ Implemented by DBI, no driver-specific impact.
 
   $sth = $dbh->prepare($statement, \%attr);
 
+WARNING: DBD::Pg now uses true prepared statements by sending them 
+to the backend to be prepared by the PostgreSQL server. Statements 
+that were legal before may no longer work. See below for details.
+
 Prepares a statement for later execution. PostgreSQL supports prepared
 statements, which enables DBD::Pg to only send the query once, and
 simply send the arguments for every subsequent call to execute().
@@ -1822,7 +1839,7 @@ most users: keep reading for a more detailed explanation and some
 optional flags.
 
 Statements that do not begin with the word "SELECT", "INSERT", 
-"UPDATE", or "DELETE" will not be prepared.
+"UPDATE", or "DELETE" will not be sent to be server-side prepared.
 
 Deciding whether or not to use prepared statements depends on many
 factors, but you can force them to be used or not used by passing
@@ -1918,7 +1935,7 @@ statement, as it will not be executed. However, it should have the same
 number of placeholders as your prepared statement. Example:
 
   $dbh->do("PREPARE mystat AS SELECT COUNT(*) FROM pg_class WHERE reltuples < ?");
-  $sth = $dbh->prepare("ABC ?");
+  $sth = $dbh->prepare("SELECT ?");
   $sth->bind_param(1, 1, SQL_INTEGER);
   $sth->{pg_prepare_name} = "mystat";
   $sth->execute(123);
@@ -2313,6 +2330,11 @@ in the future, so it is highly recommended that you explicitly set it when
 calling C<connect()>. For details see the notes about B<Transactions>
 elsewhere in this document.
 
+=item B<pg_bool_tf> (boolean)
+
+PostgreSQL specific attribute. If true, boolean values will be returned
+as the characters 't' and 'f' instead of '1' and '0'.
+
 =item B<Driver>  (handle)
 
 Implemented by DBI, no driver-specific impact.
@@ -2357,17 +2379,12 @@ Constant to be used for the mode in C<lo_creat> and C<lo_open>.
 
 Constant to be used for the mode in C<lo_creat> and C<lo_open>.
 
-=item B<pg_bool_tf> (boolean)
-
-PostgreSQL specific attribute. If true, boolean values will be returned
-as the characters 't' and 'f' instead of '1' and '0'.
-
 =item B<pg_errorlevel> (integer)
 
 PostgreSQL specific attribute, only works for servers version 7.4 and above.
 Sets the amount of information returned by the server's error messages.
-Valid entries are 1,2, and 3. Any other number will be forced to the default
-value of 2.
+Valid entries are 0, 1, and 2. Any other number will be forced to the default
+value of 1.
 
 A value of 0 ("TERSE") will show severity, primary text, and position only
 and will usually fit on a single line. A value of 1 ("DEFAULT") will also
@@ -2540,6 +2557,12 @@ the C<execute> method can also be used for C<SELECT ... INTO table> statements.
 The "prepare/bind/execute" process has changed significantly for PostgreSQL
 servers 7.4 and later: please see the C<prepare()> and C<bind_param()> entries for
 much more information.
+
+Setting one of the bind_values to "undef" is the equivalent of setting the value 
+to NULL in the database. Setting the bind_value to $DBDPG_DEFAULT is equivalent 
+to sending the literal string 'DEFAULT' to the backend. Note that using this 
+option will force server-side prepares off until such time as PostgreSQL 
+supports using DEFAULT in prepared statements.
 
 =item B<fetchrow_arrayref>
 
@@ -2751,7 +2774,7 @@ control savepoints:
 =item B<pg_savepoint>
 
 Creates a savepoint. This will fail unless you are inside of a transaction. The 
-only argument is the name of the savepoint. Note that PostgreSQL does allow 
+only argument is the name of the savepoint. Note that PostgreSQL DOES allow 
 multiple savepoints with the same name to exist.
 
   $dbh->pg_savepoint("mysavepoint");
@@ -2769,6 +2792,8 @@ most recently created one.
 Releases (or removes) a named savepoint. If more than one savepoint with that name 
 exists, it will only destroy the most recently created one. Note that all savepoints 
 created after the one being released are also destroyed.
+
+  $dbh->pg_release("mysavepoint");
 
 =back
 

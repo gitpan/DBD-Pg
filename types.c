@@ -1,8 +1,8 @@
 /*
 
-   $Id: types.c,v 1.22 2005/09/05 02:32:40 turnstep Exp $
+   $Id: types.c,v 1.25 2006/01/30 02:15:52 turnstep Exp $
 
-   Copyright (c) 2003-2005 PostgreSQL Global Development Group
+   Copyright (c) 2003-2006 PostgreSQL Global Development Group
    
    You may distribute under the terms of either the GNU General Public
    License or the Artistic License, as specified in the Perl README file.
@@ -44,7 +44,7 @@ static sql_type_info_t pg_types[] = {
 	{INT4OID, "int4", null_quote, null_dequote, {SQL_INTEGER}, DBDPG_TRUE},
 	{INT8OID, "int8", null_quote, null_dequote, {SQL_DOUBLE}, DBDPG_TRUE},
 	{INTERNALOID, "internal", null_quote, null_dequote, {0}, DBDPG_TRUE},
-	{INTERVALOID, "timespan", null_quote, null_dequote, {SQL_INTERVAL}, DBDPG_TRUE},
+	{INTERVALOID, "timespan", quote_string, dequote_string, {SQL_INTERVAL}, DBDPG_TRUE},
 	{LANGUAGE_HANDLEROID, "languagehandle", null_quote, null_dequote, {0}, DBDPG_TRUE},
 	{LINEOID, "line", null_quote, null_dequote, {0}, DBDPG_TRUE},
 	{LSEGOID, "lseg", null_quote, null_dequote, {0}, DBDPG_TRUE},
@@ -73,10 +73,10 @@ static sql_type_info_t pg_types[] = {
 	{TEXTOID, "text", quote_string, dequote_string, {SQL_VARCHAR}, DBDPG_TRUE},
 	{TIDOID, "tid", null_quote, null_dequote, {0}, DBDPG_TRUE},
 	{TIMEOID, "time", null_quote, null_dequote, {SQL_TYPE_TIME}, DBDPG_TRUE},
-	{TIMESTAMPOID, "timestamp", null_quote, null_dequote, {SQL_TYPE_TIMESTAMP}, DBDPG_TRUE},
-	{TIMESTAMPTZOID, "datetime", null_quote, null_dequote, {SQL_TYPE_TIMESTAMP_WITH_TIMEZONE}, DBDPG_TRUE},
-	{TIMETZOID, "timestamptz", null_quote, null_dequote, {SQL_TYPE_TIME_WITH_TIMEZONE}, DBDPG_TRUE},
-	{TINTERVALOID, "tinterval", null_quote, null_dequote, {0}, DBDPG_TRUE},
+	{TIMESTAMPOID, "timestamp", quote_string, dequote_string, {SQL_TYPE_TIMESTAMP}, DBDPG_TRUE},
+	{TIMESTAMPTZOID, "datetime", quote_string, dequote_string, {SQL_TYPE_TIMESTAMP_WITH_TIMEZONE}, DBDPG_TRUE},
+	{TIMETZOID, "timestamptz", quote_string, dequote_string, {SQL_TYPE_TIME_WITH_TIMEZONE}, DBDPG_TRUE},
+	{TINTERVALOID, "tinterval", quote_string, dequote_string, {0}, DBDPG_TRUE},
 	{TRIGGEROID, "trigger", null_quote, null_dequote, {0}, DBDPG_TRUE},
 	{UNKNOWNOID, "unknown", quote_string, dequote_string, {SQL_UNKNOWN_TYPE}, DBDPG_TRUE},
 	{VARBITOID, "vbitstring", null_quote, null_dequote, {0}, DBDPG_TRUE},
@@ -171,8 +171,8 @@ static sql_type_info_t sql_types[] = {
 	{SQL_DOUBLE, "SQL_DOUBLE", null_quote, null_dequote, {INT8OID}, DBDPG_TRUE},
 	{SQL_DECIMAL, "SQL_DECIMAL", null_quote, null_dequote, {NUMERICOID}, DBDPG_TRUE},
 	{SQL_TYPE_TIME, "SQL_TYPE_TIME", null_quote, null_dequote, {TIMEOID}, DBDPG_TRUE},
-	{SQL_TYPE_TIMESTAMP, "SQL_TYPE_TIMESTAMP", null_quote, null_dequote, {TIMESTAMPOID}, DBDPG_TRUE},
-	{SQL_TYPE_TIMESTAMP_WITH_TIMEZONE, "SQL_TYPE_TIMESTAMP_WITH_TIMEZONE", null_quote, null_dequote, {TIMESTAMPTZOID}, DBDPG_TRUE},
+	{SQL_TYPE_TIMESTAMP, "SQL_TYPE_TIMESTAMP", quote_string, dequote_string, {TIMESTAMPOID}, DBDPG_TRUE},
+	{SQL_TYPE_TIMESTAMP_WITH_TIMEZONE, "SQL_TYPE_TIMESTAMP_WITH_TIMEZONE", quote_string, dequote_string, {TIMESTAMPTZOID}, DBDPG_TRUE},
 	{SQL_VARCHAR, "SQL_VARCHAR", quote_string, dequote_string, {VARCHAROID}, DBDPG_TRUE},
 };
 
@@ -267,7 +267,7 @@ open(OUT, ">$outfile") or die qq{Could not open "$outfile": $!\n};
 print OUT 
 '/' . q{*
 
-   $Id: types.c,v 1.22 2005/09/05 02:32:40 turnstep Exp $
+   $Id: types.c,v 1.25 2006/01/30 02:15:52 turnstep Exp $
 
    Copyright (c) 2003-2005 PostgreSQL Global Development Group
    
@@ -287,9 +287,9 @@ print OUT
 ## Map all types into a sql_type_info structure
 
 #Each must have a "name" e.g. declared as column type name
-#whether we quote it or not (DNDPG_TRUE)
+#whether we quote it or not (DBDPG_TRUE)
 #the quoting function to use
-#the dequoting functio to use (used?)
+#the dequoting function to use
 #the closest SQL_ match
 #whether this is the "master" for sql matches
 
