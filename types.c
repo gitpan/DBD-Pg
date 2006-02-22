@@ -1,6 +1,6 @@
 /*
 
-   $Id: types.c,v 1.25 2006/01/30 02:15:52 turnstep Exp $
+   $Id: types.c,v 1.27 2006/02/22 00:24:08 turnstep Exp $
 
    Copyright (c) 2003-2006 PostgreSQL Global Development Group
    
@@ -68,6 +68,7 @@ static sql_type_info_t pg_types[] = {
 	{REGOPEROID, "registeredoperator", null_quote, null_dequote, {0}, DBDPG_TRUE},
 	{REGPROCEDUREOID, "regprocedureoid", null_quote, null_dequote, {0}, DBDPG_TRUE},
 	{REGPROCOID, "regproc", null_quote, null_dequote, {0}, DBDPG_TRUE},
+	{REGTYPEARRAYOID, "regtypearray", null_quote, null_dequote, {0}, DBDPG_TRUE},
 	{REGTYPEOID, "regtype", null_quote, null_dequote, {0}, DBDPG_TRUE},
 	{RELTIMEOID, "reltime", null_quote, null_dequote, {0}, DBDPG_TRUE},
 	{TEXTOID, "text", quote_string, dequote_string, {SQL_VARCHAR}, DBDPG_TRUE},
@@ -75,8 +76,8 @@ static sql_type_info_t pg_types[] = {
 	{TIMEOID, "time", null_quote, null_dequote, {SQL_TYPE_TIME}, DBDPG_TRUE},
 	{TIMESTAMPOID, "timestamp", quote_string, dequote_string, {SQL_TYPE_TIMESTAMP}, DBDPG_TRUE},
 	{TIMESTAMPTZOID, "datetime", quote_string, dequote_string, {SQL_TYPE_TIMESTAMP_WITH_TIMEZONE}, DBDPG_TRUE},
-	{TIMETZOID, "timestamptz", quote_string, dequote_string, {SQL_TYPE_TIME_WITH_TIMEZONE}, DBDPG_TRUE},
-	{TINTERVALOID, "tinterval", quote_string, dequote_string, {0}, DBDPG_TRUE},
+	{TIMETZOID, "timestamptz", null_quote, null_dequote, {SQL_TYPE_TIME_WITH_TIMEZONE}, DBDPG_TRUE},
+	{TINTERVALOID, "tinterval", null_quote, null_dequote, {0}, DBDPG_TRUE},
 	{TRIGGEROID, "trigger", null_quote, null_dequote, {0}, DBDPG_TRUE},
 	{UNKNOWNOID, "unknown", quote_string, dequote_string, {SQL_UNKNOWN_TYPE}, DBDPG_TRUE},
 	{VARBITOID, "vbitstring", null_quote, null_dequote, {0}, DBDPG_TRUE},
@@ -140,21 +141,22 @@ sql_type_info_t* pg_type_data(sql_type)
 		case REGOPEROID:               return &pg_types[47];
 		case REGPROCEDUREOID:          return &pg_types[48];
 		case REGPROCOID:               return &pg_types[49];
-		case REGTYPEOID:               return &pg_types[50];
-		case RELTIMEOID:               return &pg_types[51];
-		case TEXTOID:                  return &pg_types[52];
-		case TIDOID:                   return &pg_types[53];
-		case TIMEOID:                  return &pg_types[54];
-		case TIMESTAMPOID:             return &pg_types[55];
-		case TIMESTAMPTZOID:           return &pg_types[56];
-		case TIMETZOID:                return &pg_types[57];
-		case TINTERVALOID:             return &pg_types[58];
-		case TRIGGEROID:               return &pg_types[59];
-		case UNKNOWNOID:               return &pg_types[60];
-		case VARBITOID:                return &pg_types[61];
-		case VARCHAROID:               return &pg_types[62];
-		case VOIDOID:                  return &pg_types[63];
-		case XIDOID:                   return &pg_types[64];
+		case REGTYPEARRAYOID:          return &pg_types[50];
+		case REGTYPEOID:               return &pg_types[51];
+		case RELTIMEOID:               return &pg_types[52];
+		case TEXTOID:                  return &pg_types[53];
+		case TIDOID:                   return &pg_types[54];
+		case TIMEOID:                  return &pg_types[55];
+		case TIMESTAMPOID:             return &pg_types[56];
+		case TIMESTAMPTZOID:           return &pg_types[57];
+		case TIMETZOID:                return &pg_types[58];
+		case TINTERVALOID:             return &pg_types[59];
+		case TRIGGEROID:               return &pg_types[60];
+		case UNKNOWNOID:               return &pg_types[61];
+		case VARBITOID:                return &pg_types[62];
+		case VARCHAROID:               return &pg_types[63];
+		case VOIDOID:                  return &pg_types[64];
+		case XIDOID:                   return &pg_types[65];
 		default:return NULL;
 	}
 }
@@ -267,9 +269,9 @@ open(OUT, ">$outfile") or die qq{Could not open "$outfile": $!\n};
 print OUT 
 '/' . q{*
 
-   $Id: types.c,v 1.25 2006/01/30 02:15:52 turnstep Exp $
+   $Id: types.c,v 1.27 2006/02/22 00:24:08 turnstep Exp $
 
-   Copyright (c) 2003-2005 PostgreSQL Global Development Group
+   Copyright (c) 2003-2006 PostgreSQL Global Development Group
    
    You may distribute under the terms of either the GNU General Public
    License or the Artistic License, as specified in the Perl README file.
@@ -402,7 +404,7 @@ BPCHAROID, bpchar, quote_string, dequote_char, SQL_CHAR, 1
 NAMEOID, name, null_quote, null_dequote, SQL_VARCHAR, 0
 TEXTOID, text, quote_string, dequote_string, SQL_VARCHAR, 0
 
-## Binary - specialquoting rules
+## Binary - special quoting rules
 BYTEAOID, bytea, quote_bytea, dequote_bytea, SQL_VARBINARY, 1
 CHAROID, char, quote_string, dequote_char, 0, 0
 
@@ -412,8 +414,8 @@ BOOLOID, bool, quote_bool, dequote_bool, SQL_BOOLEAN, 1
 ## Time and date
 DATEOID, date, null_quote, null_dequote, SQL_TYPE_DATE, 1
 TIMEOID, time, null_quote, null_dequote, SQL_TYPE_TIME, 1
-TIMESTAMPOID, timestamp, null_quote, null_dequote, SQL_TYPE_TIMESTAMP, 1
-TIMESTAMPTZOID, datetime, null_quote, null_dequote, SQL_TYPE_TIMESTAMP_WITH_TIMEZONE, 1
+TIMESTAMPOID, timestamp, quote_string, dequote_string, SQL_TYPE_TIMESTAMP, 1
+TIMESTAMPTZOID, datetime, quote_string, dequote_string, SQL_TYPE_TIMESTAMP_WITH_TIMEZONE, 1
 TIMETZOID, timestamptz, null_quote, null_dequote, SQL_TYPE_TIME_WITH_TIMEZONE, 0
 
 
@@ -433,7 +435,7 @@ INETOID, IP address, null_quote, null_dequote, 0, 0
 INT2VECTOROID, int28, null_quote, null_dequote, 0, 0
 INT4ARRAYOID, int4array, 0, 0, 0, 0
 INTERNALOID, internal, null_quote, null_dequote, 0, 0
-INTERVALOID, timespan, null_quote, null_dequote, SQL_INTERVAL, 0
+INTERVALOID, timespan, quote_string, dequote_string, SQL_INTERVAL, 0
 LANGUAGE_HANDLEROID, languagehandle, null_quote, null_dequote, 0, 0
 LINEOID, line, null_quote, null_dequote, 0, 0
 LSEGOID, lseg, null_quote, null_dequote, 0, 0
@@ -455,6 +457,7 @@ REGOPEROID, registeredoperator, null_quote, null_dequote, 0, 0
 REGPROCEDUREOID, regprocedureoid, null_quote, null_dequote, 0, 0
 REGPROCOID, regproc, null_quote, null_dequote, 0, 0
 REGTYPEOID, regtype, null_quote, null_dequote, 0, 0
+REGTYPEARRAYOID, regtypearray, null_quote, null_dequote, 0, 0
 RELTIMEOID, reltime, null_quote, null_dequote, 0, 0
 TIDOID, tid, null_quote, null_dequote, 0, 0
 TINTERVALOID, tinterval, null_quote, null_dequote, 0, 0
