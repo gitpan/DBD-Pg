@@ -1,6 +1,6 @@
 /*
 
-   $Id: quote.c,v 1.42 2006/01/02 15:33:01 turnstep Exp $
+   $Id: quote.c,v 1.43 2006/02/26 18:50:05 turnstep Exp $
 
    Copyright (c) 2003-2006 PostgreSQL Global Development Group
    
@@ -222,10 +222,6 @@ void dequote_bytea(string, retlen)
 	result = string;
 
 	while (*string != '\0') {
-		if ((*retlen)>20) {
-			*string = '\0';
-			continue;
-		}
 		(*retlen)++;
 		if ('\\' == *string) {
 			if ('\\' == *(string+1)) {
