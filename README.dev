@@ -1,5 +1,5 @@
 
-## $Id: README.dev,v 1.23 2006/02/06 03:06:09 turnstep Exp $
+## $Id: README.dev,v 1.24 2006/03/03 01:34:25 turnstep Exp $
 
 This file is for those interested in developing DBD::Pg. It is hoped that it 
 will be a good introduction as well as a continual reference. Suggestions 
@@ -659,6 +659,8 @@ The maintainers of the weekly news are usually pretty good about catching the up
 and adding it in. If not, bug them.
 
 http://www.postgresql.org/community/weeklynews/
+
+* Tell Greg to post on PlanetPostgresql.
 
 * If a non-beta, clean out any CPAN bugs, including going back and marking resolved 
 bugs with this new version, once it appears in the choices.

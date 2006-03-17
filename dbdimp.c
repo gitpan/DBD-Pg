@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c,v 1.171 2006/02/13 03:19:23 turnstep Exp $
+  $Id: dbdimp.c,v 1.172 2006/03/17 14:12:19 turnstep Exp $
 
   Copyright (c) 2002-2006 PostgreSQL Global Development Group
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -1302,7 +1302,7 @@ static void dbd_st_split_statement (imp_sth, version, statement)
 			newseg->placeholder = ++imp_sth->numphs;
 		}
 		else if (2==placeholder_type) {
-			newseg->placeholder = atoi(statement-(currpos-sectionstop-2));
+			newseg->placeholder = atoi(statement-(currpos-sectionstop-1));
 		}
 		else if (3==placeholder_type) {
 			sectionsize = currpos-sectionstop;
@@ -1363,7 +1363,8 @@ static void dbd_st_split_statement (imp_sth, version, statement)
 		sectionstart = currpos;
 		imp_sth->numsegs++;
 
-		imp_sth->placeholder_type = placeholder_type;
+		if (placeholder_type > 0)
+			imp_sth->placeholder_type = placeholder_type;
 
 		/* If this segment also, ended the string, set ch so we bail out early */
 		if ('\0' == *statement)
