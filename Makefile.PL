@@ -1,4 +1,4 @@
-# $Id: Makefile.PL,v 1.53 2006/03/17 14:14:58 turnstep Exp $
+# $Id: Makefile.PL,v 1.54 2006/03/19 21:10:49 turnstep Exp $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -7,7 +7,7 @@ use 5.006001;
 use DBI 1.38;
 use DBI::DBD;
 
-my $VERSION = "1.46";
+my $VERSION = "1.47";
 
 my $lib;
 BEGIN {
