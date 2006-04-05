@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c,v 1.173 2006/03/19 17:17:03 turnstep Exp $
+  $Id: dbdimp.c,v 1.177 2006/04/05 13:24:51 turnstep Exp $
 
   Copyright (c) 2002-2006 PostgreSQL Global Development Group
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -343,6 +343,8 @@ int dbd_db_login (dbh, imp_dbh, dbname, uid, pwd)
 	if (imp_dbh->conn)
 		PQfinish(imp_dbh->conn);
 	imp_dbh->conn = PQconnectdb(conn_str);
+	if (dbis->debug >= 5)
+		(void)PerlIO_printf(DBILOGFP, "dbdpg: successful connection\n");
 	Safefree(conn_str);
 	
 	Renew(imp_dbh->sqlstate, 6, char); /* freed in dbd_db_destroy (and above) */
@@ -545,13 +547,15 @@ static int dbd_db_rollback_commit (dbh, imp_dbh, action)
 
 	status = _result(imp_dbh, action);
 		
+	/* Set this early, for scripts that continue despite the error below */
+	imp_dbh->done_begin = DBDPG_FALSE;
+
 	if (PGRES_COMMAND_OK != status) {
 		pg_error(dbh, status, PQerrorMessage(imp_dbh->conn));
 		return 0;
 	}
 
 	av_undef(imp_dbh->savepoints);
-	imp_dbh->done_begin = DBDPG_FALSE;
 
 	/* If we just did a rollback or a commit, we can no longer be in a PGRES_COPY state */
 	imp_dbh->copystate=0;
@@ -952,13 +956,13 @@ int dbd_st_prepare (sth, imp_sth, statement, attribs)
 			 imp_sth->is_dml, imp_sth->direct, imp_dbh->pg_protocol, imp_sth->server_prepare, imp_sth->prepare_now, PGLIBVERSION
 			 );
 
-	if (imp_sth->is_dml && 
-			!imp_sth->direct &&
-			imp_dbh->pg_protocol >= 3 &&
-			0 != imp_sth->server_prepare &&
-			imp_sth->prepare_now &&
-			PGLIBVERSION >= 80000
-			) {
+	if (imp_sth->is_dml
+		&& !imp_sth->direct
+		&& imp_dbh->pg_protocol >= 3
+		&& 0 != imp_sth->server_prepare
+		&& imp_sth->prepare_now
+		&& PGLIBVERSION >= 80000
+		) {
 		if (dbis->debug >= 5)
 			(void)PerlIO_printf(DBILOGFP, "dbdpg: Running an immediate prepare\n");
 
@@ -1681,7 +1685,7 @@ int dbd_bind_ph (sth, imp_sth, ph_name, newvalue, sql_type, attribs, is_inout, m
 		}
 	}
 	if (dbis->debug >= 5) {
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: Bind (%s) <== (%s) (type=%ld)", name, neatsvpv(newvalue,0), (long)sql_type);
+		(void)PerlIO_printf(DBILOGFP, "dbdpg: Bind (%s) <== (%s) (type=%ld)\n", name, neatsvpv(newvalue,0), (long)sql_type);
 		if (attribs) {
 			(void)PerlIO_printf(DBILOGFP, "dbdpg: Bind attribs (%s)", neatsvpv(attribs,0));
 		}
@@ -1922,10 +1926,12 @@ int dbd_st_execute (sth, imp_sth) /* <= -2:error, >=0:ok row count, (-1=unknown 
 	execsize = imp_sth->totalsize; /* Total of all segments */
 
 	/* If using plain old PQexec, we need to quote each value ourselves */
-	if (imp_dbh->pg_protocol < 3 ||
-			imp_sth->has_default ||
-			(1 != imp_sth->server_prepare && 
-			 imp_sth->numbound != imp_sth->numphs)) {
+	if (!imp_sth->is_dml
+		|| imp_dbh->pg_protocol < 3
+		|| imp_sth->has_default
+		|| (1 != imp_sth->server_prepare
+			&& imp_sth->numbound != imp_sth->numphs)
+		) {
 		for (currph=imp_sth->ph; NULL != currph; currph=currph->nextph) {
 			if (currph->isdefault) {
 				Renew(currph->quoted, 8, char); /* freed in dbd_st_destroy */
@@ -1991,15 +1997,15 @@ int dbd_st_execute (sth, imp_sth) /* <= -2:error, >=0:ok row count, (-1=unknown 
 			(DBILOGFP, "dbdpg: PQexec* decision: dml=%d direct=%d protocol=%d server_prepare=%d numbound=%d numphs=%d default=%d\n",
 			 imp_sth->is_dml, imp_sth->direct, imp_dbh->pg_protocol, imp_sth->server_prepare, imp_sth->numbound, imp_sth->numphs, imp_sth->has_default);
 	}
-	if (imp_sth->is_dml && 
-			!imp_sth->direct &&
-			imp_dbh->pg_protocol >= 3 &&
-			0 != imp_sth->server_prepare &&
-			!imp_sth->has_default &&
-			(1 <= imp_sth->numphs && !imp_sth->onetime) &&
-			(1 == imp_sth->server_prepare ||
-			 (imp_sth->numbound == imp_sth->numphs)
-			 )){
+	if (imp_sth->is_dml
+		&& !imp_sth->direct
+		&& imp_dbh->pg_protocol >= 3
+		&& 0 != imp_sth->server_prepare
+		&& !imp_sth->has_default
+		&& (1 <= imp_sth->numphs && !imp_sth->onetime)
+		&& (1 == imp_sth->server_prepare
+			|| (imp_sth->numbound == imp_sth->numphs))
+		 ){
 	
 		if (dbis->debug >= 5)
 			(void)PerlIO_printf(DBILOGFP, "dbdpg: PQexecPrepared\n");
@@ -2044,12 +2050,13 @@ int dbd_st_execute (sth, imp_sth) /* <= -2:error, >=0:ok row count, (-1=unknown 
 
 		/* PQexecParams */
 
-		if (imp_dbh->pg_protocol >= 3 &&
-				imp_sth->numphs &&
-				!imp_sth->has_default &&
-				(1 == imp_sth->server_prepare || 
-				 imp_sth->numbound == imp_sth->numphs)) {
-
+		if (imp_sth->is_dml
+			&& imp_dbh->pg_protocol >= 3
+			&& imp_sth->numphs
+			&& !imp_sth->has_default
+			&& (1 == imp_sth->server_prepare || imp_sth->numbound == imp_sth->numphs)
+			) {
+		  
 			if (dbis->debug >= 5)
 				(void)PerlIO_printf(DBILOGFP, "dbdpg: PQexecParams\n");
 
@@ -2112,12 +2119,13 @@ int dbd_st_execute (sth, imp_sth) /* <= -2:error, >=0:ok row count, (-1=unknown 
 				if (currseg->placeholder!=0)
 					execsize += currseg->ph->quotedlen;
 			}
+
 			New(0, statement, execsize+1, char); /* freed below */
 			statement[0] = '\0';
 			for (currseg=imp_sth->seg; NULL != currseg; currseg=currseg->nextseg) {
-				strcat(statement, currseg->segment);
-				if (currseg->placeholder!=0)
-					strcat(statement, currseg->ph->quoted);
+			  strcat(statement, currseg->segment);
+			  if (currseg->placeholder!=0)
+				strcat(statement, currseg->ph->quoted);
 			}
 			statement[execsize] = '\0';
 

@@ -1,5 +1,5 @@
 # -*-cperl-*-
-#  $Id: Pg.pm,v 1.189 2006/03/19 21:10:49 turnstep Exp $
+#  $Id: Pg.pm,v 1.195 2006/04/05 15:22:42 turnstep Exp $
 #
 #  Copyright (c) 2002-2006 PostgreSQL Global Development Group
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -16,7 +16,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	our $VERSION = '1.47';
+	our $VERSION = '1.48';
 	
 	use DBI ();
 	use DynaLoader ();
@@ -41,14 +41,14 @@ use 5.006001;
 	Exporter::export_ok_tags('pg_types');
 	@EXPORT = qw($DBDPG_DEFAULT);
 
-	require_version DBI 1.38;
+	require_version DBI 1.45;
 
 	bootstrap DBD::Pg $VERSION;
 
-	$err = 0;		    # holds error code for DBI::err
-	$errstr = "";	  # holds error string for DBI::errstr
+	$err = 0;       # holds error code for DBI::err
+	$errstr = "";   # holds error string for DBI::errstr
 	$sqlstate = ""; # holds five character SQLSTATE code
-	$drh = undef;	  # holds driver handle once initialized
+	$drh = undef;   # holds driver handle once initialized
 
 	sub CLONE {
 		$drh = undef;
@@ -69,7 +69,7 @@ use 5.006001;
 			'Err' => \$DBD::Pg::err,
 			'Errstr' => \$DBD::Pg::errstr,
 			'State' => \$DBD::Pg::sqlstate,
-			'Attribution' => 'PostgreSQL DBD by Edmund Mergl',
+			'Attribution' => "DBD::Pg $VERSION by Greg Sabino Mullane and others",
 		});
 
 
@@ -294,7 +294,7 @@ use 5.006001;
 			if (@def > 1) {
 				my @pri = grep { $_->[1] } @def;
 				if (1 != @pri) {
-					$dbh->set_Err(1, qq{No suitable column found for last_insert_id of table "$table"\n});
+					$dbh->set_err(1, qq{No suitable column found for last_insert_id of table "$table"\n});
 				}
 				@def = @pri;
 			}
@@ -1447,7 +1447,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 1.47 of the DBD::Pg module
+This documents version 1.48 of the DBD::Pg module
 
 =head1 SYNOPSIS
 
@@ -1504,10 +1504,10 @@ variables and then it uses hard-coded defaults:
   port       PGPORT                5432
   dbname**   PGDATABASE            current userid
   username   PGUSER                current userid
-  password   PGPASSWORD            ""
-  options    PGOPTIONS             ""
-  service*   PGSERVICE             ""
-  sslmode*   PGSSLMODE             ""
+  password   PGPASSWORD            (none)
+  options    PGOPTIONS             (none)
+  service*   PGSERVICE             (none)
+  sslmode*   PGSSLMODE             (none)
 
 * Only for servers running version 7.4 or greater
 
@@ -1526,6 +1526,42 @@ for these two parameters DBI distinguishes between empty and undefined. If
 these parameters are undefined DBI substitutes the values of the environment
 variables C<DBI_USER> and C<DBI_PASS> if present.
 
+You can also conenct by using a service connection file, which is named 
+"pg_service.conf." The location of this file can be controlled by 
+setting the C<PGSYSCONFDIR> environment variable. To use one of the named 
+services within the file, set the name by using either the "service" parameter 
+or the environment variable C<PGSERVICE>. Note that when connecting this way, 
+only the minimum parameters should be used. For example, to connect to a 
+service named "zephyr", you could use:
+
+  $dbh = DBI->connect("dbi:Pg:service=zephyr", "", "");
+
+You could also set $ENV{PGSERVICE} to "zephyr" and connect like this:
+
+  $dbh = DBI->connect("dbi:Pg:", "", "");
+
+The format of the pg_service.conf file is simply a bracketed service 
+name, followed by one parameter per line in the format name=value.
+For example:
+
+  [zephyr]
+  dbname=winds
+  user=wisp
+  password=W$2Hc00YSgP
+  port=6543
+
+There are four valid arguments to the "sslmode" parameter, which controls 
+whether to use SSL to connect to the database:
+
+=over 4
+
+=item disable - SSL connections are never used
+=item allow - try non-SSL, then SSL
+=item prefer - try SSL, then non-SSL
+=item require - connect only with SSL
+
+=back
+
 =item B<available_drivers>
 
   @driver_names = DBI->available_drivers;
@@ -1539,7 +1575,7 @@ Implemented by DBI, no driver-specific impact.
 This driver supports this method. Note that the necessary database connection
 to the database "template1" will be made on the localhost without any user
 authentication. Other preferences can only be set with the environment
-variables C<PGHOST>, C<PGPORT>, C<DBI_USER>, and C<DBI_PASS>.
+variables C<PGHOST>, C<PGPORT>, C<DBI_USER>, C<DBI_PASS>, and C<PGSERVICE>.
 
 =back
 
@@ -2115,10 +2151,11 @@ C<pg_ping> method.
 
   $rc = $dbh->pg_ping;
 
-This is a Postgres-specific extension to the C<ping> command. This will check the 
+This is a DBD::Pg-specific extension to the C<ping> command. This will check the 
 validity of a database handle in exactly the same way as C<ping>, but instead of 
-returning a 0 for an invalid connection, it will return a negative number. The 
-positive numbers are documented at C<ping>, the negative ones indicate:
+returning a 0 for an invalid connection, it will return a negative number. So in 
+addition to returning the positive numbers documented for C<ping>, it may also 
+return the following:
 
   Value    Meaning
   --------------------------------------------------

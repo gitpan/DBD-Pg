@@ -1,13 +1,13 @@
-# $Id: Makefile.PL,v 1.54 2006/03/19 21:10:49 turnstep Exp $
+# $Id: Makefile.PL,v 1.58 2006/04/05 15:22:42 turnstep Exp $
 
 use ExtUtils::MakeMaker;
 use Config;
 use strict;
 use 5.006001;
-use DBI 1.38;
+use DBI 1.45;
 use DBI::DBD;
 
-my $VERSION = "1.47";
+my $VERSION = "1.48";
 
 my $lib;
 BEGIN {
@@ -125,13 +125,15 @@ my %opts =
 	 LIBS           => ["-L$POSTGRES_LIB -lpq"],
 	 AUTHOR         => 'http://gborg.postgresql.org/project/dbdpg/',
 	 ABSTRACT       => 'PostgreSQL database driver for the DBI module',
-	 PREREQ_PM      => { 'Test::Simple' => '0.17',  # Need Test::More.
-											 'Test::Harness' => '2.03', # Need TODO tests.
-									 },
+	 PREREQ_PM      => {
+						'DBI' => 1.45,
+						'Test::Simple' => '0.30',
+						'Test::Harness' => '2.03',
+					   },
 	 CCFLAGS        => $comp_opts,
 	 PERL_MALLOC_OK => 1,
 	 NEEDS_LINKING  => 1,
-	 clean          => { FILES => 'trace' },
+	 clean          => { FILES => 'trace Pg.xsi' },
 );
 
 if ($os eq 'hpux') {

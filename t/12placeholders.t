@@ -8,7 +8,7 @@ use strict;
 $|=1;
 
 if (defined $ENV{DBI_DSN}) {
-	plan tests => 17;
+	plan tests => 20;
 } else {
 	plan skip_all => 'Cannot run test unless DBI_DSN is defined. See the README file';
 }
@@ -20,6 +20,11 @@ ok( defined $dbh, 'Connect to database for placeholder testing');
 if (DBD::Pg::_pg_use_catalog($dbh)) {
 	$dbh->do("SET search_path TO " . $dbh->quote_identifier
 					 (exists $ENV{DBD_SCHEMA} ? $ENV{DBD_SCHEMA} : 'public'));
+}
+
+my ($pglibversion,$pgversion) = ($dbh->{pg_lib_version},$dbh->{pg_server_version});
+if ($pgversion >= 80100) {
+  $dbh->do("SET escape_string_warning = false");
 }
 
 # Make sure that quoting works properly.
@@ -119,8 +124,25 @@ $sth = $dbh->prepare("SELECT '\\'?'");
 eval {
 	$sth->execute();
 };
-ok(!$@, 'prepare with backslashes inside quotes works');
+ok( !$@, 'prepare with backslashes inside quotes works');
 $sth->finish();
+
+## Test do() with placeholders, both DML and non-DML
+eval {
+  $dbh->do(q{SET search_path TO ?}, undef, 'public');
+};
+ok( !$@, 'do() called with non-DML placeholder works');
+eval {
+  $dbh->do(q{SELECT ?::text}, undef, 'public');
+};
+ok( !$@, 'do() called with non-DML placeholder works');
+
+## Test a non-DML placeholder
+eval {
+  $sth = $dbh->prepare(qq{SET search_path TO ?});
+  $sth->execute('public');
+};
+ok( !$@, 'prepare/execute iwth non-DML placeholder works');
 
 $dbh->rollback();
 

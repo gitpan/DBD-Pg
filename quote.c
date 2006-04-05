@@ -1,6 +1,6 @@
 /*
 
-   $Id: quote.c,v 1.43 2006/02/26 18:50:05 turnstep Exp $
+   $Id: quote.c,v 1.47 2006/04/03 04:59:25 turnstep Exp $
 
    Copyright (c) 2003-2006 PostgreSQL Global Development Group
    
@@ -61,11 +61,11 @@ char * quote_string(string, len, retlen)
 }
 
 char * quote_bytea(string, len, retlen)
-		 char * string;
+		 unsigned char * string;
 		 STRLEN len;
 		 STRLEN * retlen;
 {
-	char * result;
+	unsigned char * result;
 	STRLEN oldlen = len;
 
 	result = string;
@@ -87,7 +87,7 @@ char * quote_bytea(string, len, retlen)
 		len--;
 	}
 	string = result;
-	New(0, result, 1+(*retlen), char);
+	New(0, result, 1+(*retlen), unsigned char);
 	*result++ = '\'';
 	len = oldlen;
 	while (len > 0) {
@@ -102,7 +102,7 @@ char * quote_bytea(string, len, retlen)
 			*result++ = '\\';
 		}
 		else if (*string < 0x20 || *string > 0x7e) {
-			(void) snprintf(result, 6, "\\\\%03o", *string++);
+			(void) snprintf((char *)result, 6, "\\\\%03o", *string++);
 			result += 5;
 		}
 		else {
@@ -113,11 +113,11 @@ char * quote_bytea(string, len, retlen)
 	*result++ = '\'';
 	*result = '\0';
 
-	return result - (*retlen);
+	return (char *)result - (*retlen);
 }
 
-char * quote_sql_binary( string, len, retlen)
-		 char *string;
+char * quote_sql_binary(string, len, retlen)
+		 unsigned char *string;
 		 STRLEN	len;
 		 STRLEN	*retlen;
 {
@@ -207,17 +207,17 @@ void dequote_string (string, retlen)
 
 
 void dequote_bytea(string, retlen)
-		 char *string;
+		 unsigned char *string;
 		 STRLEN *retlen;
 {
-	char *result;
+	unsigned char *result;
 
 	(*retlen) = 0;
 
 	if (NULL == string)
 			return;
 
-	New(0, result, strlen(string)+1, char);
+	New(0, result, strlen((char *)string)+1, unsigned char);
 
 	result = string;
 
@@ -246,7 +246,7 @@ void dequote_bytea(string, retlen)
 		}
 	}
 	result = '\0';
-	Renew(result, (*retlen), char);
+	Renew(result, (*retlen), unsigned char);
 	string = result - (*retlen);
 	return;
 }
@@ -259,7 +259,7 @@ void dequote_bytea(string, retlen)
 	to something that uses SQL_BINARY
  */
 void dequote_sql_binary (string, retlen)
-		 char *string;
+		 unsigned char *string;
 		 STRLEN *retlen;
 {
 	/* We are going to retun a dequote_bytea(), JIC */
