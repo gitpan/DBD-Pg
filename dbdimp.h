@@ -1,5 +1,5 @@
 /*
-	$Id: dbdimp.h,v 1.49 2006/02/13 03:02:06 turnstep Exp $
+	$Id: dbdimp.h,v 1.50 2006/04/27 03:34:51 turnstep Exp $
 	
 	Copyright (c) 2000-2006 PostgreSQL Global Development Group
 	Portions Copyright (c) 1997-2000 Edmund Mergl
@@ -56,6 +56,7 @@ struct ph_st {
 	STRLEN quotedlen;           /* length of the quoted value */
 	bool   referenced;          /* used for PREPARE AS construction */
 	bool   defaultval;          /* is it using a generic 'default' value? */
+	bool   iscurrent;           /* is it using a generic 'default' value? */
 	bool   isdefault;           /* Are we passing a literal 'DEFAULT'? */
 	sql_type_info_t* bind_type; /* type information for this placeholder */
 	struct ph_st *nextph;       /* more linked list goodness */
@@ -92,6 +93,7 @@ struct imp_sth_st {
 	bool   is_dml;           /* is this SELECT/INSERT/UPDATE/DELETE? */
 	bool   has_binary;       /* does it have one or more binary placeholders? */
 	bool   has_default;      /* does it have one or more 'DEFAULT' values? */
+	bool   has_current;      /* does it have one or more 'DEFAULT' values? */
 };
 
 /* Other (non-static) functions we have added to dbdimp.c */

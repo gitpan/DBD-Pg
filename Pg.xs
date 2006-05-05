@@ -1,5 +1,5 @@
 /*
-  $Id: Pg.xs,v 1.48 2006/01/30 03:12:50 turnstep Exp $
+  $Id: Pg.xs,v 1.50 2006/04/27 03:33:58 turnstep Exp $
 
   Copyright (c) 2000-2006 PostgreSQL Global Development Group
   Portions Copyright (c) 1997-2000 Edmund Mergl
@@ -29,24 +29,38 @@ constant(name=Nullch)
 	ALIAS:
 	PG_BOOL      = 16
 	PG_BYTEA     = 17
-	PG_CHAR      = 18
-	PG_INT8      = 20
+
 	PG_INT2      = 21
 	PG_INT4      = 23
-	PG_TEXT      = 25
-	PG_OID       = 26
+	PG_INT8      = 20
 	PG_FLOAT4    = 700
 	PG_FLOAT8    = 701
+
+	PG_BPCHAR    = 1042
+	PG_CHAR      = 18
+	PG_VARCHAR   = 1043
+	PG_TEXT      = 25
+
 	PG_ABSTIME   = 702
 	PG_RELTIME   = 703
 	PG_TINTERVAL = 704
-	PG_BPCHAR    = 1042
-	PG_VARCHAR   = 1043
 	PG_DATE      = 1082
 	PG_TIME      = 1083
 	PG_DATETIME  = 1184
 	PG_TIMESPAN  = 1186
 	PG_TIMESTAMP = 1296
+
+	PG_POINT     = 600
+	PG_LINE      = 628
+	PG_LSEG      = 601
+	PG_BOX       = 603
+	PG_PATH      = 602
+	PG_POLYGON   = 604
+	PG_CIRCLE    = 718
+
+	PG_OID       = 26
+	PG_TID       = 27
+
 	CODE:
 		if (0==ix) {
 			if (!name) {
@@ -256,13 +270,22 @@ pg_release(dbh,name)
 
 
 void
+lo_creat(dbh, mode)
+	SV * dbh
+	int mode
+	CODE:
+		unsigned int ret = pg_db_lo_creat(dbh, mode);
+		ST(0) = (ret > 0) ? sv_2mortal(newSVuv(ret)) : &sv_undef;
+
+
+void
 lo_open(dbh, lobjId, mode)
 	SV * dbh
 	unsigned int lobjId
 	int mode
 	CODE:
 		int ret = pg_db_lo_open(dbh, lobjId, mode);
-	ST(0) = (-1 != ret) ? sv_2mortal(newSViv(ret)) : &sv_undef;
+		ST(0) = (ret >= 0) ? sv_2mortal(newSViv(ret)) : &sv_undef;
 
 
 void
@@ -270,7 +293,7 @@ lo_close(dbh, fd)
 	SV * dbh
 	int fd
 	CODE:
-		ST(0) = (-1 != pg_db_lo_close(dbh, fd)) ? &sv_yes : &sv_no;
+		ST(0) = (pg_db_lo_close(dbh, fd) >= 0) ? &sv_yes : &sv_no;
 
 
 void
@@ -292,7 +315,7 @@ lo_read(dbh, fd, buf, len)
 			sv_setpvn(ST(2), buf, (unsigned)ret);
 			SvSETMAGIC(ST(2));
 		}
-		ST(0) = (-1 != ret) ? sv_2mortal(newSViv(ret)) : &sv_undef;
+		ST(0) = (ret >= 0) ? sv_2mortal(newSViv(ret)) : &sv_undef;
 
 
 void
@@ -303,7 +326,7 @@ lo_write(dbh, fd, buf, len)
 	size_t len
 	CODE:
 		int ret = pg_db_lo_write(dbh, fd, buf, len);
-		ST(0) = (-1 != ret) ? sv_2mortal(newSViv(ret)) : &sv_undef;
+		ST(0) = (ret >= 0) ? sv_2mortal(newSViv(ret)) : &sv_undef;
 
 
 void
@@ -314,16 +337,7 @@ lo_lseek(dbh, fd, offset, whence)
 	int whence
 	CODE:
 		int ret = pg_db_lo_lseek(dbh, fd, offset, whence);
-		ST(0) = (-1 != ret) ? sv_2mortal(newSViv(ret)) : &sv_undef;
-
-
-void
-lo_creat(dbh, mode)
-	SV * dbh
-	int mode
-	CODE:
-		int ret = pg_db_lo_creat(dbh, mode);
-		ST(0) = (-1 != ret) ? sv_2mortal(newSViv(ret)) : &sv_undef;
+		ST(0) = (ret >= 0) ? sv_2mortal(newSViv(ret)) : &sv_undef;
 
 
 void
@@ -332,7 +346,7 @@ lo_tell(dbh, fd)
 	int fd
 	CODE:
 		int ret = pg_db_lo_tell(dbh, fd);
-		ST(0) = (-1 != ret) ? sv_2mortal(newSViv(ret)) : &sv_undef;
+		ST(0) = (ret >= 0) ? sv_2mortal(newSViv(ret)) : &sv_undef;
 
 
 void
@@ -340,7 +354,7 @@ lo_unlink(dbh, lobjId)
 	SV * dbh
 	unsigned int lobjId
 	CODE:
-		ST(0) = (-1 != pg_db_lo_unlink(dbh, lobjId)) ? &sv_yes : &sv_no;
+		ST(0) = (pg_db_lo_unlink(dbh, lobjId) >= 1) ? &sv_yes : &sv_no;
 
 
 void
@@ -348,8 +362,9 @@ lo_import(dbh, filename)
 	SV * dbh
 	char * filename
 	CODE:
-		int ret = pg_db_lo_import(dbh, filename);
-		ST(0) = (-1 != ret) ? sv_2mortal(newSViv((int)ret)) : &sv_undef;
+		unsigned int ret = pg_db_lo_import(dbh, filename);
+		ST(0) = (ret > 0) ? sv_2mortal(newSVuv(ret)) : &sv_undef;
+
 
 void
 lo_export(dbh, lobjId, filename)
@@ -357,7 +372,7 @@ lo_export(dbh, lobjId, filename)
 	unsigned int lobjId
 	char * filename
 	CODE:
-		ST(0) = (-1 != pg_db_lo_export(dbh, lobjId, filename)) ? &sv_yes : &sv_no;
+		ST(0) = (pg_db_lo_export(dbh, lobjId, filename) >= 1) ? &sv_yes : &sv_no;
 
 
 void
@@ -374,6 +389,7 @@ putline(dbh, buf)
 	char * buf
 	CODE:
 		ST(0) = (pg_db_putline(dbh, buf)!=0) ? &sv_no : &sv_yes;
+
 
 void
 pg_getline(dbh, buf, len)

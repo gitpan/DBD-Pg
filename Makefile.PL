@@ -1,4 +1,4 @@
-# $Id: Makefile.PL,v 1.58 2006/04/05 15:22:42 turnstep Exp $
+# $Id: Makefile.PL,v 1.60 2006/05/05 15:50:13 turnstep Exp $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -7,7 +7,7 @@ use 5.006001;
 use DBI 1.45;
 use DBI::DBD;
 
-my $VERSION = "1.48";
+my $VERSION = "1.49";
 
 my $lib;
 BEGIN {
@@ -133,6 +133,7 @@ my %opts =
 	 CCFLAGS        => $comp_opts,
 	 PERL_MALLOC_OK => 1,
 	 NEEDS_LINKING  => 1,
+	 NO_META        => 1,
 	 clean          => { FILES => 'trace Pg.xsi' },
 );
 
