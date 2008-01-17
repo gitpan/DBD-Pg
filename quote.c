@@ -1,8 +1,8 @@
 /*
 
-   $Id: quote.c,v 1.50 2006/04/20 20:55:55 turnstep Exp $
+   $Id: quote.c 10520 2008-01-11 19:01:08Z turnstep $
 
-   Copyright (c) 2003-2006 PostgreSQL Global Development Group
+   Copyright (c) 2003-2008 Greg Sabino Mullane and others: see the Changes file
    
    You may distribute under the terms of either the GNU General Public
    License or the Artistic License, as specified in the Perl README file.
@@ -41,7 +41,7 @@ char * quote_string(string, len, retlen)
 			(*retlen)++;
 		}
 		(*retlen)++;
-		*string++;
+		string++;
 		len--;
 	}
 	string = result;
@@ -76,7 +76,7 @@ char * quote_geom(string, len, retlen)
 			&& *string != ',' && (*string < '0' || *string > '9'))
 			croak("Invalid input for geometric type");
 		(*retlen)++;
-		*string++;
+		string++;
 	}
 	string = result;
 	New(0, result, 1+(*retlen), char);
@@ -105,7 +105,7 @@ char * quote_path(string, len, retlen)
 			&& (*string < '0' || *string > '9'))
 				croak("Invalid input for geometric path type");
 		(*retlen)++;
-		*string++;
+		string++;
 	}
 	string = result;
 	New(0, result, 1+(*retlen), char);
@@ -134,7 +134,7 @@ char * quote_circle(string, len, retlen)
 			&& (*string < '0' || *string > '9'))
 				croak("Invalid input for geometric circle type");
 		(*retlen)++;
-		*string++;
+		string++;
 	}
 	string = result;
 	New(0, result, 1+(*retlen), char);
@@ -171,7 +171,7 @@ char * quote_bytea(string, len, retlen)
 		else {
 			(*retlen)++;
 		}
-		*string++;
+		string++;
 		len--;
 	}
 	string = result;
@@ -305,8 +305,6 @@ void dequote_bytea(string, retlen)
 	if (NULL == string)
 			return;
 
-	New(0, result, strlen((char *)string)+1, unsigned char);
-
 	result = string;
 
 	while (*string != '\0') {
@@ -326,7 +324,7 @@ void dequote_bytea(string, retlen)
 				}
 			else { /* Invalid escape sequence - ignore the backslash */
 				(*retlen)--;
-				*string++;
+				string++;
 			}
 		}
 		else {
@@ -334,7 +332,6 @@ void dequote_bytea(string, retlen)
 		}
 	}
 	result = '\0';
-	Renew(result, (*retlen), unsigned char);
 	string = result - (*retlen);
 	return;
 }

@@ -1,6 +1,6 @@
 package App::Info::Util;
 
-# $Id: Util.pm,v 1.3 2005/01/08 07:18:58 theory Exp $
+# $Id: Util.pm 7408 2005-01-08 07:18:58Z theory $
 
 =head1 NAME
 

@@ -1,6 +1,6 @@
 package App::Info::RDBMS::PostgreSQL;
 
-# $Id: PostgreSQL.pm,v 1.10 2005/01/08 07:18:58 theory Exp $
+# $Id: PostgreSQL.pm 7408 2005-01-08 07:18:58Z theory $
 
 =head1 NAME
 

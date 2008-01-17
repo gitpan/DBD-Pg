@@ -1,13 +1,12 @@
-# $Id: Makefile.PL,v 1.60 2006/05/05 15:50:13 turnstep Exp $
+# $Id: Makefile.PL 10380 2007-12-06 14:47:47Z turnstep $
 
 use ExtUtils::MakeMaker;
 use Config;
 use strict;
+use warnings;
 use 5.006001;
-use DBI 1.45;
-use DBI::DBD;
 
-my $VERSION = "1.49";
+my $VERSION = '2.0.0_1';
 
 my $lib;
 BEGIN {
@@ -27,7 +26,6 @@ if ($VERSION =~ /_/) {
 }
 
 print "Configuring DBD::Pg $VERSION\n";
-print "Remember to actually read the README file!\n";
 
 my $POSTGRES_INCLUDE;
 my $POSTGRES_LIB;
@@ -39,7 +37,7 @@ require App::Info::Handler::Prompt;
 my $p = App::Info::Handler::Prompt->new;
 my $pg = App::Info::RDBMS::PostgreSQL->new(on_unknown => $p);
 my ($major_ver, $minor_ver, $patch, $conf) = map {$pg->$_} qw/major_version minor_version patch_version configure/;
-my $serverversion = sprintf("%d%.02d%.02d", $major_ver, $minor_ver, $patch);
+my $serverversion = sprintf '%d%.02d%.02d', $major_ver, $minor_ver, $patch;
 my $defaultport = $conf =~ /with-pgport=(\d+)/ ? $1 : 5432;
 
 if ((!$ENV{POSTGRES_INCLUDE} or !$ENV{POSTGRES_LIB}) and !$ENV{POSTGRES_HOME}) {
@@ -54,35 +52,36 @@ if ((!$ENV{POSTGRES_INCLUDE} or !$ENV{POSTGRES_LIB}) and !$ENV{POSTGRES_HOME}) {
 }
 
 my $os = $^O;
-print "OS: $os\n";
 print "PostgreSQL version: $serverversion (default port: $defaultport)\n";
+my $showhome = $ENV{POSTGRES_HOME} || '(not set)';
+print "POSTGRES_HOME: $showhome\n";
+my $showinc = $ENV{POSTGRES_INCLUDE} || '(not set)';
+print "POSTGRES_INCLUDE: $showinc\n";
+my $showlib = $ENV{POSTGRES_LIB} || '(not set)';
+print "POSTGRES_LIB: $showlib\n";
+print "OS: $os\n";
 
-if ($serverversion < 1) {
-	die "Could not determine the PostgreSQL library version.\n".
+if ($serverversion < 11) {
+	print "Could not determine the PostgreSQL library version.\n".
 		"Please ensure that a valid path is given to the 'pg_config' command,\n".
 			"either manually or by setting the environment variables\n".
-				"POSTGRES_DATA, PSOTGRES_INCLUDE, and POSTGRES_LIB\n";
+				"POSTGRES_DATA, POSTGRES_INCLUDE, and POSTGRES_LIB\n";
+	exit 0;
 }
 
 if ($os =~ /Win32/) {
 	for ($POSTGRES_INCLUDE, $POSTGRES_LIB) {
-		$_ = qq{"$_"} if index($_,'"');
+		$_ = qq{"$_"} if index $_,'"';
 	}
 }
 
 ## Warn about older versions
-if ($serverversion < 70200) {
+if ($serverversion < 70400) {
 	print "\n****************\n";
-	print "WARNING! DBD::Pg no longer supports versions less than 7.2.\n";
-	print "It is highly recommended that you upgrade PostgreSQL to a newer version.\n";
-	print "If you continue, DBD::Pg may not work.\n";
+	print "WARNING! DBD::Pg no longer supports versions less than 7.4.\n";
+	print "You must upgrade PostgreSQL to a newer version.\n";
 	print "****************\n\n";
-}
-elsif ($serverversion < 70400) {
-	print "\n****************\n";
-	print "WARNING! Support for servers older than version 7.4 will soon end.\n";
-	print "It is highly recommended that you upgrade PostgreSQL to a newer version.\n";
-	print "****************\n\n";
+	exit 1;
 }
 
 my $dbi_arch_dir;
@@ -91,44 +90,52 @@ if ($os eq 'MSWin32') {
 }
 else {
 	{
+		eval {
+			require DBI::DBD;
+		};
+		if ($@) {
+			print "Could not load DBI::DBD - is the DBI module installed?\n";
+			exit 0;
+		}
 		local *STDOUT; ## Prevent duplicate debug info as WriteMakefile also calls this
-		$dbi_arch_dir = dbd_dbi_arch_dir();
-  }
+		$dbi_arch_dir = DBI::DBD::dbd_dbi_arch_dir();
+	}
 }
 
 my $comp_opts = $Config{q{ccflags}} . " -DPGLIBVERSION=$serverversion -DPGDEFPORT=$defaultport";
 
 if ($ENV{DBDPG_GCCDEBUG}) {
 	warn "Enabling many compiler options\n";
-	$comp_opts .= " -Wchar-subscripts -Wcomment";
-	$comp_opts .= " -Wformat=2"; ## does -Wformat,-Wformat-y2k,-Wformat-nonliteral,-Wformat-security
-	$comp_opts .= " -Wnonnull";
-	$comp_opts .= " -Wuninitialized -Winit-self"; ## latter requires the former
-	$comp_opts .= " -Wimplicit"; ## does -Wimplicit-int and -Wimplicit-function-declaration
-	$comp_opts .= " -Wmain -Wmissing-braces -Wparentheses -Wsequence-point -Wreturn-type -Wswitch -Wswitch-enum -Wtrigraphs";
-	$comp_opts .= " -Wunused"; ## contains -Wunused- function,label,parameter,variable,value
-	$comp_opts .= " -Wunknown-pragmas -Wstrict-aliasing";
-	$comp_opts .= " -Wall"; ## all of above, but we enumerate anyway
-	$comp_opts .= " -Wextra -Wdeclaration-after-statement -Wendif-labels -Wpointer-arith";
-	$comp_opts .= " -Wbad-function-cast -Wcast-qual -Wcast-align -Wconversion -Wsign-compare -Waggregate-return";
-	$comp_opts .= " -Wmissing-prototypes -Wmissing-declarations -Wmissing-format-attribute -Wpacked -Winline -Winvalid-pch";
-	$comp_opts .= " -Wdisabled-optimization"; ## Not terribly useful
-	$comp_opts .= " -Wnested-externs"; ## Does not like Perl__notused (from DBIXS;)
+	$comp_opts .= ' -Wchar-subscripts -Wcomment';
+	$comp_opts .= ' -Wformat=2'; ## does -Wformat,-Wformat-y2k,-Wformat-nonliteral,-Wformat-security
+	$comp_opts .= ' -Wnonnull';
+	$comp_opts .= ' -Wuninitialized -Winit-self'; ## latter requires the former
+	$comp_opts .= ' -Wimplicit'; ## does -Wimplicit-int and -Wimplicit-function-declaration
+	$comp_opts .= ' -Wmain -Wmissing-braces -Wparentheses -Wsequence-point -Wreturn-type -Wswitch -Wswitch-enum -Wtrigraphs';
+	$comp_opts .= ' -Wunused'; ## contains -Wunused- function,label,parameter,variable,value
+	$comp_opts .= ' -Wunknown-pragmas -Wstrict-aliasing';
+	$comp_opts .= ' -Wall'; ## all of above, but we enumerate anyway
+	$comp_opts .= ' -Wextra -Wdeclaration-after-statement -Wendif-labels -Wpointer-arith';
+	$comp_opts .= ' -Wbad-function-cast -Wcast-qual -Wcast-align -Wconversion -Wsign-compare -Waggregate-return';
+	$comp_opts .= ' -Wmissing-prototypes -Wmissing-declarations -Wmissing-format-attribute -Wpacked -Winline -Winvalid-pch';
+	$comp_opts .= ' -Wdisabled-optimization'; ## Not terribly useful
+	$comp_opts .= ' -Wnested-externs'; ## Does not like Perl__notused (from DBIXS;)
 }
 
-my %opts = 
+my %opts =
 	(
 	 NAME           => 'DBD::Pg',
 	 VERSION_FROM   => 'Pg.pm',
 	 INC            => "-I$POSTGRES_INCLUDE -I$dbi_arch_dir",
 	 OBJECT         => "Pg\$(OBJ_EXT) dbdimp\$(OBJ_EXT) quote\$(OBJ_EXT) types\$(OBJ_EXT)",
 	 LIBS           => ["-L$POSTGRES_LIB -lpq"],
-	 AUTHOR         => 'http://gborg.postgresql.org/project/dbdpg/',
+	 AUTHOR         => 'Greg Sabino Mullane',
 	 ABSTRACT       => 'PostgreSQL database driver for the DBI module',
 	 PREREQ_PM      => {
-						'DBI' => 1.45,
-						'Test::Simple' => '0.30',
-						'Test::Harness' => '2.03',
+						'ExtUtils::MakeMaker' => '6.11',
+						'DBI'                 => '1.45',
+						'Test::Simple'        => '0.61',
+						'Test::Harness'       => '2.03',
 					   },
 	 CCFLAGS        => $comp_opts,
 	 PERL_MALLOC_OK => 1,
@@ -155,15 +162,38 @@ if ($Config{dlsrc} =~ /dl_none/) {
 }
 
 sub MY::postamble {
-	my $string = &dbd_postamble;
+	no strict 'subs';
+	my $string = DBI::DBD::dbd_postamble();
+	use strict 'subs';
 	## Evil, evil stuff - but we really want to suppress the "duplicate function" message!
 	$string =~ s/dependancy/dependency/g; ## why not, while we are here
 	$string =~ s#(BASEEXT\)/g)#$1; s/^do\\\(/dontdo\\\(/#;
 	return $string;
 }
 
-WriteMakefile(%opts);
+my $output = WriteMakefile(%opts);
 
-exit(0);
+if (!exists $output->{EXTRALIBS} or $output->{EXTRALIBS} !~ /\-lpq/) {
+	warn qq{
+==========================================================
+
+WARNING! No libpq libraries were detected!
+
+You need to install the postgresql-libs package for your system, 
+or set the POSTGRES_LIB environment variable to the correct place.
+
+Removing $output->{MAKEFILE}
+
+===========================================================
+
+};
+
+	## Do not let make proceed
+	unlink $output->{MAKEFILE};
+
+	exit 1;
+}
+
+exit 0;
 
 # end of Makefile.PL

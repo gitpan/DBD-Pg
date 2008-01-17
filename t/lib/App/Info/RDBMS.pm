@@ -1,6 +1,6 @@
 package App::Info::RDBMS;
 
-# $Id: RDBMS.pm,v 1.2 2004/11/08 17:51:03 theory Exp $
+# $Id: RDBMS.pm 7356 2004-11-08 17:51:29Z theory $
 
 use strict;
 use App::Info;

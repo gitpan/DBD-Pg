@@ -1,7 +1,7 @@
 /*
-	$Id: dbdimp.h,v 1.50 2006/04/27 03:34:51 turnstep Exp $
+	$Id: dbdimp.h 10548 2008-01-14 04:54:09Z turnstep $
 	
-	Copyright (c) 2000-2006 PostgreSQL Global Development Group
+    Copyright (c) 2000-2008 Greg Sabino Mullane and others: see the Changes file
 	Portions Copyright (c) 1997-2000 Edmund Mergl
 	Portions Copyright (c) 1994-1997 Tim Bunce
 	
@@ -24,14 +24,19 @@ struct imp_dbh_st {
 	bool    pg_enable_utf8;    /* should we attempt to make utf8 strings? Set by user, default is 0 */
 	bool    prepare_now;       /* force immediate prepares, even with placeholders. Set by user, default is 0 */
 	bool    done_begin;        /* have we done a begin? (e.g. are we in a transaction?) */
+	bool    dollaronly;        /* Only consider $1, $2 ... as valid placeholders */
+	bool    expand_array;      /* Transform arrays from the db into Perl arrays? Default is 1 */
 
 	int     pg_protocol;       /* value of PQprotocolVersion, usually 0, 2, or 3 */
 	int     pg_server_version; /* Server version e.g. 80100 */
+	int     pid_number;        /* prefixed before prepare_number */
 	int     prepare_number;    /* internal prepared statement name modifier */
 	int     copystate;         /* 0=none PGRES_COPY_IN PGRES_COPY_OUT */
 	int     pg_errorlevel;     /* PQsetErrorVerbosity. Set by user, defaults to 1 */
 	int     server_prepare;    /* do we want to use PQexecPrepared? 0=no 1=yes 2=smart. Can be changed by user */
+	int     async_status;      /* 0=no async 1=async started -1=async has been cancelled */
 
+    imp_sth_t *async_sth;      /* current async statement handle */
 	AV      *savepoints;       /* list of savepoints */
 	PGconn  *conn;             /* connection structure */
 	char    *sqlstate;         /* from the last result */
@@ -58,6 +63,8 @@ struct ph_st {
 	bool   defaultval;          /* is it using a generic 'default' value? */
 	bool   iscurrent;           /* is it using a generic 'default' value? */
 	bool   isdefault;           /* Are we passing a literal 'DEFAULT'? */
+	bool   isinout;             /* Is this a bind_param_inout value? */
+	SV     *inout;              /* What variable we are updating via inout magic */
 	sql_type_info_t* bind_type; /* type information for this placeholder */
 	struct ph_st *nextph;       /* more linked list goodness */
 };
@@ -74,6 +81,8 @@ struct imp_sth_st {
 	int    numbound;         /* how many placeholders were explicitly bound by the client, not us */
 	int    cur_tuple;        /* current tuple being fetched */
 	int    rows;             /* number of affected rows */
+	int    async_flag;       /* async? 0=no 1=async 2=cancel 4=wait */
+	int    async_status;     /* 0=no async 1=async started -1=async has been cancelled */
 
 	STRLEN totalsize;        /* total string length of the statement (with no placeholders)*/
 
@@ -94,15 +103,21 @@ struct imp_sth_st {
 	bool   has_binary;       /* does it have one or more binary placeholders? */
 	bool   has_default;      /* does it have one or more 'DEFAULT' values? */
 	bool   has_current;      /* does it have one or more 'DEFAULT' values? */
+	bool   dollaronly;       /* Only use $1 as placeholders, allow all else */
+	bool   use_inout;        /* Any placeholders using inout? */
 };
 
 /* Other (non-static) functions we have added to dbdimp.c */
+
+int pg_db_getcopydata (SV *dbh, SV * dataline, int async);
+int pg_db_putcopydata (SV *dbh, SV * dataline);
+int pg_db_putcopyend (SV * dbh);
 
 int dbd_db_ping(SV *dbh);
 int dbd_db_getfd (SV *dbh, imp_dbh_t *imp_dbh);
 SV * dbd_db_pg_notifies (SV *dbh, imp_dbh_t *imp_dbh);
 int pg_db_putline (SV *dbh, const char *buffer);
-int pg_db_getline (SV *dbh, char *buffer, int length);
+int pg_db_getline (SV *dbh, SV * svbuf, int length);
 int pg_db_endcopy (SV * dbh);
 void pg_db_pg_server_trace (SV *dbh, FILE *fh);
 void pg_db_pg_server_untrace (SV *dbh);
@@ -119,7 +134,13 @@ int pg_db_lo_tell (SV *dbh, int fd);
 int pg_db_lo_unlink (SV *dbh, unsigned int lobjId);
 unsigned int pg_db_lo_import (SV *dbh, char *filename);
 int pg_db_lo_export (SV *dbh, unsigned int lobjId, char *filename);
-int pg_quickexec (SV *dbh, const char *sql);
+int pg_quickexec (SV *dbh, const char *sql, int asyncflag);
+int dbdpg_ready (SV *dbh, imp_dbh_t *imp_dbh);
+int dbdpg_result (SV *dbh, imp_dbh_t *imp_dbh);
+int dbdpg_cancel (SV *h, imp_dbh_t *imp_dbh);
+int dbdpg_cancel_sth (SV *sth, imp_sth_t *imp_sth);
+SV * pg_stringify_array(SV * input, const char * array_delim, int server_version);
+SV * pg_destringify_array(imp_dbh_t *imp_dbh, unsigned char * input, sql_type_info_t * coltype);
 
 /* end of dbdimp.h */
 

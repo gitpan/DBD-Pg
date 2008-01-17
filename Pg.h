@@ -1,7 +1,7 @@
 /*
-   $Id: Pg.h,v 1.14 2006/04/05 14:47:13 turnstep Exp $
+   $Id: Pg.h 10520 2008-01-11 19:01:08Z turnstep $
 
-   Copyright (c) 2000-2006 PostgreSQL Global Development Group
+   Copyright (c) 2000-2008 Greg Sabino Mullane and others: see the Changes file
    Copyright (c) 1997-2000 Edmund Mergl
    Portions Copyright (c) 1994-1997 Tim Bunce
 
@@ -17,6 +17,9 @@ static int errno;
 
 #define DBDPG_TRUE (bool)1
 #define DBDPG_FALSE (bool)0
+#define PG_ASYNC 1
+#define PG_OLDQUERY_CANCEL 2
+#define PG_OLDQUERY_WAIT 4
 
 #include "libpq-fe.h"
 

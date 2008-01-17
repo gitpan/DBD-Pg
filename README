@@ -1,14 +1,14 @@
 
 DBD::Pg  --  the DBI PostgreSQL interface for Perl
 
-# $Id: README,v 1.56 2006/04/09 17:54:14 turnstep Exp $
+# $Id: README 10575 2008-01-17 04:31:58Z turnstep $
 
 DESCRIPTION:
 ------------
 
-This is version 1.49 of DBD-Pg.  The web site for this interface is at:
+This is version 2.0.0 of DBD-Pg.  The web site for this interface is at:
 
-	http://gborg.postgresql.org/project/dbdpg/projdisplay.php
+	http://search.cpan.org/~dbdpg/
 
 For further information about DBI look at:
 
@@ -22,7 +22,7 @@ For information about PostgreSQL, visit:
 COPYRIGHT:
 ----------
 
-	Copyright (c) 2002-2006 PostgreSQL Global Development Group
+	Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
 	Portions Copyright (c) 2002 Jeffrey W. Baker
 	Portions Copyright (c) 1997-2001 Edmund Mergl
 	Portions Copyright (c) 1994-1997 Tim Bunce
@@ -43,7 +43,7 @@ IF YOU HAVE PROBLEMS OR COMMENTS:
 ---------------------------------
 
 Please send any problems and comments to 
-<dbdpg-general@gborg.postgresql.org>
+<dbd-pg@perl.org>
 
 Please include what OS you are using, and the version of Perl, 
 DBI, and DBD::Pg you are using. Also tell which version of 
@@ -68,13 +68,13 @@ REQUIREMENTS:
 
 	build, test, and install Perl 5         (at least 5.6.1)
 	build, test, and install the DBI module (at least 1.45)
-	build, test, and install PostgreSQL     (at least 7.3)
-	build, test, and install Test::Simple   (at least 0.30)
+	build, test, and install PostgreSQL     (at least 7.4)
+	build, test, and install Test::Simple   (at least 0.47)
 
 You must also have the pg_config executable installed (to check, type 
 "which pg_config" on unix-like systems). If pg_config is not available, 
 then you need to install the development package for PostgreSQL. For example 
-on Debian: apt-get install postgresql-dev; on RedHat: yum postgresql-devel. 
+on Debian: apt-get install postgresql-dev; on RedHat: yum install postgresql-devel. 
 This development package is needed even if you already have PostgreSQL up 
 and running since DBD::Pg uses it for its installation.
 
@@ -107,15 +107,15 @@ Do steps 1 to 3 as a normal user, not as root!
 TESTING:
 --------
 
-The tests are designed to connect to a live database.  The following
-environment variables must be set for the tests to run:
+The tests rely on being able to connect to a valid Postgres database. 
+The easiest way to ensure this is to set the following environment variables:
 
 	DBI_DSN=dbi:Pg:dbname=<database>
 	DBI_USER=<username>
 	DBI_PASS=<password>
 
-If you are running on a non-standard port, you must add it 
-to the DBI_DSN variable like this:
+If you are running on a non-standard port, you must set PGPORT or 
+add it to the DBI_DSN variable like this:
 
 	DBI_DSN='dbi:Pg:dbname=<database>;port=<port#>'
 
@@ -123,10 +123,6 @@ Put double quotes around the dbname if it has a semicolon
 or a space inside of it:
 
 	DBI_DSN='dbi:Pg:dbname="<data;base>"'
-
-The tests assume that a schema named "public" is available for 
-7.3 and greater servers. To override this, set the environment 
-variable DBD_SCHEMA to a valid schema before testing.
 
 You can increase the verbosity of the tests by setting the 
 environment variable TEST_VERBOSE. You can also enable tracing 

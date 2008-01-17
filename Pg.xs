@@ -1,7 +1,7 @@
 /*
-  $Id: Pg.xs,v 1.50 2006/04/27 03:33:58 turnstep Exp $
+  $Id: Pg.xs 10556 2008-01-15 22:01:52Z turnstep $
 
-  Copyright (c) 2000-2006 PostgreSQL Global Development Group
+  Copyright (c) 2000-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 1997-2000 Edmund Mergl
   Portions Copyright (c) 1994-1997 Tim Bunce
 
@@ -27,39 +27,143 @@ constant(name=Nullch)
 	char *name
 	PROTOTYPE:
 	ALIAS:
-	PG_BOOL      = 16
-	PG_BYTEA     = 17
+	PG_ABSTIME           = 702
+	PG_ABSTIMEARRAY      = 1023
+	PG_ACLITEM           = 1033
+	PG_ACLITEMARRAY      = 1034
+	PG_ANY               = 2276
+	PG_ANYARRAY          = 2277
+	PG_ANYELEMENT        = 2283
+	PG_ANYENUM           = 3500
+	PG_ANYNONARRAY       = 2776
+	PG_BIT               = 1560
+	PG_BITARRAY          = 1561
+	PG_BOOL              = 16
+	PG_BOOLARRAY         = 1000
+	PG_BOX               = 603
+	PG_BOXARRAY          = 1020
+	PG_BPCHAR            = 1042
+	PG_BPCHARARRAY       = 1014
+	PG_BYTEA             = 17
+	PG_BYTEAARRAY        = 1001
+	PG_CHAR              = 18
+	PG_CHARARRAY         = 1002
+	PG_CID               = 29
+	PG_CIDARRAY          = 1012
+	PG_CIDR              = 650
+	PG_CIDRARRAY         = 651
+	PG_CIRCLE            = 718
+	PG_CIRCLEARRAY       = 719
+	PG_CSTRING           = 2275
+	PG_CSTRINGARRAY      = 1263
+	PG_DATE              = 1082
+	PG_DATEARRAY         = 1182
+	PG_FLOAT4            = 700
+	PG_FLOAT4ARRAY       = 1021
+	PG_FLOAT8            = 701
+	PG_FLOAT8ARRAY       = 1022
+	PG_GTSVECTOR         = 3642
+	PG_GTSVECTORARRAY    = 3644
+	PG_INET              = 869
+	PG_INETARRAY         = 1041
+	PG_INT2              = 21
+	PG_INT2ARRAY         = 1005
+	PG_INT2VECTOR        = 22
+	PG_INT2VECTORARRAY   = 1006
+	PG_INT4              = 23
+	PG_INT4ARRAY         = 1007
+	PG_INT8              = 20
+	PG_INT8ARRAY         = 1016
+	PG_INTERNAL          = 2281
+	PG_INTERVAL          = 1186
+	PG_INTERVALARRAY     = 1187
+	PG_LANGUAGE_HANDLER  = 2280
+	PG_LINE              = 628
+	PG_LINEARRAY         = 629
+	PG_LSEG              = 601
+	PG_LSEGARRAY         = 1018
+	PG_MACADDR           = 829
+	PG_MACADDRARRAY      = 1040
+	PG_MONEY             = 790
+	PG_MONEYARRAY        = 791
+	PG_NAME              = 19
+	PG_NAMEARRAY         = 1003
+	PG_NUMERIC           = 1700
+	PG_NUMERICARRAY      = 1231
+	PG_OID               = 26
+	PG_OIDARRAY          = 1028
+	PG_OIDVECTOR         = 30
+	PG_OIDVECTORARRAY    = 1013
+	PG_OPAQUE            = 2282
+	PG_PATH              = 602
+	PG_PATHARRAY         = 1019
+	PG_PG_ATTRIBUTE      = 75
+	PG_PG_CLASS          = 83
+	PG_PG_PROC           = 81
+	PG_PG_TYPE           = 71
+	PG_POINT             = 600
+	PG_POINTARRAY        = 1017
+	PG_POLYGON           = 604
+	PG_POLYGONARRAY      = 1027
+	PG_RECORD            = 2249
+	PG_REFCURSOR         = 1790
+	PG_REFCURSORARRAY    = 2201
+	PG_REGCLASS          = 2205
+	PG_REGCLASSARRAY     = 2210
+	PG_REGCONFIG         = 3734
+	PG_REGCONFIGARRAY    = 3735
+	PG_REGDICTIONARY     = 3769
+	PG_REGDICTIONARYARRAY = 3770
+	PG_REGOPER           = 2203
+	PG_REGOPERARRAY      = 2208
+	PG_REGOPERATOR       = 2204
+	PG_REGOPERATORARRAY  = 2209
+	PG_REGPROC           = 24
+	PG_REGPROCARRAY      = 1008
+	PG_REGPROCEDURE      = 2202
+	PG_REGPROCEDUREARRAY = 2207
+	PG_REGTYPE           = 2206
+	PG_REGTYPEARRAY      = 2211
+	PG_RELTIME           = 703
+	PG_RELTIMEARRAY      = 1024
+	PG_SMGR              = 210
+	PG_TEXT              = 25
+	PG_TEXTARRAY         = 1009
+	PG_TID               = 27
+	PG_TIDARRAY          = 1010
+	PG_TIME              = 1083
+	PG_TIMEARRAY         = 1183
+	PG_TIMESTAMP         = 1114
+	PG_TIMESTAMPARRAY    = 1115
+	PG_TIMESTAMPTZ       = 1184
+	PG_TIMESTAMPTZARRAY  = 1185
+	PG_TIMETZ            = 1266
+	PG_TIMETZARRAY       = 1270
+	PG_TINTERVAL         = 704
+	PG_TINTERVALARRAY    = 1025
+	PG_TRIGGER           = 2279
+	PG_TSQUERY           = 3615
+	PG_TSQUERYARRAY      = 3645
+	PG_TSVECTOR          = 3614
+	PG_TSVECTORARRAY     = 3643
+	PG_TXID_SNAPSHOT     = 2970
+	PG_TXID_SNAPSHOTARRAY = 2949
+	PG_UNKNOWN           = 705
+	PG_UUID              = 2950
+	PG_UUIDARRAY         = 2951
+	PG_VARBIT            = 1562
+	PG_VARBITARRAY       = 1563
+	PG_VARCHAR           = 1043
+	PG_VARCHARARRAY      = 1015
+	PG_VOID              = 2278
+	PG_XID               = 28
+	PG_XIDARRAY          = 1011
+	PG_XML               = 142
+	PG_XMLARRAY          = 143
 
-	PG_INT2      = 21
-	PG_INT4      = 23
-	PG_INT8      = 20
-	PG_FLOAT4    = 700
-	PG_FLOAT8    = 701
-
-	PG_BPCHAR    = 1042
-	PG_CHAR      = 18
-	PG_VARCHAR   = 1043
-	PG_TEXT      = 25
-
-	PG_ABSTIME   = 702
-	PG_RELTIME   = 703
-	PG_TINTERVAL = 704
-	PG_DATE      = 1082
-	PG_TIME      = 1083
-	PG_DATETIME  = 1184
-	PG_TIMESPAN  = 1186
-	PG_TIMESTAMP = 1296
-
-	PG_POINT     = 600
-	PG_LINE      = 628
-	PG_LSEG      = 601
-	PG_BOX       = 603
-	PG_PATH      = 602
-	PG_POLYGON   = 604
-	PG_CIRCLE    = 718
-
-	PG_OID       = 26
-	PG_TID       = 27
+	PG_ASYNC             = 1
+	PG_OLDQUERY_CANCEL   = 2
+	PG_OLDQUERY_WAIT     = 4
 
 	CODE:
 		if (0==ix) {
@@ -85,29 +189,36 @@ MODULE=DBD::Pg	PACKAGE = DBD::Pg::db
 
 SV*
 quote(dbh, to_quote_sv, type_sv=Nullsv)
+    SV* dbh
 	SV* to_quote_sv
 	SV* type_sv
 
 	CODE:
 	{
+		D_imp_dbh(dbh);
 		sql_type_info_t *type_info;
 		char *to_quote;
 		char *quoted;
 		STRLEN len=0;
 		STRLEN retlen=0;
 		SV **svp;
-			
+
 		SvGETMAGIC(to_quote_sv);
 
 		/* Null is always returned as "NULL", so we can ignore any type given */
 		if (!SvOK(to_quote_sv)) {
 			RETVAL = newSVpvn("NULL", 4);
 		}
+		else if (SvROK(to_quote_sv)) {
+			if (SvTYPE(SvRV(to_quote_sv)) != SVt_PVAV)
+				croak("Cannot quote a reference");
+			RETVAL = pg_stringify_array(to_quote_sv, ",", imp_dbh->pg_server_version);
+		}
 		else {
 
-			/* If no valid type is given, we default to varchar */
+			/* If no valid type is given, we default to unknown */
 			if (!type_sv || !SvOK(type_sv)) {
-				type_info = pg_type_data(VARCHAROID);
+				type_info = pg_type_data(PG_UNKNOWN);
 			}
 			else {
 				if SvMAGICAL(type_sv)
@@ -127,8 +238,8 @@ quote(dbh, to_quote_sv, type_sv=Nullsv)
 					}
 				}
 				if (!type_info) {
-					warn("Unknown type %" IVdf ", defaulting to VARCHAR",SvIV(type_sv));
-					type_info = pg_type_data(VARCHAROID);
+					warn("Unknown type %" IVdf ", defaulting to UNKNOWN",SvIV(type_sv));
+					type_info = pg_type_data(PG_UNKNOWN);
 				}
 			}
 
@@ -171,27 +282,34 @@ void do(dbh, statement, attr=Nullsv, ...)
 	CODE:
 	{
 		int retval;
+		int asyncflag = 0;
+		SV **svp;
 
 		if (strlen(statement)<1) { /* Corner case */
 			XST_mUNDEF(0);
 			return;
 		}
 
-		if (items < 3) { /* No attribs, no arguments */
-			/* Quick run via PQexec */
-			retval = pg_quickexec(dbh, statement);
+		if (attr && SvROK(attr) && SvTYPE(SvRV(attr)) == SVt_PVHV) {
+			if ((svp = hv_fetch((HV*)SvRV(attr),"pg_async", 8, 0)) != NULL) {
+			   asyncflag = SvIV(*svp);
+			}
 		}
-		else { /* The normal, slower way */
+		if (items < 4) { /* No bind arguments */
+			/* Quick run via PQexec */
+			retval = pg_quickexec(dbh, statement, asyncflag);
+		}
+		else { /* We've got bind arguments, so we do the whole prepare/execute route */
 			imp_sth_t *imp_sth;
 			SV * sth = dbixst_bounce_method("prepare", 3);
 			if (!SvROK(sth))
 				XSRETURN_UNDEF;
 			imp_sth = (imp_sth_t*)(DBIh_COM(sth));
-			if (items > 3)
-				if (!dbdxst_bind_params(sth, imp_sth, items-2, ax+2))
-					XSRETURN_UNDEF;
+			if (!dbdxst_bind_params(sth, imp_sth, items-2, ax+2))
+				XSRETURN_UNDEF;
 			imp_sth->server_prepare = 1;
 			imp_sth->onetime = 1; /* Overrides the above at actual PQexec* decision time */
+			imp_sth->async_flag = asyncflag;
 			retval = dbd_st_execute(sth, imp_sth);
 		}
 
@@ -406,11 +524,47 @@ pg_getline(dbh, buf, len)
 		buf = SvGROW(bufsv, 3);
 		if (len > 3)
 			buf = SvGROW(bufsv, len);
-		ret = pg_db_getline(dbh, buf, (int)len);
+		ret = pg_db_getline(dbh, bufsv, (int)len);
 		sv_setpv((SV*)ST(1), buf);
 		SvSETMAGIC(ST(1));
 		ST(0) = (-1 != ret) ? &sv_yes : &sv_no;
 
+I32
+pg_getcopydata(dbh, dataline)
+	INPUT:
+		SV * dbh
+	CODE:
+		RETVAL = pg_db_getcopydata(dbh, SvROK(ST(1)) ? SvRV(ST(1)) : ST(1), 0);
+	OUTPUT:
+		RETVAL
+
+I32
+pg_getcopydata_async(dbh, dataline)
+	INPUT:
+		SV * dbh
+	CODE:
+		RETVAL = pg_db_getcopydata(dbh, SvROK(ST(1)) ? SvRV(ST(1)) : ST(1), 1);
+	OUTPUT:
+		RETVAL
+
+I32
+pg_putcopydata(dbh, dataline)
+	INPUT:
+		SV * dbh
+		SV * dataline
+	CODE:
+		RETVAL = pg_db_putcopydata(dbh, dataline);
+	OUTPUT:
+		RETVAL
+
+I32
+pg_putcopyend(dbh)
+	INPUT:
+		SV * dbh
+	CODE:
+		RETVAL = pg_db_putcopyend(dbh);
+	OUTPUT:
+		RETVAL
 
 void
 getline(dbh, buf, len)
@@ -426,7 +580,7 @@ getline(dbh, buf, len)
 		buf = SvGROW(bufsv, 3);
 		if (len > 3)
 			buf = SvGROW(bufsv, len);
-		ret = pg_db_getline(dbh, buf, (int)len);
+		ret = pg_db_getline(dbh, bufsv, (int)len);
 		sv_setpv((SV*)ST(1), buf);
 		SvSETMAGIC(ST(1));
 		ST(0) = (-1 != ret) ? &sv_yes : &sv_no;
@@ -467,6 +621,38 @@ _pg_type_info (type_sv=Nullsv)
 		ST(0) = sv_2mortal( newSViv( type_num ) );
 	}
 
+#if PGLIBVERSION >= 80000
+
+void
+pg_result(dbh)
+	SV * dbh
+	CODE:
+		int ret;
+		D_imp_dbh(dbh);
+		ret = dbdpg_result(dbh, imp_dbh);
+		if (ret == 0)
+			XST_mPV(0, "0E0");
+		else if (ret < -1)
+			XST_mUNDEF(0);
+		else
+			XST_mIV(0, ret);
+
+void
+pg_ready(dbh)
+	SV *dbh
+	CODE:
+		D_imp_dbh(dbh);
+		ST(0) = sv_2mortal(newSViv(dbdpg_ready(dbh, imp_dbh)));
+
+void
+pg_cancel(dbh)
+	SV *dbh
+	CODE:
+	D_imp_dbh(dbh);
+	ST(0) = dbdpg_cancel(dbh, imp_dbh) ? &sv_yes : &sv_no;
+
+#endif
+
 # -- end of DBD::Pg::db
 
 
@@ -481,5 +667,40 @@ SV *sth;
 		D_imp_sth(sth);
 		D_imp_dbh_from_sth;
 		ST(0) = strEQ(imp_dbh->sqlstate,"00000") ? &sv_no : newSVpv(imp_dbh->sqlstate, 5);
+
+void
+pg_ready(sth)
+	SV *sth
+	CODE:
+		D_imp_sth(sth);
+		D_imp_dbh_from_sth;
+		ST(0) = sv_2mortal(newSViv(dbdpg_ready(sth, imp_dbh)));
+
+void
+pg_cancel(sth)
+	SV *sth
+	CODE:
+	D_imp_sth(sth);
+	ST(0) = dbdpg_cancel_sth(sth, imp_sth) ? &sv_yes : &sv_no;
+
+#if PGLIBVERSION >= 80000
+
+void
+pg_result(sth)
+	SV * sth
+	CODE:
+		int ret;
+		D_imp_sth(sth);
+		D_imp_dbh_from_sth;
+		ret = dbdpg_result(sth, imp_dbh);
+		if (ret == 0)
+			XST_mPV(0, "0E0");
+		else if (ret < -1)
+			XST_mUNDEF(0);
+		else
+			XST_mIV(0, ret);
+
+#endif
+
 
 # end of Pg.xs
