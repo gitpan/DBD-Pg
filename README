@@ -1,12 +1,21 @@
+===================================================
+WARNING!!
+
+THIS IS A TEST VERSION (2.0.0_2) AND SHOULD BE USED 
+FOR TESTING PURPOSES ONLY. PLEASE USE A STABLE 
+VERSION (no underscore) BY VISITING:
+
+http://search.cpan.org/~dbdpg/
+===================================================
 
 DBD::Pg  --  the DBI PostgreSQL interface for Perl
 
-# $Id: README 10575 2008-01-17 04:31:58Z turnstep $
+# $Id: README 10594 2008-01-17 22:43:17Z turnstep $
 
 DESCRIPTION:
 ------------
 
-This is version 2.0.0 of DBD-Pg.  The web site for this interface is at:
+This is version 2.0.0_2 of DBD-Pg.  The web site for this interface is at:
 
 	http://search.cpan.org/~dbdpg/
 
@@ -133,6 +142,9 @@ result in extremely verbose output.
 When reporting test failures, please use TEST_VERBOSE=1, do *not* 
 set DBD_TRACE unless requested, and send only the relevant sections.
 
+If the first connection fails and DBI_DSN is not set, the tests may 
+attempt to connect as the user 'postgres' to the database 'postgres'. 
+See the t/dbdpg_test_setup.pl for the exact process.
 
 TROUBLESHOOTING:
 ----------------

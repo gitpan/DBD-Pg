@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 10564 2008-01-16 02:00:18Z turnstep $
+  $Id: dbdimp.c 10585 2008-01-17 16:47:29Z turnstep $
 
   Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -3047,7 +3047,16 @@ AV * dbd_st_fetch (SV * sth, imp_sth_t * imp_sth)
 		ph_t *currph;
 		for (i=0,currph=imp_sth->ph; NULL != currph && i < num_fields; currph=currph->nextph,i++) {
 			if (currph->isinout) {
-				sv_copypv(currph->inout, AvARRAY(av)[i]);
+				/* When we have Perl 5.7.3 or better as a pre-req:
+				   sv_copypv(currph->inout, AvARRAY(av)[i]);
+				*/
+				STRLEN len;
+				const char * const s = SvPV_const(AvARRAY(av)[i],len);
+				sv_setpvn(currph->inout, s, len);
+				if (SvUTF8(AvARRAY(av)[i]))
+					SvUTF8_on(currph->inout);
+				else
+					SvUTF8_off(currph->inout);
 			}
 		}
 	}

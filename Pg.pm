@@ -1,5 +1,5 @@
 # -*-cperl-*-
-#  $Id: Pg.pm 10561 2008-01-16 00:21:50Z turnstep $
+#  $Id: Pg.pm 10594 2008-01-17 22:43:17Z turnstep $
 #
 #  Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	our $VERSION = '2.0.0_1';;
+	our $VERSION = '2.0.0_2';;
 
 	use DBI ();
 	use DynaLoader ();
@@ -1618,7 +1618,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.0.0 of the DBD::Pg module
+This documents version 2.0.0_2 of the DBD::Pg module
 
 =head1 SYNOPSIS
 
@@ -2277,19 +2277,19 @@ instances are replaced at once. Examples:
 
 Not legal:
 
-  $SQL = "SELECT count(*) FROM pg_class WHERE relpages > $2";
+  $SQL = 'SELECT count(*) FROM pg_class WHERE relpages > $2';
 
-  $SQL = "SELECT count(*) FROM pg_class WHERE relpages BETWEEN $1 AND $3";
+  $SQL = 'SELECT count(*) FROM pg_class WHERE relpages BETWEEN $1 AND $3';
 
 Legal:
 
-  $SQL = "SELECT count(*) FROM pg_class WHERE relpages > $1";
+  $SQL = 'SELECT count(*) FROM pg_class WHERE relpages > $1';
 
-  $SQL = "SELECT count(*) FROM pg_class WHERE relpages BETWEEN $1 AND $2";
+  $SQL = 'SELECT count(*) FROM pg_class WHERE relpages BETWEEN $1 AND $2';
 
-  $SQL = "SELECT count(*) FROM pg_class WHERE relpages BETWEEN $1 AND $2 AND reltuples > $1";
+  $SQL = 'SELECT count(*) FROM pg_class WHERE relpages BETWEEN $1 AND $2 AND reltuples > $1';
 
-  $SQL = "SELECT count(*) FROM pg_class WHERE relpages > $1 AND reltuples > $1";
+  $SQL = 'SELECT count(*) FROM pg_class WHERE relpages > $1 AND reltuples > $1';
 
 In the final statement above, DBI thinks there is only one placeholder, so this
 statement will replace both placeholders:
@@ -2913,10 +2913,10 @@ Examples:
 
   ## Set the second placeholder's value and data type.
   ## We don't send a third argument, so the default "varchar" is used
-  $sth->bind_param("$2", "Zool");
+  $sth->bind_param('$2', "Zool");
 
   ## We realize that the wrong data type was set above, so we change it:
-  $sth->bind_param("$1", 234, { pg_type => SQL_INTEGER });
+  $sth->bind_param('$1', 234, { pg_type => SQL_INTEGER });
 
   ## We also got the wrong value, so we change that as well.
   ## Because the data type is sticky, we don't need to change it
