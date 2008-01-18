@@ -1,5 +1,5 @@
 # -*-cperl-*-
-#  $Id: Pg.pm 10594 2008-01-17 22:43:17Z turnstep $
+#  $Id: Pg.pm 10597 2008-01-18 03:01:04Z turnstep $
 #
 #  Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	our $VERSION = '2.0.0_2';;
+	our $VERSION = '2.0.0_3';;
 
 	use DBI ();
 	use DynaLoader ();
@@ -1618,7 +1618,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.0.0_2 of the DBD::Pg module
+This documents version 2.0.0_3 of the DBD::Pg module
 
 =head1 SYNOPSIS
 
@@ -2855,8 +2855,6 @@ To use PostgreSQL data types, import the list of values like this:
 
   use DBD::Pg qw(:pg_types);
 
-(The one exception is PG_BYTEA which is exported by default, and does 
-not require the above import before being used).
 You can then set the data types by setting the value of the C<pg_type>
 key in the hash passed to C<bind_param>. 
 The current list of Postgres data types exported is:
