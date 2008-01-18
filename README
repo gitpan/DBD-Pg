@@ -1,7 +1,7 @@
 ===================================================
 WARNING!!
 
-THIS IS A TEST VERSION (2.0.0_3) AND SHOULD BE USED 
+THIS IS A TEST VERSION (2.0.0_4) AND SHOULD BE USED 
 FOR TESTING PURPOSES ONLY. PLEASE USE A STABLE 
 VERSION (no underscore) BY VISITING:
 
@@ -10,12 +10,12 @@ http://search.cpan.org/~dbdpg/
 
 DBD::Pg  --  the DBI PostgreSQL interface for Perl
 
-# $Id: README 10594 2008-01-17 22:43:17Z turnstep $
+# $Id: README 10608 2008-01-18 15:50:09Z turnstep $
 
 DESCRIPTION:
 ------------
 
-This is version 2.0.0_3 of DBD-Pg.  The web site for this interface is at:
+This is version 2.0.0_4 of DBD-Pg.  The web site for this interface is at:
 
 	http://search.cpan.org/~dbdpg/
 
