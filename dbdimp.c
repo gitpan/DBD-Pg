@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 10599 2008-01-18 03:57:49Z turnstep $
+  $Id: dbdimp.c 10616 2008-01-19 18:58:09Z turnstep $
 
   Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -257,6 +257,7 @@ int dbd_db_login (SV * dbh, imp_dbh_t * imp_dbh, char * dbname, char * uid, char
 
 
 /* ================================================================== */
+
 /* Database specific error handling. */
 static void pg_error (SV * h, ExecStatusType error_num, char * error_msg)
 {
@@ -313,14 +314,11 @@ static ExecStatusType _result(imp_dbh_t * imp_dbh, const char * sql)
 	ExecStatusType status;
 
 	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: _result (%s)\n", sql);
+		(void)PerlIO_printf(DBILOGFP, "dbdpg: _result sql=(%s)\n", sql);
 
 	result = PQexec(imp_dbh->conn, sql);
 
 	status = _sqlstate(imp_dbh, result);
-
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: _result status is %d\n", status);
 
 	PQclear(result);
 
@@ -336,14 +334,11 @@ static ExecStatusType _sqlstate(imp_dbh_t * imp_dbh, PGresult * result)
 	ExecStatusType status   = PGRES_FATAL_ERROR; /* until proven otherwise */
 	bool           stateset = DBDPG_FALSE;
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: _sqlstate\n");
-
 	if (result)
 		status = PQresultStatus(result);
 
-	if (dbis->debug >= 6)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: _sqlstate status is %d\n", status);
+	if (dbis->debug >= 5)
+		(void)PerlIO_printf(DBILOGFP, "dbdpg: _sqlstate PQresultStatus returned %d\n", status);
 
 	/*
 	  Because PQresultErrorField may not work completely when an error occurs, and 
@@ -377,8 +372,12 @@ static ExecStatusType _sqlstate(imp_dbh_t * imp_dbh, PGresult * result)
 		}
 	}
 
-	if (dbis->debug >= 6)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: _sqlstate set to %s\n", imp_dbh->sqlstate);
+	if (dbis->debug >= 5)
+		(void)PerlIO_printf(DBILOGFP, "dbdpg: _sqlstate set imp_dbh->sqlstate to %s\n", imp_dbh->sqlstate);
+
+	if (dbis->debug >= 7)
+		(void)PerlIO_printf(DBILOGFP, "dbdpg: _sqlstate txn_status is %d\n", dbd_db_txn_status(imp_dbh));
+
 
 	return status;
 
@@ -424,10 +423,6 @@ int dbd_db_ping (SV * dbh)
 /* ================================================================== */
 static PGTransactionStatusType dbd_db_txn_status (imp_dbh_t * imp_dbh)
 {
-
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: dbd_db_txn_status\n");
-
 	return PQtransactionStatus(imp_dbh->conn);
 
 } /* end of dbd_db_txn_status */
@@ -455,6 +450,9 @@ static int dbd_db_rollback_commit (SV * dbh, imp_dbh_t * imp_dbh, char * action)
 	   ask it for the status directly and double-check things */
 
 	tstatus = dbd_db_txn_status(imp_dbh);
+	if (dbis->debug >= 4)
+		(void)PerlIO_printf(DBILOGFP, "dbdpg: dbd_db_%s txn_status is %d\n", action, tstatus);
+
 	if (PQTRANS_IDLE == tstatus) { /* Not in a transaction */
 		if (imp_dbh->done_begin) {
 			/* We think we ARE in a transaction but we really are not */
@@ -1278,18 +1276,6 @@ int dbd_st_prepare (SV * sth, imp_sth_t * imp_sth, char * statement, SV * attrib
 		Copy(statement-newsize, imp_sth->firstword, newsize, char);
 		imp_sth->firstword[newsize] = '\0';
 
-		/* Try to prevent transaction commands unless "pg_direct" is set */
-		if (0==strcasecmp(imp_sth->firstword, "BEGIN") ||
-			0==strcasecmp(imp_sth->firstword, "END") ||
-			0==strcasecmp(imp_sth->firstword, "ABORT") ||
-			0==strcasecmp(imp_sth->firstword, "COMMIT") ||
-			0==strcasecmp(imp_sth->firstword, "ROLLBACK") ||
-			0==strcasecmp(imp_sth->firstword, "RELEASE") ||
-			0==strcasecmp(imp_sth->firstword, "SAVEPOINT")
-			) {
-			if (!imp_sth->direct)
-				croak ("Please use DBI functions for transaction handling");
-		}
 		/* Note whether this is preparable DML */
 		if (0==strcasecmp(imp_sth->firstword, "SELECT") ||
 			0==strcasecmp(imp_sth->firstword, "INSERT") ||
@@ -2433,13 +2419,14 @@ SV * pg_destringify_array(imp_dbh_t *imp_dbh, unsigned char * input, sql_type_in
 int pg_quickexec (SV * dbh, const char * sql, int asyncflag)
 {
 	D_imp_dbh(dbh);
-	PGresult *     result;
-	ExecStatusType status = PGRES_FATAL_ERROR; /* Assume the worst */
-	char *         cmdStatus = NULL;
-	int            rows = 0;
+	PGresult *              result;
+	ExecStatusType          status = PGRES_FATAL_ERROR; /* Assume the worst */
+	PGTransactionStatusType txn_status;
+	char *                  cmdStatus = NULL;
+	int                     rows = 0;
 
 	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: dbdpg_quickexec query=(%s) async=(%d) async_status=(%d)\n",
+		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_quickexec begins; query=(%s) async=(%d) async_status=(%d)\n",
 							sql, asyncflag, imp_dbh->async_status);
 
 	if (NULL == imp_dbh->conn)
@@ -2527,6 +2514,21 @@ int pg_quickexec (SV * dbh, const char * sql, int asyncflag)
 		PQclear(result);
 	else
 		return -2;
+
+	txn_status = PQtransactionStatus(imp_dbh->conn);
+
+	if (PQTRANS_IDLE == txn_status) {
+		imp_dbh->done_begin = DBDPG_FALSE;
+		imp_dbh->copystate=0;
+		/* If begin_work has been called, turn AutoCommit back on and BegunWork off */
+		if (DBIc_has(imp_dbh, DBIcf_BegunWork)!=0) {
+			DBIc_set(imp_dbh, DBIcf_AutoCommit, 1);
+			DBIc_set(imp_dbh, DBIcf_BegunWork, 0);
+		}
+	}
+
+	if (dbis->debug >= 4)
+		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_quickexec ends; rows=%d, txn_status=%d\n", rows, txn_status);
 
 	return rows;
 
@@ -2890,7 +2892,15 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 			ret = atoi(PQcmdTuples(imp_sth->result));
 		}
 		else {
-			/* We assume that no rows are affected for successful commands (e.g. ALTER TABLE) */
+			/* No rows affected, but check for change of state */
+			if (PQTRANS_IDLE == PQtransactionStatus(imp_dbh->conn)) {
+				imp_dbh->done_begin = DBDPG_FALSE;
+				/* If begin_work has been called, turn AutoCommit back on and BegunWork off */
+				if (DBIc_has(imp_dbh, DBIcf_BegunWork)!=0) {
+					DBIc_set(imp_dbh, DBIcf_AutoCommit, 1);
+					DBIc_set(imp_dbh, DBIcf_BegunWork, 0);
+				}
+			}
 			return 0;
 		}
 	}
@@ -3146,7 +3156,7 @@ static int dbd_st_deallocate_statement (SV * sth, imp_sth_t * imp_sth)
 	/* What is our status? */
 	tstatus = dbd_db_txn_status(imp_dbh);
 	if (dbis->debug >= 5)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: Transaction status is %d\n", tstatus);
+		(void)PerlIO_printf(DBILOGFP, "dbdpg: txn_status is %d\n", tstatus);
 
 	/* If we are in a failed transaction, rollback before deallocating */
 	if (PQTRANS_INERROR == tstatus) {

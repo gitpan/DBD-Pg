@@ -1,7 +1,7 @@
 ===================================================
 WARNING!!
 
-THIS IS A TEST VERSION (2.0.0_4) AND SHOULD BE USED 
+THIS IS A TEST VERSION (2.0.0_5) AND SHOULD BE USED 
 FOR TESTING PURPOSES ONLY. PLEASE USE A STABLE 
 VERSION (no underscore) BY VISITING:
 
@@ -10,7 +10,7 @@ http://search.cpan.org/~dbdpg/
 
 DBD::Pg  --  the DBI PostgreSQL interface for Perl
 
-# $Id: README 10608 2008-01-18 15:50:09Z turnstep $
+# $Id: README 10618 2008-01-19 19:04:18Z turnstep $
 
 DESCRIPTION:
 ------------
