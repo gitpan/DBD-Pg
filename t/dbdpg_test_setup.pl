@@ -68,7 +68,10 @@ sub connect_database {
 				$helpconnect += 2;
 			}
 			$helpconnect += 4;
-			$ENV{DBI_USER} = $^O =~ /bsd/ ? '_postgresql' : 'postgres';
+			$ENV{DBI_USER} = $^O =~
+				/openbsd/ ? '_postgresql'
+				: $^O =~ /bsd/i ? 'pgsql'
+				: 'postgres';
 			eval {
 				$dbh = DBI->connect($ENV{DBI_DSN}, $ENV{DBI_USER}, $ENV{DBI_PASS},
 									{RaiseError => 1, PrintError => 0, AutoCommit => 1});
@@ -94,7 +97,10 @@ sub connect_database {
 	else {
 		cleanup_database($dbh);
 
-		$dbh->do("CREATE SCHEMA $S");
+		eval {
+			$dbh->do("CREATE SCHEMA $S");
+		};
+		$@ and return $helpconnect, $@, undef;
 		$dbh->do("SET search_path TO $S");
 		$dbh->do('CREATE SEQUENCE dbd_pg_testsequence');
 		# If you add columns to this, please do not use reserved words!
@@ -163,6 +169,8 @@ sub cleanup_database {
 
 	my $dbh = shift;
 	my $type = shift || 0;
+
+	return unless defined $dbh and ref $dbh and $dbh->ping();
 
 	## For now, we always run and disregard the type
 

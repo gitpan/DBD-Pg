@@ -1,6 +1,6 @@
 /*
 
-   $Id: quote.c 10520 2008-01-11 19:01:08Z turnstep $
+   $Id: quote.c 10635 2008-01-22 05:53:49Z turnstep $
 
    Copyright (c) 2003-2008 Greg Sabino Mullane and others: see the Changes file
    
@@ -331,7 +331,7 @@ void dequote_bytea(string, retlen)
 			*result++ = *string++;
 		}
 	}
-	result = '\0';
+	*result = '\0';
 	string = result - (*retlen);
 	return;
 }

@@ -15,7 +15,7 @@ select(($|=1,select(STDERR),$|=1)[1]);
 my $dbh = connect_database();
 
 if (defined $dbh) {
-	plan tests => 213;
+	plan tests => 227;
 }
 else {
 	plan skip_all => 'Connection to database failed, cannot continue testing';
@@ -445,6 +445,69 @@ for my $test (split /\n\n/ => $array_tests_out) {
 		is((Dumper $result), (Dumper $expected), "Array test $msg : $input");
 	}
 
+}
+
+## Check utf-8 in and out of the database
+
+SKIP: {
+	eval { require Encode; };
+	skip 'Encode module is needed for unicode tests', 5 if $@;
+
+	local $dbh->{pg_enable_utf8} = 1;
+	my $utf8_str = chr(0x100).'dam'; # LATIN CAPITAL LETTER A WITH MACRON
+    ok Encode::is_utf8( $utf8_str ), 'String should be UTF-8';
+
+	my $quoted = $dbh->quote($utf8_str);
+	is( $quoted, qq{'$utf8_str'}, 'quote() handles utf8' );
+    ok Encode::is_utf8( $quoted ), 'Quoted string should be UTF-8';
+	$quoted = $dbh->quote([$utf8_str, $utf8_str]);
+	is( $quoted, qq!{"$utf8_str","$utf8_str"}!, 'quote() handles utf8 inside array' );
+    ok Encode::is_utf8( $quoted ), 'Quoted array of strings should be UTF-8';
+
+	$dbh->do('DELETE FROM dbd_pg_test');
+	$SQL = qq{INSERT INTO dbd_pg_test (id, testarray, val) VALUES (1, '$quoted', 'one')};
+	eval {
+		$dbh->do($SQL);
+	};
+	is($@, q{}, 'Inserting utf-8 into an array via quoted do() works');
+
+	$SQL = q{SELECT id, testarray, val FROM dbd_pg_test WHERE id = 1};
+	$sth = $dbh->prepare($SQL);
+	$sth->execute();
+	$result = $sth->fetchall_arrayref()->[0];
+	my $t = q{Retreiving an array containing utf-8 works};
+	my $expected = [1,[$utf8_str,$utf8_str],'one'];
+	is_deeply($result, $expected, $t);
+    ok Encode::is_utf8( $result->[1][0] ), 'Selected string should be UTF-8';
+    ok Encode::is_utf8( $result->[1][1] ), 'Selected string should be UTF-8';
+
+	$dbh->do('DELETE FROM dbd_pg_test');
+	$SQL = q{INSERT INTO dbd_pg_test (id, testarray, val) VALUES (?, ?, 'one')};
+	$sth = $dbh->prepare($SQL);
+	eval {
+		$sth->execute(1,['Bob',$utf8_str]);
+	};
+	is($@, q{}, 'Inserting utf-8 into an array via prepare and arrayref works');
+
+	$SQL = q{SELECT id, testarray, val FROM dbd_pg_test WHERE id = 1};
+	$sth = $dbh->prepare($SQL);
+	$sth->execute();
+	$result = $sth->fetchall_arrayref()->[0];
+	$t = q{Retreiving an array containing utf-8 works};
+	$expected = [1,['Bob',$utf8_str],'one'];
+	is_deeply($result, $expected, $t);
+    ok !Encode::is_utf8( $result->[1][0] ), 'Selected ASCII string should not be UTF-8';
+    ok Encode::is_utf8( $result->[1][1] ), 'Selected string should be UTF-8';
+
+	$dbh->do('DELETE FROM dbd_pg_test');
+	$SQL = q{INSERT INTO dbd_pg_test (id, testarray, val) VALUES (1, '{"noutfhere"}', 'one')};
+	$dbh->do($SQL);
+	$SQL = q{SELECT testarray FROM dbd_pg_test WHERE id = 1};
+	$sth = $dbh->prepare($SQL);
+	$sth->execute();
+	$result = $sth->fetchall_arrayref()->[0][0];
+	ok( !Encode::is_utf8($result), 'Non utf-8 inside an array is not return as utf-8');
+	$sth->finish();
 }
 
 cleanup_database($dbh,'test');
