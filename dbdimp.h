@@ -1,5 +1,5 @@
 /*
-	$Id: dbdimp.h 10548 2008-01-14 04:54:09Z turnstep $
+	$Id: dbdimp.h 10659 2008-01-28 21:07:52Z turnstep $
 	
     Copyright (c) 2000-2008 Greg Sabino Mullane and others: see the Changes file
 	Portions Copyright (c) 1997-2000 Edmund Mergl
@@ -122,7 +122,7 @@ int pg_db_endcopy (SV * dbh);
 void pg_db_pg_server_trace (SV *dbh, FILE *fh);
 void pg_db_pg_server_untrace (SV *dbh);
 int pg_db_savepoint (SV *dbh, imp_dbh_t *imp_dbh, char * savepoint);
-int pg_db_rollback_to (SV *dbh, imp_dbh_t *imp_dbh, char * savepoint);
+int pg_db_rollback_to (SV *dbh, imp_dbh_t *imp_dbh, const char * savepoint);
 int pg_db_release (SV *dbh, imp_dbh_t *imp_dbh, char * savepoint);
 unsigned int pg_db_lo_creat (SV *dbh, int mode);
 int pg_db_lo_open (SV *dbh, unsigned int lobjId, int mode);
