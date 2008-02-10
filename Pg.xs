@@ -1,5 +1,5 @@
 /*
-  $Id: Pg.xs 10659 2008-01-28 21:07:52Z turnstep $
+  $Id: Pg.xs 10694 2008-02-05 14:11:29Z turnstep $
 
   Copyright (c) 2000-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 1997-2000 Edmund Mergl
@@ -203,7 +203,7 @@ quote(dbh, to_quote_sv, type_sv=Nullsv)
 		if (!SvOK(to_quote_sv)) {
 			RETVAL = newSVpvn("NULL", 4);
 		}
-		else if (SvROK(to_quote_sv)) {
+		else if (SvROK(to_quote_sv) && !SvAMAGIC(to_quote_sv)) {
 			if (SvTYPE(SvRV(to_quote_sv)) != SVt_PVAV)
 				croak("Cannot quote a reference");
 			RETVAL = pg_stringify_array(to_quote_sv, ",", imp_dbh->pg_server_version);
@@ -252,7 +252,7 @@ quote(dbh, to_quote_sv, type_sv=Nullsv)
 			/* Need good debugging here */
 			quoted = type_info->quote(to_quote, len, &retlen);
 			RETVAL = newSVpvn(quoted, retlen);
-			if (SvUTF8(to_quote_sv))
+			if (SvUTF8(to_quote_sv)) /* What about overloaded objects? */
 				SvUTF8_on(RETVAL);
 			Safefree (quoted);
 		}

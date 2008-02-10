@@ -23,7 +23,7 @@ select(($|=1,select(STDERR),$|=1)[1]);
 my $dbh = connect_database();
 
 if (defined $dbh) {
-	plan tests => 207;
+	plan tests => 216;
 }
 else {
 	plan skip_all => 'Connection to database failed, cannot continue testing';
@@ -34,7 +34,7 @@ ok( defined $dbh, 'Connect to database for database handle method testing');
 my ($pglibversion,$pgversion) = ($dbh->{pg_lib_version},$dbh->{pg_server_version});
 my ($schema,$schema2) = ('dbd_pg_testschema', 'dbd_pg_testschema2');
 my ($table1,$table2,$table3) = ('dbd_pg_test1','dbd_pg_test2','dbd_pg_test3');
-my ($sequence2,$sequence3) = ('dbd_pg_testsequence2','dbd_pg_testsequence3');
+my ($sequence2,$sequence3,$sequence4) = ('dbd_pg_testsequence2','dbd_pg_testsequence3','dbd_pg_testsequence4');
 
 my ($SQL, $sth, $result, @result, $expected, $warning, $rows, $t);
 
@@ -65,30 +65,37 @@ $dbh->commit();
 eval {
 	$dbh->last_insert_id(undef,undef,undef,undef);
 };
-ok( $@, 'DB handle method "last_insert_id" fails when no arguments are given');
+like( $@, qr{last_insert_id.*least}, 'DB handle method "last_insert_id" fails when no arguments are given');
 
 eval {
 	$dbh->last_insert_id(undef,undef,undef,undef,{sequence=>'dbd_pg_nonexistentsequence_test'});
 };
-ok( $@, 'DB handle method "last_insert_id" fails when given a non-existent sequence');
+like( $@, qr{ERROR}, 'DB handle method "last_insert_id" fails when given a non-existent sequence');
 $dbh->rollback();
 
 eval {
 	$dbh->last_insert_id(undef,undef,'dbd_pg_nonexistenttable_test',undef);
 };
-ok( $@, 'DB handle method "last_insert_id" fails when given a non-existent table');
+like( $@, qr{not find}, 'DB handle method "last_insert_id" fails when given a non-existent table');
 $dbh->rollback();
 
 eval {
 	$dbh->last_insert_id(undef,undef,'dbd_pg_nonexistenttable_test',undef,[]);
 };
-ok($@, 'DB handle method "last_insert_id" fails when given an arrayref as last argument');
+like($@, qr{last_insert_id.*hashref}, 'DB handle method "last_insert_id" fails when given an arrayref as last argument');
 $dbh->rollback();
 
 eval {
 	$dbh->last_insert_id(undef,undef,'dbd_pg_test',undef,{sequence=>''});
 };
-is($@, q{}, 'DB handle method "last_insert_id" fails when given an empty sequence argument');
+is($@, q{}, 'DB handle method "last_insert_id" works when given an empty sequence argument');
+$dbh->rollback();
+
+$dbh->do('CREATE TEMP TABLE dbd_pg_test_temp(a int)');
+eval {
+	$dbh->last_insert_id(undef,undef,'dbd_pg_test_temp',undef);
+};
+like($@, qr{last_insert_id}, 'DB handle method "last_insert_id" fails when given a table with no primary key');
 $dbh->rollback();
 
 eval {
@@ -120,8 +127,10 @@ is($@, q{}, 'DB handle method "last_insert_id" works when called twice (cached) 
 
 $dbh->do("CREATE SCHEMA $schema2");
 $dbh->do("CREATE SEQUENCE $schema2.$sequence2");
+$dbh->do("CREATE SEQUENCE $schema.$sequence4");
 $dbh->{Warn} = 0;
 $dbh->do("CREATE TABLE $schema2.$table2(a INTEGER PRIMARY KEY NOT NULL DEFAULT nextval('$schema2.$sequence2'))");
+$dbh->do("CREATE TABLE $schema.$table2(a INTEGER PRIMARY KEY NOT NULL DEFAULT nextval('$schema.$sequence4'))");
 $dbh->{Warn} = 1;
 $dbh->do("INSERT INTO $schema2.$table2 DEFAULT VALUES");
 eval {
@@ -129,9 +138,47 @@ eval {
 };
 is ($@, q{}, 'DB handle method "last_insert_id" works when called with a schema not in the search path');
 $dbh->commit();
-$t=q{ DB handle method "last_insert_id" fails when the sequence name is changed and cache is used};
+
+$t=q{ Make sure we respect search_path when using last_insert_id with no cache (first table)};
+$dbh->do("SELECT setval('$schema2.$sequence2',200)");
+$dbh->do("SELECT setval('$schema.$sequence4',100)");
+$dbh->do("SET search_path = $schema,$schema2,public");
+eval {
+	$result = $dbh->last_insert_id(undef,undef,$table2,undef,{pg_cache=>0});
+};
+is($@, q{}, $t);
+is($result, 100, $t);
+$dbh->commit();
+
+$t=q{ Make sure we respect search_path when using last_insert_id with no cache (second table)};
+$dbh->do("SET search_path = $schema2,$schema,public");
+eval {
+	$result = $dbh->last_insert_id(undef,undef,$table2,undef,{pg_cache=>0});
+};
+is($@, q{}, $t);
+is($result, 200, $t);
+
+$t=q{ Setting cache on (explicit) returns last result, even if search_path changes};
+$dbh->do("SET search_path = $schema,$schema2,public");
+eval {
+	$result = $dbh->last_insert_id(undef,undef,$table2,undef,{pg_cache=>1});
+};
+is($@, q{}, $t);
+is($result, 200, $t);
+
+$t=q{ Setting cache on (implicit) returns last result, even if search_path changes};
+$dbh->do("SET search_path = $schema,$schema2,public");
+eval {
+	$result = $dbh->last_insert_id(undef,undef,$table2,undef);
+};
+is($@, q{}, $t);
+is($result, 200, $t);
+
+$dbh->commit();
 
 SKIP: {
+	$t=q{ DB handle method "last_insert_id" fails when the sequence name is changed and cache is used};
+
 	if ($pgversion < 80300) {
 		$dbh->do("DROP TABLE $schema2.$table2");
 		$dbh->do("DROP SEQUENCE $schema2.$sequence2");
@@ -157,6 +204,8 @@ SKIP: {
 
 
 $dbh->do("DROP SCHEMA $schema2");
+$dbh->do("DROP TABLE $table2");
+$dbh->do("DROP SEQUENCE $sequence4");
 
 #
 # Test of the "selectrow_array" database handle method

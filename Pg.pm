@@ -1,5 +1,5 @@
 # -*-cperl-*-
-#  $Id: Pg.pm 10660 2008-01-28 21:10:12Z turnstep $
+#  $Id: Pg.pm 10714 2008-02-10 19:06:15Z turnstep $
 #
 #  Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	our $VERSION = '2.0.0_9';;
+	our $VERSION = '2.0.0';;
 
 	use DBI ();
 	use DynaLoader ();
@@ -248,7 +248,8 @@ use 5.006001;
 				$attr = {sequence => $attr};
 			}
 			elsif (ref $attr ne 'HASH') {
-				return $dbh->set_err(1, "last_insert_id must be passed a hashref as the final argument");
+				$dbh->set_err(1, "last_insert_id must be passed a hashref as the final argument");
+				return undef;
 			}
 			## Named sequence overrides any table or schema settings
 			if (exists $attr->{sequence} and length $attr->{sequence}) {
@@ -265,10 +266,10 @@ use 5.006001;
 		elsif (! defined $sequence) {
 			## At this point, we must have a valid table name
 			if (! length $table) {
-				return $dbh->set_err(1, "last_insert_id needs at least a sequence or table name");
+				$dbh->set_err(1, "last_insert_id needs at least a sequence or table name");
+				return undef;
 			}
 			my @args = ($table);
-
 			## Make sure the table in question exists and grab its oid
 			my ($schemajoin,$schemawhere) = ('','');
 			if (length $schema) {
@@ -277,13 +278,17 @@ use 5.006001;
 				push @args, $schema;
 			}
 			$SQL = "SELECT c.oid FROM pg_catalog.pg_class c $schemajoin\n WHERE relname = ?$schemawhere";
+			if (! length $schema) {
+				$SQL .= " AND pg_catalog.pg_table_is_visible(c.oid)";
+			}
 			$sth = $dbh->prepare_cached($SQL);
 			$count = $sth->execute(@args);
 			if (!defined $count or $count eq '0E0') {
 				$sth->finish();
 				my $message = qq{Could not find the table "$table"};
 				length $schema and $message .= qq{ in the schema "$schema"};
-				return $dbh->set_err(1, $message);
+				$dbh->set_err(1, $message);
+				return undef;
 			}
 			my $oid = $sth->fetchall_arrayref()->[0][0];
 			$oid =~ /(\d+)/ or die qq{OID was not numeric?!?\n};
@@ -300,6 +305,7 @@ use 5.006001;
 			if (!defined $count or $count eq '0E0') {
 				$sth->finish();
 				$dbh->set_err(1, qq{No suitable column found for last_insert_id of table "$table"});
+				return undef;
 			}
 			my $info = $sth->fetchall_arrayref();
 
@@ -327,7 +333,8 @@ use 5.006001;
 		}
 
 		$sth = $dbh->prepare_cached("SELECT currval(?)");
-		$sth->execute($sequence);
+		$count = $sth->execute($sequence);
+		return undef if ! defined $count;
 		return $sth->fetchall_arrayref()->[0][0];
 
 	} ## end of last_insert_id
@@ -1618,7 +1625,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.0.0_9 of the DBD::Pg module
+This documents version 2.0.0 of the DBD::Pg module
 
 =head1 SYNOPSIS
 
@@ -1800,6 +1807,12 @@ L<http://www.postgresql.org/docs/current/static/errcodes-appendix.html>
 
 Note that these codes are part of the SQL standard and only a small number 
 of them will be used by PostgreSQL.
+
+Common ones to note:
+
+  00000 Successful completion
+  25P01 No active SQL transaction
+  25P02 In failed SQL transaction
 
 =item B<trace>
 
@@ -2304,11 +2317,11 @@ syntax is supported by DBD::Pg, its use is highly discouraged.
 The different types of placeholders cannot be mixed within a statement, but you may
 use different ones for each statement handle you have. Again, this is not encouraged.
 
-
-If your queries use operators that contain question marks (some of the native 
-Postgres geometric operators for example) you can tell DBD::Pg to ignore any 
-non-dollar sign placeholders by setting the "pg_placeholder_dollaronly" 
-attribute at either the database handle or the statement handle level. Examples:
+If your queries use operators that contain question marks (e.g. some of the native 
+Postgres geometric operators) or array slices (e.g. data[100:300]), you can tell 
+DBD::Pg to ignore any non-dollar sign placeholders by setting the 
+"pg_placeholder_dollaronly" attribute at either the database handle or the statement 
+handle level. Examples:
 
   $dbh->{pg_placeholder_dollaronly} = 1;
   $sth = $dbh->prepare(q{SELECT * FROM mytable WHERE lseg1 ?# lseg2 AND name = $1});

@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 10659 2008-01-28 21:07:52Z turnstep $
+  $Id: dbdimp.c 10697 2008-02-06 17:20:09Z turnstep $
 
   Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -322,6 +322,9 @@ static ExecStatusType _result(imp_dbh_t * imp_dbh, const char * sql)
 
 	if (dbis->debug >= 4)
 		(void)PerlIO_printf(DBILOGFP, "dbdpg: _result sql=(%s)\n", sql);
+
+	if (dbis->debug & 256)
+		(void)PerlIO_printf(DBILOGFP, "%s\n\n", sql);
 
 	result = PQexec(imp_dbh->conn, sql);
 
@@ -1937,6 +1940,9 @@ static int dbd_st_prepare_statement (SV * sth, imp_sth_t * imp_sth)
 				paramTypes[x++] = (currph->defaultval) ? 0 : (Oid)currph->bind_type->type_id;
 			}
 		}
+		if (dbis->debug & 256)
+			(void)PerlIO_printf(DBILOGFP, "PREPARE %s AS %s\n\n", imp_sth->prepare_name, statement);
+
 		result = PQprepare(imp_dbh->conn, imp_sth->prepare_name, statement, params, paramTypes);
 		Safefree(paramTypes);
 		if (result) {
@@ -2344,7 +2350,7 @@ SV * pg_destringify_array(imp_dbh_t *imp_dbh, unsigned char * input, sql_type_in
 	string[0] = '\0';
 
 	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_stringify_array: -->%s<-- quote=%c\n", input, coltype->array_delimeter);
+		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_destringify_array: -->%s<-- quote=%c\n", input, coltype->array_delimeter);
 
 	av = currentav = topav = newAV();
 
@@ -2495,6 +2501,9 @@ int pg_quickexec (SV * dbh, const char * sql, int asyncflag)
 	  if (dbis->debug >= 4) (void)PerlIO_printf(DBILOGFP, "dbdpg: PQsendQuery worked\n");
 	  return 0;
 	}
+
+	if (dbis->debug & 256)
+		(void)PerlIO_printf(DBILOGFP, "%s\n\n", sql);
 
 	result = PQexec(imp_dbh->conn, sql);
 	status = _sqlstate(imp_dbh, result);
@@ -2756,6 +2765,14 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 		
 		if (dbis->debug >= 5)
 			(void)PerlIO_printf(DBILOGFP, "dbdpg: Running PQexecPrepared with (%s)\n", imp_sth->prepare_name);
+		if (dbis->debug & 256) {
+			(void)PerlIO_printf(DBILOGFP, "EXECUTE %s (\n", imp_sth->prepare_name);
+			for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,x++) {
+				(void)PerlIO_printf(DBILOGFP, "$%d: %s\n", x+1, paramValues[x]);
+			}
+			(void)PerlIO_printf(DBILOGFP, ");\n\n");
+		}
+
 		if (imp_sth->async_flag & PG_ASYNC)
 		  ret = PQsendQueryPrepared
 			(imp_dbh->conn, imp_sth->prepare_name, imp_sth->numphs, paramValues, paramLengths, paramFormats, 0);
@@ -2822,6 +2839,14 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 				}
 			}
 
+			if (dbis->debug & 256) {
+				(void)PerlIO_printf(DBILOGFP, "EXECUTE %s (\n", statement);
+				for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,x++) {
+					(void)PerlIO_printf(DBILOGFP, "$%d: %s\n", x+1, paramValues[x]);
+				}
+				(void)PerlIO_printf(DBILOGFP, ");\n\n");
+			}
+
 			if (dbis->debug >= 5)
 				(void)PerlIO_printf(DBILOGFP, "dbdpg: Running PQexecParams with (%s)\n", statement);
 			if (imp_sth->async_flag & PG_ASYNC)
@@ -2859,6 +2884,9 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 				(void)PerlIO_printf(DBILOGFP, "dbdpg: Running %s with (%s)\n", 
 									imp_sth->async_flag & 1 ? "PQsendQuery" : "PQexec", statement);
 			
+			if (dbis->debug & 256)
+				(void)PerlIO_printf(DBILOGFP, "%s\n\n", statement);
+
 			if (imp_sth->async_flag & PG_ASYNC)
 			  ret = PQsendQuery(imp_dbh->conn, statement);
 			else
@@ -4097,7 +4125,6 @@ int dbdpg_cancel(SV *h, imp_dbh_t *imp_dbh)
 	if (0 == strncmp(imp_dbh->sqlstate, "57014", 5)) {
 	  if (dbis->debug >= 0) { (void)PerlIO_printf(DBILOGFP, "dbdpg: Rolling back after cancelled query\n"); }
 	  dbd_db_rollback(h, imp_dbh);
-	  //	  PQexec(imp_dbh->conn, "ROLLBACK");
 	  return DBDPG_TRUE;
 	}
 

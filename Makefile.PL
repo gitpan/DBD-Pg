@@ -1,4 +1,4 @@
-# $Id: Makefile.PL 10660 2008-01-28 21:10:12Z turnstep $
+# $Id: Makefile.PL 10714 2008-02-10 19:06:15Z turnstep $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -6,7 +6,7 @@ use strict;
 use warnings;
 use 5.006001;
 
-my $VERSION = '2.0.0_9';
+my $VERSION = '2.0.0';
 
 my $lib;
 BEGIN {
