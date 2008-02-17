@@ -318,6 +318,13 @@ like( $result, qr/^\d+$/, q{DB handle attribute "pg_socket" returns a value});
 $result = $dbh->{pg_pid};
 like( $result, qr/^\d+$/, q{DB handle attribute "pg_pid" returns a value});
 
+## If Encode is available, we will insert some non-ASCII into the test table
+## Since this will fail with client encodings such as BIG5, we force UTF8
+my $old_encoding = $dbh->selectall_arrayref('SHOW client_encoding')->[0][0];
+if ($old_encoding ne 'UTF8') {
+	$dbh->do(q{SET NAMES 'UTF8'});
+}
+
 # Attempt to test whether or not we can get unicode out of the database
 SKIP: {
 	eval { require Encode; };
@@ -454,22 +461,17 @@ is_deeply( $attrib, $expected, q{Statement handle attribute "ParamValues" works 
 # Test of the statement handle attribute "ParamTypes"
 #
 
-SKIP: {
-	skip 'DBI must be at least version 1.49 to test the DB handle attribute "ParamTypes"', 2
-		if $DBI::VERSION < 1.49;
-
-	$sth = $dbh->prepare('SELECT id FROM dbd_pg_test WHERE id=? AND val=? AND lii=?');
-	$sth->bind_param(1, 1, SQL_INTEGER);
-	$sth->bind_param(2, 'TMW', SQL_VARCHAR);
-	$attrib = $sth->{ParamTypes};
-	$expected = {1 => 'int4', 2 => 'varchar', 3 => undef};
-	is_deeply( $attrib, $expected, q{Statement handle attribute "ParamTypes" works before execute});
-	$sth->bind_param(3, 3, {pg_type => PG_INT4});
-	$sth->execute();
-	$attrib = $sth->{ParamTypes};
-	$expected->{3} = 'int4';
-	is_deeply( $attrib, $expected, q{Statement handle attribute "ParamTypes" works after execute});
-}
+$sth = $dbh->prepare('SELECT id FROM dbd_pg_test WHERE id=? AND val=? AND lii=?');
+$sth->bind_param(1, 1, SQL_INTEGER);
+$sth->bind_param(2, 'TMW', SQL_VARCHAR);
+$attrib = $sth->{ParamTypes};
+$expected = {1 => 'int4', 2 => 'varchar', 3 => undef};
+is_deeply( $attrib, $expected, q{Statement handle attribute "ParamTypes" works before execute});
+$sth->bind_param(3, 3, {pg_type => PG_INT4});
+$sth->execute();
+$attrib = $sth->{ParamTypes};
+$expected->{3} = 'int4';
+is_deeply( $attrib, $expected, q{Statement handle attribute "ParamTypes" works after execute});
 
 #
 # Test of the statement handle attribute "RowsInCache"
@@ -528,6 +530,11 @@ q{SELECT * FROM dbd_pg_test},
 	$result = $sth->{pg_cmd_status};
 	$sth->finish();
 	like ( $result, qr/^$expected/, qq{Statement handle attribute "pg_cmd_status" works for '$expected'});
+}
+
+## From this point forward, it is safe to use the client's native encoding again
+if ($old_encoding ne 'UTF8') {
+	$dbh->do(qq{SET NAMES '$old_encoding'});
 }
 
 #
@@ -621,7 +628,7 @@ else {
 		$warning = '';
 		local $SIG{__WARN__} = sub { $warning = shift; };
 		$dbh->{RaiseError} = 0;
-		
+
 		$dbh->{PrintError} = 1;
 		$sth = $dbh->prepare($SQL);
 		$sth->execute();

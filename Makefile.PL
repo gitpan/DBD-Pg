@@ -1,4 +1,4 @@
-# $Id: Makefile.PL 10714 2008-02-10 19:06:15Z turnstep $
+# $Id: Makefile.PL 10757 2008-02-17 04:54:58Z turnstep $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -6,7 +6,7 @@ use strict;
 use warnings;
 use 5.006001;
 
-my $VERSION = '2.0.0';
+use version; my $VERSION = qv("2.0.0_1");
 
 my $lib;
 BEGIN {
@@ -140,7 +140,7 @@ my %opts =
 	 ABSTRACT       => 'PostgreSQL database driver for the DBI module',
 	 PREREQ_PM      => {
 						'ExtUtils::MakeMaker' => '6.11',
-						'DBI'                 => '1.45',
+						'DBI'                 => '1.52',
 						'Test::Simple'        => '0.61',
 						'Test::Harness'       => '2.03',
 					   },
@@ -170,7 +170,7 @@ if ($Config{dlsrc} =~ /dl_none/) {
 
 sub MY::postamble {
 	no strict 'subs';
-	my $string = DBI::DBD::dbd_postamble();
+	my $string = DBI::DBD->dbd_postamble();
 	use strict 'subs';
 	## Evil, evil stuff - but we really want to suppress the "duplicate function" message!
 	$string =~ s/dependancy/dependency/g; ## why not, while we are here
@@ -200,6 +200,8 @@ SPLINT_TMP = $(TMP)/splint_dbdpg
 
 SPLINTFLAGS =            \
   -message-stream-stdout \
+  -linelen 90            \
+  -boolops               \
   -tmpdir $(SPLINT_TMP)  \
   +posixstrictlib        \
   +ignoresigns           \

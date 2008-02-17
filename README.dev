@@ -1,5 +1,5 @@
 
-## $Id: README.dev 10691 2008-02-05 04:43:03Z turnstep $
+## $Id: README.dev 10756 2008-02-17 04:47:39Z turnstep $
 
 This file is for those interested in developing DBD::Pg. It is hoped that it 
 will be a good introduction as well as a continual reference. Suggestions 
@@ -77,7 +77,7 @@ Makefile.PL - The main file that starts everything off. Used by ExtUtils::MakeMa
 
 Makefile - Generated automatically by Makefile.PL
 
-META.yml - YAML description file. Updated by hand and contains a version number.
+META.yml - YAML description file. Updated by hand and contains version number in two places.
 
 
 * Distribution files:
@@ -98,6 +98,9 @@ dbdimp.c - The main C file, which does most of the heavy lifting for the DBD::Pg
   the module is here.
 
 dbdimp.h - Helper file for dbdimp.c.
+
+dbivport.h - DBI portability macros. This should be the latest version from the 
+  DBI subversion repository.
 
 Pg.pm - The main Perl file, which contains DBD::Pg packages and code   for the 
   methods. Often times code here calls code from Pg.xs and dbdimp.c.
@@ -306,6 +309,10 @@ versions of DBI into different directories, then adjust PERL5LIB with aliases:
 alias dbi156='export PERL5LIB=/home/greg/perl/dbi156/lib/perl5/site_perl/5.10.0/i686-linux'
 alias dbi157='export PERL5LIB=/home/greg/perl/dbi157/lib/perl5/site_perl/5.10.0/i686-linux'
 
+Different encoding should also be tested: a good one for flushing out problems is BIG5, as 
+it is not supported as a server encoding, only a client one. The simplest way to do this 
+is to export the PGCLIENTENCODING variable to 'BIG5' before running the tests.
+
 * Using splint
 
 Another great program to use is splint, which is a "tool for statically checking C programs for 
@@ -319,7 +326,8 @@ challenges to using splint:
 
 1) Getting it to work in the first place. As the Makefile.PL section says, you need at least 
 version 3.1.2. You also need to include all the relevant files, which Makefile.PL should do 
-for you.
+for you. Note that 'make splint' expects the TMP environment variable to be set to a writeable 
+directory.
 
 2) Limiting the amount of results. splint is extremely verbose, so one must usually limit 
 what sort of things are returned. Again, the Makefile.PL has a partial list.
@@ -470,10 +478,10 @@ the first release candidate would be 2.2.3_1. A second would be 2.2.3_2 etc.
 Version numbers are currently set in five files:
 
 README (one or two places)
-Pg.pm (two places!)
+Pg.pm (two places)
 Changes
 Makefile.PL
-META.yml
+META.yml (two places)
 
 
 ===============
@@ -548,7 +556,7 @@ A good way to do this is to use the tests in 99_pod.t - they will run automatica
 part of the test suite if the right modules are installed.
 
 * Update the SIGNATURE file with Module::Signature. Make sure this is done *after* 
-you check everything else in, due to the the $Id: README.dev 10691 2008-02-05 04:43:03Z turnstep $ lines.
+you check everything else in, due to the the $Id: README.dev 10756 2008-02-17 04:47:39Z turnstep $ lines.
 
 * Run "perl Makefile.PL"
 
@@ -576,8 +584,8 @@ Download the tarball to a completely different system, unpack and test it.
 
 * Announce to the "internal" lists
 
-dbdpg-general
-pgsql-interfaces
+dbd-pg@perl.org
+pgsql-interfaces@postgresql.org
 
 * Upload to CPAN and test.
 
@@ -587,9 +595,9 @@ has the same checksums.
 
 * Announce to the "public" lists
 
-dbdpg-general
-pgsql-interfaces
-dbi-users, dbi-dev, dbi-announce
+dbd-pg@perl.org
+pgsql-interfaces@postgresql.org
+dbi-users@perl.org, dbi-dev@perl.org, dbi-announce@perl.org
 
 The format for DBI announcements:
 To: dbi-announce@perl.org

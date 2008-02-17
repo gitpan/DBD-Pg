@@ -1,5 +1,5 @@
 /*
-   $Id: Pg.h 10520 2008-01-11 19:01:08Z turnstep $
+   $Id: Pg.h 10755 2008-02-17 04:45:45Z turnstep $
 
    Copyright (c) 2000-2008 Greg Sabino Mullane and others: see the Changes file
    Copyright (c) 1997-2000 Edmund Mergl
@@ -23,10 +23,6 @@ static int errno;
 
 #include "libpq-fe.h"
 
-#ifdef NEVER
-#include<sys/stat.h>
-#include "libpq/libpq-fs.h"
-#endif
 #ifndef INV_READ
 #define INV_READ 0x00040000
 #endif
@@ -40,20 +36,18 @@ static int errno;
 /* this should improve I/O performance for large objects */
 #define BUFSIZ 32768
 
-
 #define NEED_DBIXS_VERSION 93
 
-#include <DBIXS.h>		/* installed by the DBI module	*/
+#define PERL_NO_GET_CONTEXT
 
-#include <dbd_xsh.h>		/* installed by the DBI module	*/
+#include <DBIXS.h>      /* installed by the DBI module */
+
+#include <dbivport.h>   /* DBI portability macros */
+
+#include <dbd_xsh.h>    /* installed by the DBI module */
 
 #include "dbdimp.h"
 #include "quote.h"
 #include "types.h"
-
-/* defines for Driver.xst to let it know what functions to include */
-#define dbd_st_rows dbd_st_rows
-#define dbd_discon_all dbd_discon_all
-#define dbd_st_fetchrow_hashref valid
 
 /* end of Pg.h */
