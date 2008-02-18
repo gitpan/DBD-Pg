@@ -1,6 +1,6 @@
 /*
 
-   $Id: types.c 10520 2008-01-11 19:01:08Z turnstep $
+   $Id: types.c 10780 2008-02-18 02:18:58Z turnstep $
 
    Copyright (c) 2003-2008 Greg Sabino Mullane and others: see the Changes file
    
@@ -537,7 +537,7 @@ while (<$oldfh>) {
 		if (/^is/) {
 			for (sort { $pgtype{$a}{define} cmp $pgtype{$b}{define} } keys %pgtype) {
 				printf $newfh qq{is(%-*s, %5s, '%s returns correct value');\n},
-					$maxlen, $pgtype{$_}{define}, $pgtype{$_}{oid}, $pgtype{$_}{define};
+					3+$maxlen, $pgtype{$_}{define}, $pgtype{$_}{oid}, $pgtype{$_}{define};
 			}
 			print $newfh "\n";
 			$step = 1;
@@ -587,7 +587,7 @@ open $newfh, '>', "$file.tmp" or die qq{Could not write to "$file.tmp": $!\n};
 print $newfh 
 '/' . q{*
 
-   $Id: types.c 10520 2008-01-11 19:01:08Z turnstep $
+   $Id: types.c 10780 2008-02-18 02:18:58Z turnstep $
 
    Copyright (c) 2003-2008 Greg Sabino Mullane and others: see the Changes file
    

@@ -1,5 +1,5 @@
 
-## $Id: README.dev 10756 2008-02-17 04:47:39Z turnstep $
+## $Id: README.dev 10780 2008-02-18 02:18:58Z turnstep $
 
 This file is for those interested in developing DBD::Pg. It is hoped that it 
 will be a good introduction as well as a continual reference. Suggestions 
@@ -131,7 +131,8 @@ types.h - Helper file for types.c
 
 t/dbdpg_test_setup.pl - Common connection, schema creation, and schema destruction subs.
 
-t/00basic.t - Very basic test to see if DBI and DBD::Pg load properly.
+t/00basic.t - Very basic test to see if DBI and DBD::Pg load properly. Requires Test::Warn 
+  for the version warning test.
 
 t/00-signature.t - Uses Module::Signature to verify SIGNATURE file. All tests are skipped 
   if the environment variable TEST_SIGNATURE is not set.
@@ -556,7 +557,7 @@ A good way to do this is to use the tests in 99_pod.t - they will run automatica
 part of the test suite if the right modules are installed.
 
 * Update the SIGNATURE file with Module::Signature. Make sure this is done *after* 
-you check everything else in, due to the the $Id: README.dev 10756 2008-02-17 04:47:39Z turnstep $ lines.
+you check everything else in, due to the the $Id: README.dev 10780 2008-02-18 02:18:58Z turnstep $ lines.
 
 * Run "perl Makefile.PL"
 
