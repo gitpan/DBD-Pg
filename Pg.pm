@@ -1,5 +1,5 @@
 # -*-cperl-*-
-#  $Id: Pg.pm 10781 2008-02-18 02:26:32Z turnstep $
+#  $Id: Pg.pm 10790 2008-02-18 23:48:27Z turnstep $
 #
 #  Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv("2.0.1_2");
+	use version; our $VERSION = qv("2.0.1_3");
 
 	use DBI ();
 	use DynaLoader ();
@@ -202,7 +202,7 @@ use 5.006001;
 		};
 	}
 
-} ## end pf package DBD::Pg::dr
+} ## end of package DBD::Pg::dr
 
 
 {
@@ -1625,7 +1625,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.0.1_2 of the DBD::Pg module
+This documents version 2.0.1_3 of the DBD::Pg module
 
 =head1 SYNOPSIS
 
@@ -2762,7 +2762,7 @@ show all available information.
 =item B<pg_protocol> (integer, read-only)
 
 PostgreSQL specific attribute. Returns the version of the PostgreSQL server.
-If DBD::Pg is unable to figure out the version, it will return a "0". Otherwise, 
+If DBD::Pg is unable to figure out the version, it will return a "0". Otherwise,
 a "3" is returned.
 
 =item B<pg_lib_version> (integer, read-only)
@@ -3570,12 +3570,11 @@ Boolean values can be passed to PostgreSQL as TRUE, 't', 'true', 'y', 'yes' or
 
 =head2 Schema support
 
-PostgreSQL version 7.3 introduced schema support. Note that the PostgreSQL
-schema concept may differ from those of other databases. In a nutshell, a schema
-is a named collection of objects within a single database. Please refer to the
+The PostgreSQL schema concept may differ from those of other databases. In a nutshell, 
+a schema is a named collection of objects within a single database. Please refer to the
 PostgreSQL documentation for more details.
 
-Currently, DBD::Pg does not provide explicit support for PostgreSQL schemas.
+DBD::Pg does not provide explicit support for PostgreSQL schemas.
 However, schema functionality may be used without any restrictions by
 explicitly addressing schema objects, e.g.
 
