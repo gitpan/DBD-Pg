@@ -1,4 +1,4 @@
-# $Id: Makefile.PL 10792 2008-02-19 02:02:44Z turnstep $
+# $Id: Makefile.PL 10803 2008-02-19 15:27:32Z turnstep $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -6,7 +6,7 @@ use strict;
 use warnings;
 use 5.006001;
 
-use version; my $VERSION = qv("2.1.1");
+use version; my $VERSION = qv('2.1.1_1');
 
 my $lib;
 BEGIN {
@@ -141,8 +141,8 @@ my %opts =
 	 PREREQ_PM      => {
 						'ExtUtils::MakeMaker' => '6.11',
 						'DBI'                 => '1.52',
-						'Test::Simple'        => '0.61',
-						'Test::Harness'       => '2.03',
+						'Test::More'          => '0.61',
+						'version'             => '0',
 					   },
 	 CCFLAGS        => $comp_opts,
 	 PERL_MALLOC_OK => 1,

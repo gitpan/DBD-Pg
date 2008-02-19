@@ -1,5 +1,9 @@
 ('GSM' is Greg Sabino Mullane, greg@turnstep.com)
 
+2.1.2
+
+	- Fix dependency requirements, especially version.pm
+
 2.1.1 Released February 19, 2008
 
 	- Better URLs to cpan.org resources.
