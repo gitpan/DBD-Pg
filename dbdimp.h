@@ -1,5 +1,5 @@
 /*
-	$Id: dbdimp.h 10755 2008-02-17 04:45:45Z turnstep $
+	$Id: dbdimp.h 10829 2008-02-26 13:10:38Z turnstep $
 	
     Copyright (c) 2000-2008 Greg Sabino Mullane and others: see the Changes file
 	Portions Copyright (c) 1997-2000 Edmund Mergl
@@ -8,8 +8,6 @@
 	You may distribute under the terms of either the GNU General Public
 	License or the Artistic License, as specified in the Perl README file.
 */
-
-#include "types.h"
 
 /* Define drh implementor data structure */
 struct imp_drh_st {

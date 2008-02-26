@@ -1,6 +1,6 @@
 /*
 
-   $Id: quote.c 10794 2008-02-19 02:43:45Z turnstep $
+   $Id: quote.c 10829 2008-02-26 13:10:38Z turnstep $
 
    Copyright (c) 2003-2008 Greg Sabino Mullane and others: see the Changes file
 
@@ -10,13 +10,6 @@
 */
 
 #include "Pg.h"
-#include "types.h"
-
-#ifdef WIN32
-#ifndef snprint
-#define snprintf _snprintf
-#endif
-#endif
 
 char * null_quote(const char *string, STRLEN len, STRLEN *retlen)
 {

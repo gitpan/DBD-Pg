@@ -1,7 +1,7 @@
 ===================================================
 WARNING!!
 
-THIS IS A TEST VERSION (2.1.3_1) AND SHOULD BE USED 
+THIS IS A TEST VERSION (2.1.3_2) AND SHOULD BE USED 
 FOR TESTING PURPOSES ONLY. PLEASE USE A STABLE 
 VERSION (no underscore) BY VISITING:
 
@@ -10,14 +10,22 @@ http://search.cpan.org/dist/DBD-Pg/
 
 DBD::Pg  --  the DBI PostgreSQL interface for Perl
 
-# $Id: README 10826 2008-02-26 01:53:22Z turnstep $
+# $Id: README 10833 2008-02-26 13:47:15Z turnstep $
 
 DESCRIPTION:
 ------------
 
-This is version 2.1.3_1 of DBD-Pg.  The web site for this interface is at:
+This is version 2.1.3_2 of DBD-Pg.  The web site for this interface is at:
 
 	http://search.cpan.org/dist/DBD-Pg/
+
+The development of DBD::Pg can be tracked at:
+
+    http://svn.perl.org/modules/DBD-Pg/trunk/
+
+The mailing list is at:
+
+    http://www.nntp.perl.org/group/perl.dbd.pg/
 
 For further information about DBI look at:
 

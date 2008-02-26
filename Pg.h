@@ -1,5 +1,5 @@
 /*
-   $Id: Pg.h 10826 2008-02-26 01:53:22Z turnstep $
+   $Id: Pg.h 10832 2008-02-26 13:43:52Z turnstep $
 
    Copyright (c) 2000-2008 Greg Sabino Mullane and others: see the Changes file
    Copyright (c) 1997-2000 Edmund Mergl
@@ -10,9 +10,16 @@
 
 */
 
+#include <strings.h>
+#include <math.h>
+#include <wchar.h>
 
 #ifdef WIN32
 static int errno;
+#define strcasecmp(s1,s2) lstrcmpiA((s1), (s2))
+#ifndef snprintf
+#define snprintf _snprintf
+#endif
 #endif
 
 #define DBDPG_TRUE (bool)1
@@ -20,6 +27,11 @@ static int errno;
 #define PG_ASYNC 1
 #define PG_OLDQUERY_CANCEL 2
 #define PG_OLDQUERY_WAIT 4
+
+/* Force preprocessors to use this variable. Default to something valid yet noticeable */
+#ifndef PGLIBVERSION
+#define PGLIBVERSION 80009
+#endif
 
 #include "libpq-fe.h"
 
@@ -46,9 +58,11 @@ static int errno;
 
 #include <dbd_xsh.h>    /* installed by the DBI module */
 
+DBISTATE_DECLARE;
+
+#include "types.h"
 #include "dbdimp.h"
 #include "quote.h"
-#include "types.h"
 
 #define TLEVEL	     (DBIS->debug & DBIc_TRACE_LEVEL_MASK)
 #define TFLAGS	     (DBIS->debug & DBIc_TRACE_FLAGS_MASK)
@@ -56,14 +70,14 @@ static int errno;
 #define TSQL	     (TFLAGS & 256) /* Defined in DBI */
 
 #define FLAGS_LIBPQ    0x01000000
-#define FLAGS_BEGIN    0x02000000
+#define FLAGS_START    0x02000000
 #define FLAGS_END      0x04000000
 #define FLAGS_PREFIX   0x08000000
 #define FLAGS_LOGIN    0x10000000
 #define FLAGS_QUOTE    0x20000000
 
 #define TFLIBPQ      (TFLAGS & FLAGS_LIBPQ)
-#define TFBEGIN      (TFLAGS & FLAGS_BEGIN)
+#define TFSTART      (TFLAGS & FLAGS_START)
 #define TFEND        (TFLAGS & FLAGS_END)
 #define TFPREFIX     (TFLAGS & FLAGS_PREFIX)
 #define TFLOGIN      (TFLAGS & FLAGS_LOGIN)
@@ -79,7 +93,7 @@ static int errno;
 #define TRACE8       (TLEVEL >= 8)
 
 #define TLIBPQ       (TRACE5 || TFLIBPQ)
-#define TBEGIN       (TRACE4 || TFBEGIN) /* Beginning of a major function */
+#define TSTART       (TRACE4 || TFSTART) /* Start of a major function */
 #define TEND         (TRACE4 || TFEND)   /* End of a major function   */
 #define TLOGIN       (TRACE5 || TFLOGIN) /* Connect and disconnect    */
 #define TSTARTQ      (TRACE6 || TFQUOTE) /* Quote functions           */

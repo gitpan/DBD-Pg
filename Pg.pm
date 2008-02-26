@@ -1,5 +1,5 @@
 # -*-cperl-*-
-#  $Id: Pg.pm 10826 2008-02-26 01:53:22Z turnstep $
+#  $Id: Pg.pm 10833 2008-02-26 13:47:15Z turnstep $
 #
 #  Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.1.3_1');
+	use version; our $VERSION = qv('2.1.3_2');
 
 	use DBI ();
 	use DynaLoader ();
@@ -81,7 +81,7 @@ use 5.006001;
 	sub parse_trace_flag {
 		my ($class, $flag) = @_;
 		return 0x01000000 if $flag eq 'PGLIBPQ';
-		return 0x02000000 if $flag eq 'PGBEGIN';
+		return 0x02000000 if $flag eq 'PGSTART';
 		return 0x04000000 if $flag eq 'PGEND';
 		return 0x08000000 if $flag eq 'PGPREFIX';
 		return 0x10000000 if $flag eq 'PGLOGIN';
@@ -1646,7 +1646,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.1.3_1 of the DBD::Pg module
+This documents version 2.1.3_2 of the DBD::Pg module
 
 =head1 SYNOPSIS
 
@@ -1864,7 +1864,7 @@ Implemented by DBI, no driver-specific impact.
 =item B<parse_trace_flag> and B<parse_trace_flags>
 
   $dbh->trace($dbh->parse_trace_flag('SQL|PGLIBPQ'));
-  $dbh->trace($dbh->parse_trace_flag('1|PGBEGIN'));
+  $dbh->trace($dbh->parse_trace_flag('1|PGSTART'));
 
   my $value = DBD::Pg->parse_trace_flags('PGLIBPQ');
   DBI->trace($value);
@@ -1902,7 +1902,7 @@ before running it. This is a good way to trace the flow of your program
 at a low level. This information is also output if the trace level 
 is set to 4 or greater.
 
-=item PGBEGIN
+=item PGSTART
 
 Outputs the name of each internal DBD::Pg function, and other information such as 
 the function arguments or important global variables, as each function starts. This 
