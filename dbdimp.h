@@ -1,5 +1,5 @@
 /*
-	$Id: dbdimp.h 10790 2008-02-18 23:48:27Z turnstep $
+	$Id: dbdimp.h 10755 2008-02-17 04:45:45Z turnstep $
 	
     Copyright (c) 2000-2008 Greg Sabino Mullane and others: see the Changes file
 	Portions Copyright (c) 1997-2000 Edmund Mergl

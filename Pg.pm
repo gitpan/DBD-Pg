@@ -1,5 +1,5 @@
 # -*-cperl-*-
-#  $Id: Pg.pm 10792 2008-02-19 02:02:44Z turnstep $
+#  $Id: Pg.pm 10826 2008-02-26 01:53:22Z turnstep $
 #
 #  Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.1.3');
+	use version; our $VERSION = qv('2.1.3_1');
 
 	use DBI ();
 	use DynaLoader ();
@@ -76,6 +76,22 @@ use 5.006001;
 	$errstr = "";   # holds error string for DBI::errstr
 	$sqlstate = ""; # holds five character SQLSTATE code
 	$drh = undef;   # holds driver handle once initialized
+
+	## These two methods are here to allow calling before connect()
+	sub parse_trace_flag {
+		my ($class, $flag) = @_;
+		return 0x01000000 if $flag eq 'PGLIBPQ';
+		return 0x02000000 if $flag eq 'PGBEGIN';
+		return 0x04000000 if $flag eq 'PGEND';
+		return 0x08000000 if $flag eq 'PGPREFIX';
+		return 0x10000000 if $flag eq 'PGLOGIN';
+		return 0x20000000 if $flag eq 'PGQUOTE';
+		return DBI::parse_trace_flag($dbh, $flag);
+	}
+	sub parse_trace_flags {
+		my ($class, $flags) = @_;
+		return DBI::parse_trace_flags($class, $flags);
+	}
 
 	sub CLONE {
 		$drh = undef;
@@ -211,6 +227,11 @@ use 5.006001;
 	use DBI qw(:sql_types);
 
 	use strict;
+
+	sub parse_trace_flag {
+		my ($dbh, $flag) = @_;
+		return DBD::Pg->parse_trace_flag($flag);
+	}
 
 	sub prepare {
 		my($dbh, $statement, @attribs) = @_;
@@ -1625,7 +1646,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.1.3 of the DBD::Pg module
+This documents version 2.1.3_1 of the DBD::Pg module
 
 =head1 SYNOPSIS
 
@@ -1816,10 +1837,22 @@ Common ones to note:
 
 =item B<trace>
 
-  $h->trace($trace_level);
-  $h->trace($trace_level, $trace_filename);
+  $h->trace($trace_settings);
+  $h->trace($trace_settings, $trace_filename);
+  $trace_settings = $h->trace;
 
-Implemented by DBI, no driver-specific impact.
+Changes the trace settings on a database or statement handle. 
+The optional second argument specifies a file to write the 
+trace information to. If no filename is given, the information 
+is written to STDERR. Note that tracing can be set globally as 
+well by setting C<DBI-E<gt>trace>, or by using the environment 
+variable C<DBI_TRACE>.
+
+The value is either a numeric level or a named flag. For the 
+flags, see L<param_trace_flag>. Note that flag levels usually 
+cause DBD::Pg to start most items with "dbdpg: " to help 
+distinguish it from DBI tracing output, although this can be turned 
+off with the PGNOPREFIX flag.
 
 =item B<trace_msg>
 
@@ -1827,6 +1860,78 @@ Implemented by DBI, no driver-specific impact.
   $h->trace_msg($message_text, $min_level);
 
 Implemented by DBI, no driver-specific impact.
+
+=item B<parse_trace_flag> and B<parse_trace_flags>
+
+  $dbh->trace($dbh->parse_trace_flag('SQL|PGLIBPQ'));
+  $dbh->trace($dbh->parse_trace_flag('1|PGBEGIN'));
+
+  my $value = DBD::Pg->parse_trace_flags('PGLIBPQ');
+  DBI->trace($value);
+
+The parse_trace_flags method is used to convert one or more named 
+flags to a number which can passed to the L<trace()> method.
+DBD::Pg currently supports the only DBI-specific flag, SQL, 
+as well as the ones listed below.
+
+Flags can be combined by using the parse_trace_flags method, 
+which simply calls parse_trace_flag() on each item and 
+combines them.
+
+Sometimes you may wish to turn the tracing on before you connect 
+to the database. The second example above shows a way of doing this: 
+the call to DBD::Pg->parse_trace_flags provides a number than can 
+be fed to DBI->trace before you create a database handle.
+
+DBD::Pg supports the following trace flags:
+
+=over 4
+
+=item SQL
+
+Output all SQL statements. Note that the output provided will not 
+necessarily be in a form suitable to passing directly to Postgres, 
+as server-side prepared statements are used extensively by DBD::Pg.
+For maximum portability of output (but with a potential small performance 
+hit), use $dbh->{pg_server_prepare} = 0;
+
+=item PGLIBPQ
+
+Outputs the name of each libpq function (without arguments) immediately 
+before running it. This is a good way to trace the flow of your program 
+at a low level. This information is also output if the trace level 
+is set to 4 or greater.
+
+=item PGBEGIN
+
+Outputs the name of each internal DBD::Pg function, and other information such as 
+the function arguments or important global variables, as each function starts. This 
+information is also output if the trace level is set to 4 or greater.
+
+=item PGEND
+
+Outputs a simple message at the very end of each function. This is also output if the 
+trace level is set to 4 or greater.
+
+=item PGPREFIX
+
+Forces each line of trace output to begin with the string "dbdpg: ". This helps to 
+differentiate it from the DBI tracing output.
+
+=item PGLOGIN
+
+Outputs a message showing the connection string right before a new database connection 
+is attempted, a message when the connection was successful, and a message right after 
+the database has been disconnected. Also output if trace level is 5 or greater.
+
+=item PGQUOTE
+
+Outputs a message at the start of each quoting function. Not very useful outside of 
+DBD::Pg internal debugging purposes.
+
+=back
+
+See the DBI section on L<TRACING> for more information.
 
 =item B<func>
 
@@ -3570,7 +3675,7 @@ Boolean values can be passed to PostgreSQL as TRUE, 't', 'true', 'y', 'yes' or
 
 =head2 Schema support
 
-The PostgreSQL schema concept may differ from those of other databases. In a nutshell, 
+The PostgreSQL schema concept may differ from those of other databases. In a nutshell,
 a schema is a named collection of objects within a single database. Please refer to the
 PostgreSQL documentation for more details.
 

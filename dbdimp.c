@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 10790 2008-02-18 23:48:27Z turnstep $
+  $Id: dbdimp.c 10826 2008-02-26 01:53:22Z turnstep $
 
   Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -112,8 +112,7 @@ int dbd_db_login (SV * dbh, imp_dbh_t * imp_dbh, char * dbname, char * uid, char
 	STRLEN         connect_string_size;
 	ConnStatusType connstatus;
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: dbd_db_login\n");
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin dbd_db_login\n", THEADER);
   
 	/* DBD::Pg syntax: 'dbname=dbname;host=host;port=port', 'User', 'Pass' */
 	/* libpq syntax: 'dbname=dbname host=host port=port user=uid password=pwd' */
@@ -169,8 +168,10 @@ int dbd_db_login (SV * dbh, imp_dbh_t * imp_dbh, char * dbname, char * uid, char
 	}
 
 	/* Close any old connection and free memory, just in case */
-	if (imp_dbh->conn)
+	if (imp_dbh->conn) {
+		TRACE_PQFINISH;
 		PQfinish(imp_dbh->conn);
+	}
 	
 	/* Remove any stored savepoint information */
 	if (imp_dbh->savepoints) {
@@ -180,11 +181,10 @@ int dbd_db_login (SV * dbh, imp_dbh_t * imp_dbh, char * dbname, char * uid, char
 	imp_dbh->savepoints = newAV(); /* freed in dbd_db_destroy */
 
 	/* Attempt the connection to the database */
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: login connection string: (%s)\n", conn_str);
+	if (TLOGIN) TRC(DBILOGFP, "%sLogin connection string: (%s)\n", THEADER, conn_str);
+	TRACE_PQCONNECTDB;
 	imp_dbh->conn = PQconnectdb(conn_str);
-	if (dbis->debug >= 6)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: successful connection\n");
+	if (TLOGIN) TRC(DBILOGFP, "%sConnection complete\n", THEADER);
 	Safefree(conn_str);
 
 	/* Set the initial sqlstate */
@@ -192,50 +192,64 @@ int dbd_db_login (SV * dbh, imp_dbh_t * imp_dbh, char * dbname, char * uid, char
 	strncpy(imp_dbh->sqlstate, "25P01", 6); /* "NO ACTIVE SQL TRANSACTION" */
 
 	/* Check to see that the backend connection was successfully made */
+	TRACE_PQSTATUS;
 	connstatus = PQstatus(imp_dbh->conn);
 	if (CONNECTION_OK != connstatus) {
+		TRACE_PQERRORMESSAGE;
 		pg_error(aTHX_ dbh, (ExecStatusType)connstatus, PQerrorMessage(imp_dbh->conn));
 		strncpy(imp_dbh->sqlstate, "08006", 6); /* "CONNECTION FAILURE" */
+		TRACE_PQFINISH;
 		PQfinish(imp_dbh->conn);
 		sv_free((SV *)imp_dbh->savepoints);
+		if (TEND) TRC(DBILOGFP, "%sEnd dbd_db_login (error)\n", THEADER);
 		return 0;
 	}
 
 	/* Call the pg_warn function anytime this connection raises a notice */
+	TRACE_PQSETNOTICEPROCESSOR;
 	(void)PQsetNoticeProcessor(imp_dbh->conn, pg_warn, (void *)SvRV(dbh));
 	
 	/* Figure out what protocol this server is using (most likely 3) */
+	TRACE_PQPROTOCOLVERSION;
 	imp_dbh->pg_protocol = PQprotocolVersion(imp_dbh->conn);
 
 	/* Figure out this particular backend's version */
 	imp_dbh->pg_server_version = -1;
 #if PGLIBVERSION >= 80000
+	TRACE_PQSERVERVERSION;
 	imp_dbh->pg_server_version = PQserverVersion(imp_dbh->conn);
 #endif
 	if (imp_dbh->pg_server_version <= 0) {
 		PGresult *result;
 		int	cnt, vmaj, vmin, vrev;
 		ExecStatusType status;
-
+		TRACE_PQEXEC;
 		result = PQexec(imp_dbh->conn, "SELECT version(), 'DBD::Pg'");
 		status = _sqlstate(aTHX_ imp_dbh, result);
 
 		if (!result || PGRES_TUPLES_OK != status || (0==PQntuples(result))) {
-			if (dbis->debug >= 1)
-				(void)PerlIO_printf(DBILOGFP, "dbdpg: Could not get version from the server, status was %d\n", status);
+			if (TRACEWARN)
+				TRC(DBILOGFP, "%sCould not get version from the server, status was %d\n",
+					THEADER, status);
 		}
 		else {
+			TRACE_PQGETVALUE;
 			cnt = sscanf(PQgetvalue(result,0,0), "PostgreSQL %d.%d.%d", &vmaj, &vmin, &vrev);
 			if (cnt >= 2) {
 				if (cnt == 2) /* Account for devel version e.g. 8.3beta1 */
 					vrev = 0;
 				imp_dbh->pg_server_version = (100 * vmaj + vmin) * 100 + vrev;
 			}
-			else if (dbis->debug >= 1)
-				(void)PerlIO_printf(DBILOGFP, "dbdpg: Unable to parse version from \"%s\"\n", PQgetvalue(result,0,0));
+			else if (TRACEWARN) {
+				TRACE_PQGETVALUE;
+				TRC(DBILOGFP, "%sWARNING: unable to parse version from \"%s\"\n",
+					THEADER, PQgetvalue(result,0,0));
+			}
 		}
-		if (result)
+		if (result) {
+			TRACE_PQCLEAR;
 			PQclear(result);
+		}
 	}
 
 	imp_dbh->pg_bool_tf     = DBDPG_FALSE;
@@ -251,7 +265,7 @@ int dbd_db_login (SV * dbh, imp_dbh_t * imp_dbh, char * dbname, char * uid, char
 	imp_dbh->async_status   = 0;
 	imp_dbh->async_sth      = NULL;
 
-	/* Switch to "smart" if not at server version 8 */
+	/* If using server version 7.4, switch to "smart" */
 	imp_dbh->server_prepare = PGLIBVERSION >= 80000 ? 1 : 2;
 
 	/* Tell DBI that we should call destroy when the handle dies */
@@ -260,6 +274,7 @@ int dbd_db_login (SV * dbh, imp_dbh_t * imp_dbh, char * dbname, char * uid, char
 	/* Tell DBI that we should call disconnect when the handle dies */
 	DBIc_ACTIVE_on(imp_dbh);
 
+	if (TEND) TRC(DBILOGFP, "%sEnd dbd_db_login\n", THEADER);
 	return 1;
 
 } /* end of dbd_db_login */
@@ -274,9 +289,8 @@ static void pg_error (pTHX_ SV * h, ExecStatusType error_num, const char * error
 	char *      err;
 	imp_dbh_t * imp_dbh = (imp_dbh_t *)(DBIc_TYPE(imp_xxh) == DBIt_ST ? DBIc_PARENT_COM(imp_xxh) : imp_xxh);
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_error (%s) number=%d\n",
-							error_msg, error_num);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_error (message: %s number: %d)\n",
+					THEADER, error_msg, error_num);
 
 	New(0, err, strlen(error_msg)+1, char); /* freed below */
 	strcpy(err, error_msg);
@@ -288,12 +302,9 @@ static void pg_error (pTHX_ SV * h, ExecStatusType error_num, const char * error
 	sv_setiv(DBIc_ERR(imp_xxh), (IV)error_num);
 	sv_setpv(DBIc_ERRSTR(imp_xxh), (char*)err);
 	sv_setpv(DBIc_STATE(imp_xxh), (char*)imp_dbh->sqlstate);
-	if (dbis->debug >= 3) {
-		(void)PerlIO_printf
-			(DBILOGFP, "dbdpg: sqlstate %s error_num %d error %s\n",
-			 imp_dbh->sqlstate, error_num, err);
-	}
 	Safefree(err);
+
+	if (TEND) TRC(DBILOGFP, "%sEnd pg_error\n", THEADER);
 
 } /* end of pg_error */
 
@@ -305,13 +316,15 @@ static void pg_warn (void * arg, const char * message)
 	dTHX;
 	D_imp_dbh( sv_2mortal(newRV((SV*)arg)) );
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_warn (%s) DBIc_WARN=%d PrintWarn=%d\n",
-							message, DBIc_WARN(imp_dbh) ? 1 : 0,
-							DBIc_is(imp_dbh, DBIcf_PrintWarn) ? 1 : 0);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_warn (message: %s DBIc_WARN: %d PrintWarn: %d)\n",
+							 THEADER,
+							 message, DBIc_WARN(imp_dbh) ? 1 : 0,
+							 DBIc_is(imp_dbh, DBIcf_PrintWarn) ? 1 : 0);
 
 	if (DBIc_WARN(imp_dbh) && DBIc_is(imp_dbh, DBIcf_PrintWarn))
 		warn(message);
+
+	if (TEND) TRC(DBILOGFP, "%sEnd pg_warn\n", THEADER);
 
 } /* end of pg_warn */
 
@@ -323,18 +336,19 @@ static ExecStatusType _result(pTHX_ imp_dbh_t * imp_dbh, const char * sql)
 	PGresult *     result;
 	ExecStatusType status;
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: _result sql=(%s)\n", sql);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin _result (sql: %s)\n", THEADER, sql);
 
-	if (dbis->debug & 256)
-		(void)PerlIO_printf(DBILOGFP, "%s\n\n", sql);
+	if (TSQL) TRC(DBILOGFP, "%s;\n\n", sql);
 
+	TRACE_PQEXEC;
 	result = PQexec(imp_dbh->conn, sql);
 
 	status = _sqlstate(aTHX_ imp_dbh, result);
 
+	TRACE_PQCLEAR;
 	PQclear(result);
 
+	if (TEND) TRC(DBILOGFP, "%sEnd _result\n", THEADER);
 	return status;
 
 } /* end of _result */
@@ -347,23 +361,27 @@ static ExecStatusType _sqlstate(pTHX_ imp_dbh_t * imp_dbh, PGresult * result)
 	ExecStatusType status   = PGRES_FATAL_ERROR; /* until proven otherwise */
 	bool           stateset = DBDPG_FALSE;
 
-	if (result)
-		status = PQresultStatus(result);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin _sqlstate\n", THEADER);
 
-	if (dbis->debug >= 5)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: _sqlstate PQresultStatus returned %d\n", status);
+	if (result) {
+		TRACE_PQRESULTSTATUS;
+		status = PQresultStatus(result);
+	}
 
 	/*
 	  Because PQresultErrorField may not work completely when an error occurs, and 
 	  we are connecting over TCP/IP, only set it here if non-null, and fall through 
 	  to a better default value below.
     */
-	if (result && NULL != PQresultErrorField(result,PG_DIAG_SQLSTATE)) {
-		strncpy(imp_dbh->sqlstate, PQresultErrorField(result,PG_DIAG_SQLSTATE), 5);
-		imp_dbh->sqlstate[5] = '\0';
-		stateset = DBDPG_TRUE;
+	if (result) {
+		TRACE_PQRESULTERRORFIELD;
+		if (NULL != PQresultErrorField(result,PG_DIAG_SQLSTATE)) {
+			TRACE_PQRESULTERRORFIELD;
+			strncpy(imp_dbh->sqlstate, PQresultErrorField(result,PG_DIAG_SQLSTATE), 5);
+			imp_dbh->sqlstate[5] = '\0';
+			stateset = DBDPG_TRUE;
+		}
 	}
-
 	if (!stateset) {
 		/* Do our best to map the status result to a sqlstate code */
 		switch (status) {
@@ -385,13 +403,14 @@ static ExecStatusType _sqlstate(pTHX_ imp_dbh_t * imp_dbh, PGresult * result)
 		}
 	}
 
-	if (dbis->debug >= 5)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: _sqlstate set imp_dbh->sqlstate to %s\n", imp_dbh->sqlstate);
+	if (TEND) TRC(DBILOGFP, "%sEnd _sqlstate (imp_dbh->sqlstate: %s)\n",
+				  THEADER, imp_dbh->sqlstate);
 
-	if (dbis->debug >= 7)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: _sqlstate txn_status is %d\n", pg_db_txn_status(aTHX_ imp_dbh));
+	if (TRACE7) TRC(DBILOGFP, "%s_sqlstate txn_status is %d\n",
+					THEADER, pg_db_txn_status(aTHX_ imp_dbh));
 
 
+	if (TEND) TRC(DBILOGFP, "%sEnd _sqlstate (status: %d)\n", THEADER, status);
 	return status;
 
 } /* end of _sqlstate */
@@ -405,30 +424,37 @@ int dbd_db_ping (SV * dbh)
 	PGTransactionStatusType tstatus;
 	ExecStatusType          status;
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: dbd_db_ping\n");
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin dbd_db_ping\n", THEADER);
 
-	if (NULL == imp_dbh->conn)
+	if (NULL == imp_dbh->conn) {
+		if (TEND) TRC(DBILOGFP, "%sEnd dbd_db_ping (error: no connection)\n", THEADER);
 		return -1;
+	}
 
 	tstatus = pg_db_txn_status(aTHX_ imp_dbh);
 
-	if (dbis->debug >= 6)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: dbd_db_ping txn_status is %d\n", tstatus);
+	if (TRACE5) TRC(DBILOGFP, "%sdbd_db_ping txn_status is %d\n", THEADER, tstatus);
 
-	if (tstatus >= 4) /* Unknown, so we err on the side of "bad" */
+	if (tstatus >= 4) { /* Unknown, so we err on the side of "bad" */
+		if (TEND) TRC(DBILOGFP, "%sEnd dbd_pg_ping (result: -2 unknown/bad)\n", THEADER);
 		return -2;
+	}
 
-	if (tstatus != 0) /* 2=active, 3=intrans, 4=inerror */
-		return 1+tstatus ;
+	if (tstatus != 0) {/* 2=active, 3=intrans, 4=inerror */
+		if (TEND) TRC(DBILOGFP, "%sEnd dbd_pg_ping (result: %d)\n", THEADER, 1+tstatus);
+		return 1+tstatus;
+	}
 
 	/* Even though it may be reported as normal, we have to make sure by issuing a command */
 
 	status = _result(aTHX_ imp_dbh, "SELECT 'DBD::Pg ping test'");
 
-	if (PGRES_TUPLES_OK == status)
+	if (PGRES_TUPLES_OK == status) {
+		if (TEND) TRC(DBILOGFP, "%sEnd dbd_pg_ping (result: 1 PGRES_TUPLES_OK)\n", THEADER);
 		return 1;
+	}
 
+	if (TEND) TRC(DBILOGFP, "%sEnd dbd_pg_ping (result: -3)\n", THEADER);
 	return -3;
 
 } /* end of dbd_db_ping */
@@ -437,6 +463,9 @@ int dbd_db_ping (SV * dbh)
 /* ================================================================== */
 static PGTransactionStatusType pg_db_txn_status (pTHX_ imp_dbh_t * imp_dbh)
 {
+
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin PGTransactionStatusType\n", THEADER);
+	TRACE_PQTRANSACTIONSTATUS;
 	return PQtransactionStatus(imp_dbh->conn);
 
 } /* end of pg_db_txn_status */
@@ -450,46 +479,47 @@ static int pg_db_rollback_commit (pTHX_ SV * dbh, imp_dbh_t * imp_dbh, char * ac
 	PGTransactionStatusType tstatus;
 	ExecStatusType          status;
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: dbd_db_%s (AutoCommit is %d) (BegunWork is %d)\n",
-							action,
-							DBIc_is(imp_dbh, DBIcf_AutoCommit) ? 1 : 0,
-							DBIc_is(imp_dbh, DBIcf_BegunWork) ? 1 : 0);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_rollback_commit (action: %s AutoCommit: %d BegunWork: %d)\n",
+					THEADER,
+					action,
+					DBIc_is(imp_dbh, DBIcf_AutoCommit) ? 1 : 0,
+					DBIc_is(imp_dbh, DBIcf_BegunWork) ? 1 : 0);
 	
 	/* No action if AutoCommit = on or the connection is invalid */
-	if ((NULL == imp_dbh->conn) || (DBIc_has(imp_dbh, DBIcf_AutoCommit)))
+	if ((NULL == imp_dbh->conn) || (DBIc_has(imp_dbh, DBIcf_AutoCommit))) {
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_rollback_commit (result: 0)\n", THEADER);
 		return 0;
+	}
 
 	/* We only perform these actions if we need to. For newer servers, we 
 	   ask it for the status directly and double-check things */
 
 	tstatus = pg_db_txn_status(aTHX_ imp_dbh);
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: dbd_db_%s txn_status is %d\n", action, tstatus);
+	if (TRACE4) TRC(DBILOGFP, "%sdbd_db_%s txn_status is %d\n", THEADER, action, tstatus);
 
 	if (PQTRANS_IDLE == tstatus) { /* Not in a transaction */
 		if (imp_dbh->done_begin) {
 			/* We think we ARE in a transaction but we really are not */
-			if (dbis->debug >= 1)
-				(void)PerlIO_printf(DBILOGFP, "dbdpg: Warning: invalid done_begin turned off\n");
+			if (TRACEWARN)
+				TRC(DBILOGFP, "%sWarning: invalid done_begin turned off\n", THEADER);
 			imp_dbh->done_begin = DBDPG_FALSE;
 		}
 	}
 	else if (PQTRANS_ACTIVE == tstatus) { /* Still active - probably in a COPY */
-		if (dbis->debug >= 1)
-			(void)PerlIO_printf(DBILOGFP, "dbdpg: Command in progress, so no done_begin checking!\n");
+		if (TRACEWARN)
+			TRC(DBILOGFP,"%sCommand in progress, so no done_begin checking!\n", THEADER);
 	}
 	else if (PQTRANS_INTRANS == tstatus || PQTRANS_INERROR == tstatus) { /* In a (possibly failed) transaction */
 		if (!imp_dbh->done_begin) {
 			/* We think we are NOT in a transaction but we really are */
-			if (dbis->debug >= 1)
-				(void)PerlIO_printf(DBILOGFP, "dbdpg: Warning: invalid done_begin turned on\n");
+			if (TRACEWARN)
+				TRC(DBILOGFP, "%sWarning: invalid done_begin turned on\n", THEADER);
 			imp_dbh->done_begin = DBDPG_TRUE;
 		}
 	}
 	else { /* Something is wrong: transaction status unknown */
-		if (dbis->debug >= 1)
-			(void)PerlIO_printf(DBILOGFP, "dbdpg: Warning: cannot determine transaction status\n");
+		if (TRACEWARN)
+			TRC(DBILOGFP, "%sWarning: cannot determine transaction status\n", THEADER);
 	}
 
 	/* If begin_work has been called, turn AutoCommit back on and BegunWork off */
@@ -498,8 +528,10 @@ static int pg_db_rollback_commit (pTHX_ SV * dbh, imp_dbh_t * imp_dbh, char * ac
 		DBIc_set(imp_dbh, DBIcf_BegunWork, 0);
 	}
 
-	if (!imp_dbh->done_begin)
+	if (!imp_dbh->done_begin) {
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_rollback_commit (result: 1)\n", THEADER);
 		return 1;
+	}
 
 	status = _result(aTHX_ imp_dbh, action);
 		
@@ -507,7 +539,9 @@ static int pg_db_rollback_commit (pTHX_ SV * dbh, imp_dbh_t * imp_dbh, char * ac
 	imp_dbh->done_begin = DBDPG_FALSE;
 
 	if (PGRES_COMMAND_OK != status) {
+		TRACE_PQERRORMESSAGE;
 		pg_error(aTHX_ dbh, status, PQerrorMessage(imp_dbh->conn));
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_rollback_commit (error: status not OK)\n", THEADER);
 		return 0;
 	}
 
@@ -515,6 +549,7 @@ static int pg_db_rollback_commit (pTHX_ SV * dbh, imp_dbh_t * imp_dbh, char * ac
 	av_undef(imp_dbh->savepoints);
 	imp_dbh->copystate=0;
 
+	if (TEND) TRC(DBILOGFP, "%sEnd pg_db_rollback_commit (result: 1)\n", THEADER);
 	return 1;
 
 } /* end of pg_db_rollback_commit */
@@ -523,6 +558,7 @@ static int pg_db_rollback_commit (pTHX_ SV * dbh, imp_dbh_t * imp_dbh, char * ac
 int dbd_db_commit (SV * dbh, imp_dbh_t * imp_dbh)
 {
 	dTHX;
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin dbd_db_commit\n", THEADER);
 	return pg_db_rollback_commit(aTHX_ dbh, imp_dbh, "commit");
 }
 
@@ -530,6 +566,7 @@ int dbd_db_commit (SV * dbh, imp_dbh_t * imp_dbh)
 int dbd_db_rollback (SV * dbh, imp_dbh_t * imp_dbh)
 {
 	dTHX;
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin dbd_db_rollback\n", THEADER);
 	return pg_db_rollback_commit(aTHX_ dbh, imp_dbh, "rollback");
 }
 
@@ -538,8 +575,8 @@ int dbd_db_rollback (SV * dbh, imp_dbh_t * imp_dbh)
 int dbd_db_disconnect (SV * dbh, imp_dbh_t * imp_dbh)
 {
    	dTHX;
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: dbd_db_disconnect\n");
+
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin dbd_db_disconnect\n", THEADER);
 
 	/* We assume that disconnect will always work	
 	   since most errors imply already disconnected. */
@@ -548,9 +585,10 @@ int dbd_db_disconnect (SV * dbh, imp_dbh_t * imp_dbh)
 	
 	if (NULL != imp_dbh->conn) {
 		/* Attempt a rollback */
-		if (0 != dbd_db_rollback(dbh, imp_dbh) && dbis->debug >= 4)
-			(void)PerlIO_printf(DBILOGFP, "dbdpg: dbd_db_disconnect: AutoCommit=off -> rollback\n");
+		if (0 != dbd_db_rollback(dbh, imp_dbh) && TRACE5)
+			TRC(DBILOGFP, "%sdbd_db_disconnect: AutoCommit=off -> rollback\n", THEADER);
 		
+		TRACE_PQFINISH;
 		PQfinish(imp_dbh->conn);
 		imp_dbh->conn = NULL;
 	}
@@ -559,6 +597,9 @@ int dbd_db_disconnect (SV * dbh, imp_dbh_t * imp_dbh)
 	/* The DESTROY method is the only one to 'free' memory.	*/
 	/* Note that statement objects may still exists for this dbh! */
 
+	if (TLOGIN) TRC(DBILOGFP, "%sDisconnection complete\n", THEADER);
+
+	if (TEND) TRC(DBILOGFP, "%sEnd dbd_db_disconnect\n", THEADER);
 	return 1;
 
 } /* end of dbd_db_disconnect */
@@ -568,15 +609,17 @@ int dbd_db_disconnect (SV * dbh, imp_dbh_t * imp_dbh)
 void dbd_db_destroy (SV * dbh, imp_dbh_t * imp_dbh)
 {
 	dTHX;
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: dbd_db_destroy\n");
+
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin dbd_db_destroy\n", THEADER);
 
 	if (DBIc_ACTIVE(imp_dbh))
 		(void)dbd_db_disconnect(dbh, imp_dbh);
 
 	if (imp_dbh->async_sth) { /* Just in case */
-		if (imp_dbh->async_sth->result)
+		if (imp_dbh->async_sth->result) {
+			TRACE_PQCLEAR;
 			PQclear(imp_dbh->async_sth->result);
+		}
 		imp_dbh->async_sth = NULL;
 	}
 
@@ -586,7 +629,9 @@ void dbd_db_destroy (SV * dbh, imp_dbh_t * imp_dbh)
 
 	DBIc_IMPSET_off(imp_dbh);
 
-} /* end of pg_db_destroy */
+	if (TEND) TRC(DBILOGFP, "%sEnd dbd_db_destroy\n", THEADER);
+
+} /* end of dbd_db_destroy */
 
 
 /* ================================================================== */
@@ -597,40 +642,52 @@ SV * dbd_db_FETCH_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv)
 	char * key = SvPV(keysv,kl);
 	SV *   retsv = Nullsv;
 	
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: dbd_db_FETCH (%s) dbh=%d\n", key, dbh);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin dbd_db_FETCH (key: %s dbh: %d)\n", THEADER, key, dbh);
 	
 	switch (kl) {
 
 	case 5: /* pg_db */
 
-		if (strEQ("pg_db", key))
+		if (strEQ("pg_db", key)) {
+			TRACE_PQDB;
 			retsv = newSVpv(PQdb(imp_dbh->conn),0);
+		}
 		break;
 
 	case 6: /* pg_pid */
 
-		if (strEQ("pg_pid", key))
+		if (strEQ("pg_pid", key)) {
+			TRACE_PQBACKENDPID;
 			retsv = newSViv((IV)PQbackendPID(imp_dbh->conn));
+		}
 		break;
 
 	case 7: /* pg_user  pg_pass  pg_port  pg_host */
 
-		if (strEQ("pg_user", key))
+		if (strEQ("pg_user", key)) {
+			TRACE_PQUSER;
 			retsv = newSVpv(PQuser(imp_dbh->conn),0);
-		else if (strEQ("pg_pass", key))
+		}
+		else if (strEQ("pg_pass", key)) {
+			TRACE_PQPASS;
 			retsv = newSVpv(PQpass(imp_dbh->conn),0);
-		else if (strEQ("pg_port", key))
+		}
+		else if (strEQ("pg_port", key)) {
+			TRACE_PQPORT;
 			retsv = newSVpv(PQport(imp_dbh->conn),0);
+		}
 		else if (strEQ("pg_host", key)) {
+			TRACE_PQHOST;
 			retsv = PQhost(imp_dbh->conn) ? newSVpv(PQhost(imp_dbh->conn),0) : Nullsv;
 		}
 		break;
 
 	case 9: /* pg_socket */
 
-		if (strEQ("pg_socket", key))
+		if (strEQ("pg_socket", key)) {
+			TRACE_PQSOCKET;
 			retsv = newSViv((IV)PQsocket(imp_dbh->conn));
+		}
 		break;
 
 	case 10: /* AutoCommit  pg_bool_tf  pg_pid_number  pg_options */
@@ -641,8 +698,10 @@ SV * dbd_db_FETCH_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv)
 			retsv = newSViv((IV)imp_dbh->pg_bool_tf);
 		else if (strEQ("pg_pid_number", key))
 			retsv = newSViv((IV)imp_dbh->pid_number);
-		else if (strEQ("pg_options", key))
+		else if (strEQ("pg_options", key)) {
+			TRACE_PQOPTIONS;
 			retsv = newSVpv(PQoptions(imp_dbh->conn),0);
+		}
 		break;
 
 	case 11: /* pg_INV_READ  pg_protocol */
@@ -702,6 +761,8 @@ SV * dbd_db_FETCH_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv)
 		break;
 	}
 	
+	if (TEND) TRC(DBILOGFP, "%sEnd dbd_db_FETCH_attrib\n", THEADER);
+
 	if (!retsv)
 		return Nullsv;
 	
@@ -720,27 +781,27 @@ int dbd_db_STORE_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv, SV * valuesv
 	STRLEN       kl;
 	char *       key = SvPV(keysv,kl);
 	unsigned int newval = SvTRUE(valuesv);
+	int          retval = 0;
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: dbd_db_STORE (%s) (%d)\n", key, newval);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin dbd_db_STORE (key: %s newval: %d)\n", THEADER, key, newval);
 	
 	switch (kl) {
 
 	case 10: /* AutoCommit  pg_bool_tf */
 
 		if (strEQ("AutoCommit", key)) {
-			if (newval == DBIc_has(imp_dbh, DBIcf_AutoCommit))
-				return 1;
-			if (newval!=0) { /* It was off but is now on, so do a final commit */
-				if (0!=dbd_db_commit(dbh, imp_dbh) && dbis->debug >= 4)
-					(void)PerlIO_printf(DBILOGFP, "dbdpg: Setting AutoCommit to 'on' forced a commit\n");
+			if (newval != DBIc_has(imp_dbh, DBIcf_AutoCommit)) {
+				if (newval!=0) { /* It was off but is now on, so do a final commit */
+					if (0!=dbd_db_commit(dbh, imp_dbh) && TRACE4)
+						TRC(DBILOGFP, "%sSetting AutoCommit to 'on' forced a commit\n", THEADER);
+				}
+				DBIc_set(imp_dbh, DBIcf_AutoCommit, newval);
 			}
-			DBIc_set(imp_dbh, DBIcf_AutoCommit, newval);
-			return 1;
+			retval = 1;
 		}
-		if (strEQ("pg_bool_tf", key)) {
+		else if (strEQ("pg_bool_tf", key)) {
 			imp_dbh->pg_bool_tf = newval!=0 ? DBDPG_TRUE : DBDPG_FALSE;
-			return 1;
+			retval = 1;
 		}
 		break;
 
@@ -752,10 +813,11 @@ int dbd_db_STORE_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv, SV * valuesv
 			}
 			/* Default to "1" if an invalid value is passed in */
 			imp_dbh->pg_errorlevel = 0==newval ? 0 : 2==newval ? 2 : 1;
+			TRACE_PQSETERRORVERBOSITY;
 			(void)PQsetErrorVerbosity(imp_dbh->conn, imp_dbh->pg_errorlevel);
-			if (dbis->debug >= 5)
-				(void)PerlIO_printf(DBILOGFP, "dbdpg: Reset error verbosity to %d\n", imp_dbh->pg_errorlevel);
-			return 1;
+			if (TRACE5)
+				TRC(DBILOGFP, "%sReset error verbosity to %d\n", THEADER, imp_dbh->pg_errorlevel);
+			retval = 1;
 		}
 		break;
 
@@ -763,13 +825,13 @@ int dbd_db_STORE_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv, SV * valuesv
 
 		if (strEQ("pg_prepare_now", key)) {
 			imp_dbh->prepare_now = newval ? DBDPG_TRUE : DBDPG_FALSE;
-			return 1;
+			retval = 1;
 		}
 
 #ifdef is_utf8_string
-		if (strEQ("pg_enable_utf8", key)) {
+		else if (strEQ("pg_enable_utf8", key)) {
 			imp_dbh->pg_enable_utf8 = newval!=0 ? DBDPG_TRUE : DBDPG_FALSE;
-			return 1;
+			retval = 1;
 		}
 #endif
 		break;
@@ -778,7 +840,7 @@ int dbd_db_STORE_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv, SV * valuesv
 
 		if (strEQ("pg_expand_array", key)) {
 			imp_dbh->expand_array = newval ? DBDPG_TRUE : DBDPG_FALSE;
-			return 1;
+			retval = 1;
 		}
 		break;
 
@@ -790,7 +852,7 @@ int dbd_db_STORE_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv, SV * valuesv
 			}
 			/* Default to "2" if an invalid value is passed in */
 			imp_dbh->server_prepare = 0==newval ? 0 : 1==newval ? 1 : 2;
-			return 1;
+			retval = 1;
 		}
 		break;
 
@@ -798,12 +860,13 @@ int dbd_db_STORE_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv, SV * valuesv
 
 		if (strEQ("pg_placeholder_dollaronly", key)) {
 			imp_dbh->dollaronly = newval ? DBDPG_TRUE : DBDPG_FALSE;
-			return 1;
+			retval = 1;
 		}
 		break;
 	}
 
-	return 0;
+	if (TEND) TRC(DBILOGFP, "%sEnd dbd_db_STORE_attrib\n", THEADER);
+	return retval;
 
 } /* end of dbd_db_STORE_attrib */
 
@@ -817,8 +880,7 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 	SV *              retsv = Nullsv;
 	int               fields, x;
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: dbd_st_FETCH (%s) sth=%d\n", key, sth);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin dbd_st_FETCH (key: %s sth: %d)\n", THEADER, key, sth);
 	
 	/* Some can be done before we have a result: */
 	switch (kl) {
@@ -910,12 +972,15 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 
 	}
 
-	if (retsv != Nullsv)
+	if (retsv != Nullsv) {
+		if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_FETCH_attrib\n", THEADER);
 		return retsv;
+	}
 
 	if (! imp_sth->result) {
-		if (dbis->debug >= 1)
-			(void)PerlIO_printf(DBILOGFP, "dbdpg: Cannot fetch value of %s pre-execute\n", key);
+		if (TRACEWARN)
+			TRC(DBILOGFP, "%sCannot fetch value of %s pre-execute\n", THEADER, key);
+		if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_FETCH_attrib\n", THEADER);
 		return Nullsv;
 	}
 
@@ -931,6 +996,7 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 			SV * sv_fieldname;
 			retsv = newRV(sv_2mortal((SV*)av));
 			while(--fields >= 0) {
+				TRACE_PQFNAME;
 				fieldname = PQfname(imp_sth->result, fields);
 				sv_fieldname = newSVpv(fieldname,0);
 #ifdef is_utf8_string
@@ -946,6 +1012,7 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 			AV *av = newAV();
 			retsv = newRV(sv_2mortal((SV*)av));
 			while(--fields >= 0) {
+				TRACE_PQFTYPE;
 				type_info = pg_type_data((int)PQftype(imp_sth->result, fields));
 				(void)av_store(av, fields, newSViv( type_info ? type_info->type.sql : 0 ) );
 			}
@@ -959,8 +1026,10 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 			Oid o;
 			retsv = newRV(sv_2mortal((SV*)av));
 			while(--fields >= 0) {
+				TRACE_PQFTYPE;
 				o = PQftype(imp_sth->result, fields);
 				if (PG_NUMERIC == o) {
+					TRACE_PQFMOD;
 					o = PQfmod(imp_sth->result, fields)-4;
 					(void)av_store(av, fields, newSViv(o % (o>>16)));
 				}
@@ -977,6 +1046,7 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 			AV *av = newAV();
 			retsv = newRV(sv_2mortal((SV*)av));
 			while(--fields >= 0) {
+				TRACE_PQFSIZE;
 				(void)av_store(av, fields, newSViv(PQfsize(imp_sth->result, fields)));
 			}
 		}
@@ -985,6 +1055,7 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 			AV *av = newAV();
 			retsv = newRV(sv_2mortal((SV*)av));
 			while(--fields >= 0) {			
+				TRACE_PQFTYPE;
 				type_info = pg_type_data((int)PQftype(imp_sth->result,fields));
 				(void)av_store(av, fields, newSVpv(type_info ? type_info->type_name : "unknown", 0));
 			}
@@ -1009,25 +1080,34 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 			statement[0] = '\0';
 			while(--fields >= 0) {
 				nullable=2;
+				TRACE_PQFTABLE;
 				x = PQftable(imp_sth->result, fields);
+				TRACE_PQFTABLECOL;
 				y = PQftablecol(imp_sth->result, fields);
 				if (InvalidOid != x && y > 0) { /* We know what table and column this came from */
 					sprintf(statement,
 							"SELECT attnotnull FROM pg_catalog.pg_attribute WHERE attrelid=%d AND attnum=%d", x, y);
 					statement[strlen(statement)]='\0';
+					TRACE_PQEXEC;
 					result = PQexec(imp_dbh->conn, statement);
+					TRACE_PQRESULTSTATUS;
 					status = PQresultStatus(result);
-					if (PGRES_TUPLES_OK == status && PQntuples(result)!=0) {
-						switch (PQgetvalue(result,0,0)[0]) {
-						case 't':
-							nullable = 0;
-							break;
-						case 'f':
-						default:
-							nullable = 1;
-							break;
+					if (PGRES_TUPLES_OK == status) {
+						TRACE_PQNTUPLES;
+						if (PQntuples(result)!=0) {
+							TRACE_PQGETVALUE;
+							switch (PQgetvalue(result,0,0)[0]) {
+							case 't':
+								nullable = 0;
+								break;
+							case 'f':
+							default:
+								nullable = 1;
+								break;
+							}
 						}
 					}
+					TRACE_PQCLEAR;
 					PQclear(result);
 				}
 				(void)av_store(av, fields, newSViv(nullable));
@@ -1044,18 +1124,22 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 			Oid o;
 			retsv = newRV(sv_2mortal((SV*)av));
 			while(--fields >= 0) {
+				TRACE_PQFTYPE;
 				o = PQftype(imp_sth->result, fields);
 				switch (o) {
 				case PG_BPCHAR:
 				case PG_VARCHAR:
+					TRACE_PQFMOD;
 					sz = PQfmod(imp_sth->result, fields);
 					break;
 				case PG_NUMERIC:
+					TRACE_PQFMOD;
 					sz = PQfmod(imp_sth->result, fields)-4;
 					if (sz > 0)
 						sz = sz >> 16;
 					break;
 				default:
+					TRACE_PQFSIZE;
 					sz = PQfsize(imp_sth->result, fields);
 					break;
 				}
@@ -1077,13 +1161,19 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 		break;
 
 	case 13: /* pg_oid_status  pg_cmd_status */
-		if (strEQ("pg_oid_status", key))
+		if (strEQ("pg_oid_status", key)) {
+			TRACE_PQOIDVALUE;
 			retsv = newSVuv((unsigned int)PQoidValue(imp_sth->result));
-		else if (strEQ("pg_cmd_status", key))
+		}
+		else if (strEQ("pg_cmd_status", key)) {
+			TRACE_PQCMDSTATUS;
 			retsv = newSVpv((char *)PQcmdStatus(imp_sth->result), 0);
+		}
 		break;
 
 	}
+
+	if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_FETCH_attrib\n", THEADER);
 
 	if (retsv == Nullsv)
 		return Nullsv;
@@ -1101,9 +1191,10 @@ int dbd_st_STORE_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv, SV * valuesv
 	char * key = SvPV(keysv,kl);
 	STRLEN vl;
 	char * value = SvPV(valuesv,vl);
+	int    retval = 0;
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: dbd_st_STORE (%s) (%s) sth=%d\n", key, value, sth);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin dbd_st_STORE (key: %s value: %s sth: %d)\n",
+					THEADER, key, value, sth);
 	
 	switch (kl) {
 
@@ -1111,7 +1202,7 @@ int dbd_st_STORE_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv, SV * valuesv
 
 		if (strEQ("pg_async", key)) {
 			imp_sth->async_flag = SvIV(valuesv);
-			return 1;
+			retval = 1;
 		}
 		break;
 
@@ -1119,7 +1210,7 @@ int dbd_st_STORE_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv, SV * valuesv
 
 		if (strEQ("pg_prepare_now", key)) {
 			imp_sth->prepare_now = strEQ(value,"0") ? DBDPG_FALSE : DBDPG_TRUE;
-			return 1;
+			retval = 1;
 		}
 		break;
 
@@ -1130,7 +1221,7 @@ int dbd_st_STORE_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv, SV * valuesv
 			New(0, imp_sth->prepare_name, vl+1, char); /* freed in dbd_st_destroy */
 			Copy(value, imp_sth->prepare_name, vl, char);
 			imp_sth->prepare_name[vl] = '\0';
-			return 1;
+			retval = 1;
 		}
 		break;
 
@@ -1138,7 +1229,7 @@ int dbd_st_STORE_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv, SV * valuesv
 
 		if (strEQ("pg_server_prepare", key)) {
 			imp_sth->server_prepare = strEQ(value,"0") ? DBDPG_FALSE : DBDPG_TRUE;
-			return 1;
+			retval = 1;
 		}
 		break;
 
@@ -1146,15 +1237,15 @@ int dbd_st_STORE_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv, SV * valuesv
 
 		if (strEQ("pg_placeholder_dollaronly", key)) {
 			imp_sth->dollaronly = SvTRUE(valuesv) ? DBDPG_TRUE : DBDPG_FALSE;
-			return 1;
+			retval = 1;
 		}
 		break;
 	}
 
-	return 0;
+	if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_STORE_attrib\n", THEADER);
+	return retval;
 
-
-} /* end of sbs_st_STORE_attrib */
+} /* end of dbd_st_STORE_attrib */
 
 
 /* ================================================================== */
@@ -1162,8 +1253,7 @@ int dbd_discon_all (SV * drh, imp_drh_t * imp_drh)
 {
 	dTHX;
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: dbd_discon_all drh=%d\n", drh);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin dbd_discon_all (drh: %d)\n", THEADER, drh);
 
 	/* The disconnect_all concept is flawed and needs more work */
 	if (!PL_dirty && !SvTRUE(perl_get_sv("DBI::PERL_ENDING",0))) {
@@ -1171,6 +1261,7 @@ int dbd_discon_all (SV * drh, imp_drh_t * imp_drh)
 		sv_setpv(DBIc_ERRSTR(imp_drh), "disconnect_all not implemented");
 	}
 
+	if (TEND) TRC(DBILOGFP, "%sEnd dbd_discon_all\n", THEADER);
 	return 0;
 
 } /* end of dbd_discon_all */
@@ -1181,9 +1272,10 @@ int dbd_discon_all (SV * drh, imp_drh_t * imp_drh)
 int pg_db_getfd (SV * dbh, imp_dbh_t * imp_dbh)
 {
 	dTHX;
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_db_getfd dbh=%d\n", dbh);
 
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_getfd (dbh: %d)\n", THEADER, dbh);
+
+	TRACE_PQSOCKET;
 	return PQsocket(imp_dbh->conn);
 
 } /* end of pg_db_getfd */
@@ -1198,28 +1290,35 @@ SV * pg_db_pg_notifies (SV * dbh, imp_dbh_t * imp_dbh)
 	AV *       ret;
 	SV *       retsv;
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_db_pg_notifies\n");
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_pg_notifies\n", THEADER);
 
+	TRACE_PQCONSUMEINPUT;
 	status = PQconsumeInput(imp_dbh->conn);
 	if (0 == status) { 
+		TRACE_PQERRORMESSAGE;
 		pg_error(aTHX_ dbh, PGRES_FATAL_ERROR, PQerrorMessage(imp_dbh->conn));
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_pg_notifies (error)\n", THEADER);
 		return &sv_undef;
 	}
 
+	TRACE_PQNOTIFIES;
 	notify = PQnotifies(imp_dbh->conn);
 
-	if (!notify)
+	if (!notify) {
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_pg_notifies (undef)\n", THEADER);
 		return &sv_undef; 
+	}
 
 	ret=newAV();
 	av_push(ret, newSVpv(notify->relname,0) );
 	av_push(ret, newSViv(notify->be_pid) );
 	
+	TRACE_PQFREEMEM;
  	PQfreemem(notify);
 
 	retsv = newRV(sv_2mortal((SV*)ret));
 
+	if (TEND) TRC(DBILOGFP, "%sEnd pg_db_pg_notifies\n", THEADER);
 	return sv_2mortal(retsv);
 
 } /* end of pg_db_pg_notifies */
@@ -1233,8 +1332,7 @@ int dbd_st_prepare (SV * sth, imp_sth_t * imp_sth, char * statement, SV * attrib
 	STRLEN mypos=0, wordstart, newsize; /* Used to find and set firstword */
 	SV **svp; /* To help parse the arguments */
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: dbd_st_prepare (%s)\n", statement);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin dbd_st_prepare (statement: %s)\n", THEADER, statement);
 
 	/* Set default values for this statement handle */
 	imp_sth->placeholder_type = 0;
@@ -1248,7 +1346,7 @@ int dbd_st_prepare (SV * sth, imp_sth_t * imp_sth, char * statement, SV * attrib
 	imp_sth->async_status     = 0;
 	imp_sth->prepare_name     = NULL;
 	imp_sth->firstword        = NULL;
-	imp_sth->result	          = NULL;
+	imp_sth->result           = NULL;
 	imp_sth->type_info        = NULL;
 	imp_sth->seg              = NULL;
 	imp_sth->ph               = NULL;
@@ -1325,10 +1423,14 @@ int dbd_st_prepare (SV * sth, imp_sth_t * imp_sth, char * statement, SV * attrib
 	  4. The attribute "pg_prepare_now" is true
 	  5. We are compiled on a 8 or greater server
 	*/
-	if (dbis->debug >= 5)
-	(void)PerlIO_printf(DBILOGFP,
-	"dbdpg: Immediate prepare decision: dml=%d direct=%d server_prepare=%d prepare_now=%d PGLIBVERSION=%d\n",
-	 imp_sth->is_dml, imp_sth->direct, imp_sth->server_prepare, imp_sth->prepare_now, PGLIBVERSION);
+	if (TRACE4)	TRC(DBILOGFP,
+					"%sImmediate prepare decision: dml=%d direct=%d server_prepare=%d prepare_now=%d PGLIBVERSION=%d\n",
+					THEADER,
+					imp_sth->is_dml,
+					imp_sth->direct,
+					imp_sth->server_prepare,
+					imp_sth->prepare_now,
+					PGLIBVERSION);
 
 	if (imp_sth->is_dml
 		&& !imp_sth->direct
@@ -1336,10 +1438,10 @@ int dbd_st_prepare (SV * sth, imp_sth_t * imp_sth, char * statement, SV * attrib
 		&& imp_sth->prepare_now
 		&& PGLIBVERSION >= 80000
 		) {
-		if (dbis->debug >= 5)
-			(void)PerlIO_printf(DBILOGFP, "dbdpg: Running an immediate prepare\n");
+		if (TRACE5) TRC(DBILOGFP, "%sRunning an immediate prepare\n", THEADER);
 
 		if (pg_st_prepare_statement(aTHX_ sth, imp_sth)!=0) {
+			TRACE_PQERRORMESSAGE;
 			croak (PQerrorMessage(imp_dbh->conn));
 		}
 	}
@@ -1347,6 +1449,7 @@ int dbd_st_prepare (SV * sth, imp_sth_t * imp_sth, char * statement, SV * attrib
 	/* Tell DBI to call destroy when this handle ends */
 	DBIc_IMPSET_on(imp_sth);
 
+	if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_prepare\n", THEADER);
 	return 1;
 
 } /* end of dbd_st_prepare */
@@ -1390,21 +1493,17 @@ static void pg_st_split_statement (pTHX_ imp_sth_t * imp_sth, int version, char 
 
 	ph_t *newph, *thisph, *currph = NULL; /* Placeholder structures to help build ll */
 
-	if (dbis->debug >= 4) {
-		if (dbis->debug >= 10)
-			(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_st_split_statement (%s)\n", statement);
-		else
-			(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_st_split_statement\n");
-	}
-
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_st_split_statement\n", THEADER);
+	if (TRACE6) TRC(DBILOGFP, "%spg_st_split_statement: (%s)\n", THEADER, statement);
+	
 	/*
 	  If the pg_direct flag is set (or the string has no length), we do not split at all,
 	  but simply put everything verbatim into a single segment and return.
 	*/
 	if (imp_sth->direct || '\0' == *statement) {
-		if (dbis->debug >= 4) {
-			(void)PerlIO_printf(DBILOGFP, "dbdpg: not splitting due to %s\n",
-								imp_sth->direct ? "pg_direct" : "empty string");
+		if (TRACE4) {
+			TRC(DBILOGFP, "%snot splitting due to %s\n",
+				THEADER, imp_sth->direct ? "pg_direct" : "empty string");
 		}
 		imp_sth->numsegs   = 1;
 		imp_sth->numphs    = 0;
@@ -1422,10 +1521,9 @@ static void pg_st_split_statement (pTHX_ imp_sth_t * imp_sth, int version, char 
 		else {
 			imp_sth->seg->segment = NULL;
 		}
-		if (dbis->debug >= 10) {
-			(void)PerlIO_printf(DBILOGFP, "dbdpg: direct split = (%s) length=(%d)\n",
-								imp_sth->seg->segment, imp_sth->totalsize);
-		}
+		if (TRACE6) TRC(DBILOGFP, "%sdirect split = (%s) length=(%d)\n",
+						THEADER, imp_sth->seg->segment, imp_sth->totalsize);
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_St_split_statement (direct)\n", THEADER);
 		return;
 	}
 
@@ -1731,8 +1829,8 @@ static void pg_st_split_statement (pTHX_ imp_sth_t * imp_sth, int version, char 
 		else {
 			newseg->segment = NULL;
 		}
-		if (dbis->debug >= 5)
-			(void)PerlIO_printf(DBILOGFP, "dbdpg: Created segment (%s)\n", newseg->segment);
+		if (TRACE6)
+			TRC(DBILOGFP, "%sCreated segment (%s)\n", THEADER, newseg->segment);
 		
 		/* Tie it in to the previous one */
 		if (NULL==currseg) {
@@ -1776,8 +1874,7 @@ static void pg_st_split_statement (pTHX_ imp_sth_t * imp_sth, int version, char 
 			if (!found)
 				croak("Invalid placeholders: must start at $1 and increment one at a time (expected: $%d)\n", xint);
 		}
-		if (dbis->debug >= 5)
-			(void)PerlIO_printf(DBILOGFP, "dbdpg: Set number of placeholders to %d\n", topdollar);
+		if (TRACE6)	TRC(DBILOGFP, "%sSet number of placeholders to %d\n", THEADER, topdollar);
 		imp_sth->numphs = topdollar;
 	}
 
@@ -1811,22 +1908,25 @@ static void pg_st_split_statement (pTHX_ imp_sth_t * imp_sth, int version, char 
 		}
 	}
 
-	if (dbis->debug >= 10) {
-		(void)PerlIO_printf
-			(DBILOGFP, "dbdpg: Placeholder type: %d numsegs: %d numphs: %d\n",
-			 imp_sth->placeholder_type, imp_sth->numsegs, imp_sth->numphs);
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: Placeholder numbers, ph id, and segments:\n");
+	if (TRACE7) {
+		TRC(DBILOGFP, "%sPlaceholder type: %d numsegs: %d numphs: %d\n",
+			THEADER, imp_sth->placeholder_type, imp_sth->numsegs, imp_sth->numphs);
+		TRC(DBILOGFP, "%sPlaceholder numbers, ph id, and segments:\n",
+			THEADER);
 		for (currseg=imp_sth->seg; NULL != currseg; currseg=currseg->nextseg) {
-			(void)PerlIO_printf(DBILOGFP, "dbdpg: PH: (%d) ID: (%d) SEG: (%s)\n", currseg->placeholder, NULL==currseg->ph ? 0 : currseg->ph, currseg->segment);
+			TRC(DBILOGFP, "%sPH: (%d) ID: (%d) SEG: (%s)\n",
+				THEADER, currseg->placeholder, NULL==currseg->ph ? 0 : currseg->ph, currseg->segment);
 		}
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: Placeholder number, fooname, id:\n");
+		TRC(DBILOGFP, "%sPlaceholder number, fooname, id:\n", THEADER);
 		for (xlen=1,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,xlen++) {
-			(void)PerlIO_printf(DBILOGFP, "dbdpg: #%d FOONAME: (%s) ID: (%d)\n", xlen, currph->fooname, currph);
+			TRC(DBILOGFP, "%s#%d FOONAME: (%s) ID: (%d)\n",
+				THEADER, xlen, currph->fooname, currph);
 		}
 	}
 
 	DBIc_NUM_PARAMS(imp_sth) = imp_sth->numphs;
 
+	if (TEND) TRC(DBILOGFP, "%sEnd pg_st_split_statement\n", THEADER);
 	return;
 
 } /* end pg_st_split_statement */
@@ -1847,8 +1947,7 @@ static int pg_st_prepare_statement (pTHX_ SV * sth, imp_sth_t * imp_sth)
 	Oid *        paramTypes = NULL;
 	ph_t *       currph;
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_st_prepare_statement\n");
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_st_prepare_statement\n", THEADER);
 
 #if PGLIBVERSION >= 80000
 	oldprepare = DBDPG_FALSE;
@@ -1859,10 +1958,9 @@ static int pg_st_prepare_statement (pTHX_ SV * sth, imp_sth_t * imp_sth)
 	/* Name is simply "dbdpg_PID_#" */
 	sprintf(imp_sth->prepare_name,"dbdpg_%d_%d", imp_dbh->pid_number, imp_dbh->prepare_number);
 
-	if (dbis->debug >= 5)
-		(void)PerlIO_printf
-			(DBILOGFP, "dbdpg: New statement name (%s), oldprepare is %d\n",
-			 imp_sth->prepare_name, oldprepare);
+	if (TRACE5)
+		TRC(DBILOGFP, "%sNew statement name (%s), oldprepare is %d\n",
+			THEADER, imp_sth->prepare_name, oldprepare);
 
 	/* PQprepare was not added until 8.0 */
 
@@ -1928,8 +2026,8 @@ static int pg_st_prepare_statement (pTHX_ SV * sth, imp_sth_t * imp_sth)
 
 	statement[execsize] = '\0';
 
-	if (dbis->debug >= 6)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: Prepared statement (%s)\n", statement);
+	if (TRACE6)
+		TRC(DBILOGFP, "%sPrepared statement (%s)\n", THEADER, statement);
 
 	if (oldprepare) {
 		status = _result(aTHX_ imp_dbh, statement);
@@ -1943,27 +2041,33 @@ static int pg_st_prepare_statement (pTHX_ SV * sth, imp_sth_t * imp_sth)
 				paramTypes[x++] = (currph->defaultval) ? 0 : (Oid)currph->bind_type->type_id;
 			}
 		}
-		if (dbis->debug & 256)
-			(void)PerlIO_printf(DBILOGFP, "PREPARE %s AS %s\n\n", imp_sth->prepare_name, statement);
+		if (TSQL)
+			TRC(DBILOGFP, "PREPARE %s AS %s;\n\n", imp_sth->prepare_name, statement);
 
+		TRACE_PQPREPARE;
 		result = PQprepare(imp_dbh->conn, imp_sth->prepare_name, statement, params, paramTypes);
 		Safefree(paramTypes);
 		if (result) {
+			TRACE_PQRESULTSTATUS;
 			status = PQresultStatus(result);
+			TRACE_PQCLEAR;
 			PQclear(result);
 		}
-		if (dbis->debug >= 6)
-			(void)PerlIO_printf(DBILOGFP, "dbdpg: Using PQprepare: %s\n", statement);
+		if (TRACE6)
+			TRC(DBILOGFP, "%sUsing PQprepare: %s\n", THEADER, statement);
 	}
 	Safefree(statement);
 	if (PGRES_COMMAND_OK != status) {
+		TRACE_PQERRORMESSAGE;
 		pg_error(aTHX_ sth, status, PQerrorMessage(imp_dbh->conn));
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_st_prepare_statement (error)\n", THEADER);
 		return -2;
 	}
 
 	imp_sth->prepared_by_us = DBDPG_TRUE; /* Done here so deallocate is not called spuriously */
 	imp_dbh->prepare_number++; /* We do this at the end so we don't increment if we fail above */
 
+	if (TEND) TRC(DBILOGFP, "%sEnd pg_st_prepare_statement\n", THEADER);
 	return 0;
 	
 } /* end of pg_st_prepare_statement */
@@ -1987,9 +2091,9 @@ int dbd_bind_ph (SV * sth, imp_sth_t * imp_sth, SV * ph_name, SV * newvalue, IV 
 
    	maxlen = 0; /* not used, this makes the compiler happy */
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: dbd_bind_ph ph_name: (%s)\n",
-							neatsvpv(ph_name,0));
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin dbd_bind_ph (ph_name: %s)\n",
+					THEADER,
+					neatsvpv(ph_name,0));
 
 	if (0==imp_sth->numphs)
 		croak("Statement has no placeholders to bind");
@@ -2072,10 +2176,10 @@ int dbd_bind_ph (SV * sth, imp_sth_t * imp_sth, SV * ph_name, SV * newvalue, IV 
 			croak("Cannot bind a reference\n");
 		}
 	}
-	if (dbis->debug >= 5) {
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: Bind (%s) (type=%ld)\n", name, (long)sql_type);
+	if (TRACE5) {
+		TRC(DBILOGFP, "%sBind (%s) (type=%ld)\n", THEADER, name, (long)sql_type);
 		if (attribs) {
-			(void)PerlIO_printf(DBILOGFP, "dbdpg: Bind attribs (%s)", neatsvpv(attribs,0));
+			TRC(DBILOGFP, "%sBind attribs (%s)", THEADER, neatsvpv(attribs,0));
 		}
 	}
 
@@ -2091,6 +2195,7 @@ int dbd_bind_ph (SV * sth, imp_sth_t * imp_sth, SV * ph_name, SV * newvalue, IV 
 			imp_sth->numbound++;
 			currph->bind_type = pg_type_data(PG_UNKNOWN);
 		}
+		if (TEND) TRC(DBILOGFP, "%sEnd dbd_bind_ph (special)\n", THEADER);
 		return 1;
 	}
 
@@ -2119,9 +2224,9 @@ int dbd_bind_ph (SV * sth, imp_sth_t * imp_sth, SV * ph_name, SV * newvalue, IV 
 	}
 	else if (sql_type) {
 		/* always bind as pg_type, because we know we are 
-		   inserting into a pg database... It would make no 
-		   sense to quote something to sql semantics and break
-		   the insert.
+           inserting into a pg database... It would make no 
+           sense to quote something to sql semantics and break
+           the insert.
 		*/
 		if (!(currph->bind_type = sql_type_data((int)sql_type))) {
 			croak("Cannot bind param %s: unknown sql_type %d", name, sql_type);
@@ -2168,24 +2273,26 @@ int dbd_bind_ph (SV * sth, imp_sth_t * imp_sth, SV * ph_name, SV * newvalue, IV 
 	}
 
 	if (reprepare) {
-		if (dbis->debug >= 5)
-			(void)PerlIO_printf(DBILOGFP, "dbdpg: Binding has forced a re-prepare\n");
+		if (TRACE5)
+			TRC(DBILOGFP, "%sBinding has forced a re-prepare\n", THEADER);
 		/* Deallocate sets the prepare_name to NULL */
 		if (pg_st_deallocate_statement(aTHX_ sth, imp_sth)!=0) {
 			/* Deallocation failed. Let's mark it and move on */
 			Safefree(imp_sth->prepare_name);
 			imp_sth->prepare_name = NULL;
-			if (dbis->debug >= 4)
-				(void)PerlIO_printf(DBILOGFP, "dbdpg: Failed to deallocate!\n");
+			if (TRACEWARN)
+				TRC(DBILOGFP, "%sFailed to deallocate!\n", THEADER);
 		}
 	}
 
-	if (dbis->debug >= 10)
-		(void)PerlIO_printf
-			(DBILOGFP, "dbdpg: Placeholder (%s) bound as type (%s) (type_id=%d), length %d, value of (%s)\n",
-			 name, currph->bind_type->type_name, currph->bind_type->type_id, currph->valuelen,
+	if (TRACE7)
+		TRC	(DBILOGFP,
+			 "%sPlaceholder (%s) bound as type (%s) (type_id=%d), length %d, value of (%s)\n",
+			 THEADER, name, currph->bind_type->type_name,
+			 currph->bind_type->type_id, currph->valuelen,
 			 PG_BYTEA==currph->bind_type->type_id ? "(binary, not shown)" : value_string);
 
+	if (TEND) TRC(DBILOGFP, "%sEnd dbd_bind_ph\n", THEADER);
 	return 1;
 
 } /* end of dbd_bind_ph */
@@ -2208,8 +2315,7 @@ SV * pg_stringify_array(SV *input, const char * array_delim, int server_version)
 	STRLEN svlen;
 	SV * value;
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_stringify_array\n");
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_stringify_array\n", THEADER);
 
 	toparr = (AV *) SvRV(input);
 	value = newSVpv("{", 1);
@@ -2218,6 +2324,7 @@ SV * pg_stringify_array(SV *input, const char * array_delim, int server_version)
 	if (av_len(toparr) < 0) {
 		av_clear(toparr);
 		sv_catpv(value, "}");
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_stringify_array (empty)\n", THEADER);
 		return value;
 	}
 
@@ -2316,9 +2423,7 @@ SV * pg_stringify_array(SV *input, const char * array_delim, int server_version)
 		sv_catpv(value, "}");
 	}
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_stringify_array returns %s\n", neatsvpv(value,0));
-
+	if (TEND) TRC(DBILOGFP, "%sEnd pg_stringify_array (string: %s)\n", THEADER, neatsvpv(value,0));
 	return value;
 
 } /* end of pg_stringify_array */
@@ -2335,6 +2440,9 @@ static SV * pg_destringify_array(pTHX_ imp_dbh_t *imp_dbh, unsigned char * input
 	bool   in_quote = 0;
 	int    opening_braces = 0;
 	int    closing_braces = 0;
+
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_destringify_array (string: %s quotechar: %c)\n",
+					THEADER, input, coltype->array_delimeter);
 
 	/*
 	  Note: we don't do careful balance checking here, as this is coming straight from 
@@ -2354,9 +2462,6 @@ static SV * pg_destringify_array(pTHX_ imp_dbh_t *imp_dbh, unsigned char * input
 
 	New(0, string, strlen((char *)input), char); /* Freed at end of this function */
 	string[0] = '\0';
-
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_destringify_array: -->%s<-- quote=%c\n", input, coltype->array_delimeter);
 
 	av = currentav = topav = newAV();
 
@@ -2444,6 +2549,7 @@ static SV * pg_destringify_array(pTHX_ imp_dbh_t *imp_dbh, unsigned char * input
 	}
 	Safefree(string);
 
+	if (TEND) TRC(DBILOGFP, "%sEnd pg_destringify_array\n", THEADER);
 	return newRV((SV*)av);
 
 } /* end of pg_destringify_array */
@@ -2460,9 +2566,8 @@ int pg_quickexec (SV * dbh, const char * sql, int asyncflag)
 	char *                  cmdStatus = NULL;
 	int                     rows = 0;
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_quickexec begins; query=(%s) async=(%d) async_status=(%d)\n",
-							sql, asyncflag, imp_dbh->async_status);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_quickexec (query: %s async: %d async_status: %d)\n",
+			THEADER, sql, asyncflag, imp_dbh->async_status);
 
 	if (NULL == imp_dbh->conn)
 		croak("execute on disconnected handle");
@@ -2479,17 +2584,21 @@ int pg_quickexec (SV * dbh, const char * sql, int asyncflag)
 
 	/* If we are still waiting on an async, handle it */
 	if (imp_dbh->async_status) {
-	  if (dbis->debug >= 4) (void)PerlIO_printf(DBILOGFP, "dbdpg: handling old async\n");
-	  rows = handle_old_async(aTHX_ dbh, imp_dbh, asyncflag);
-	  if (rows)
-		return rows;
+		if (TRACE5) TRC(DBILOGFP, "%shandling old async\n", THEADER);
+		rows = handle_old_async(aTHX_ dbh, imp_dbh, asyncflag);
+		if (rows) {
+			if (TEND) TRC(DBILOGFP, "%sEnd pg_quickexec (async rows: %d)\n", THEADER, rows);
+			return rows;
+		}
 	}
 
 	/* If not autocommit, start a new transaction */
 	if (!imp_dbh->done_begin && !DBIc_has(imp_dbh, DBIcf_AutoCommit)) {
 		status = _result(aTHX_ imp_dbh, "begin");
 		if (PGRES_COMMAND_OK != status) {
+			TRACE_PQERRORMESSAGE;
 			pg_error(aTHX_ dbh, status, PQerrorMessage(imp_dbh->conn));
+			if (TEND) TRC(DBILOGFP, "%sEnd pg_quickexec (error: begin failed)\n", THEADER);
 			return -2;
 		}
 		imp_dbh->done_begin = DBDPG_TRUE;
@@ -2497,21 +2606,25 @@ int pg_quickexec (SV * dbh, const char * sql, int asyncflag)
 
 	/* Asynchronous commands get kicked off and return undef */
 	if (asyncflag & PG_ASYNC) {
-	  if (dbis->debug >= 4) (void)PerlIO_printf(DBILOGFP, "dbdpg: Going asychronous with do()\n");
-	  if (! PQsendQuery(imp_dbh->conn, sql)) {
-		if (dbis->debug >= 4) (void)PerlIO_printf(DBILOGFP, "dbdpg: PQsendQuery failed\n");
-		pg_error(aTHX_ dbh, status, PQerrorMessage(imp_dbh->conn));
-		return -2;
-	  }
-	  imp_dbh->async_status = 1;
-	  imp_dbh->async_sth = NULL; /* Needed? */
-	  if (dbis->debug >= 4) (void)PerlIO_printf(DBILOGFP, "dbdpg: PQsendQuery worked\n");
-	  return 0;
+		if (TRACE4) TRC(DBILOGFP, "%sGoing asychronous with do()\n", THEADER);
+		TRACE_PQSENDQUERY;
+		if (! PQsendQuery(imp_dbh->conn, sql)) {
+			if (TRACE4) TRC(DBILOGFP, "%sPQsendQuery failed\n", THEADER);
+			TRACE_PQERRORMESSAGE;
+			pg_error(aTHX_ dbh, status, PQerrorMessage(imp_dbh->conn));
+			if (TEND) TRC(DBILOGFP, "%sEnd pg_quickexec (error: async do failed)\n", THEADER);
+			return -2;
+		}
+		imp_dbh->async_status = 1;
+		imp_dbh->async_sth = NULL; /* Needed? */
+
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_quickexec (async)\n", THEADER);
+		return 0;
 	}
 
-	if (dbis->debug & 256)
-		(void)PerlIO_printf(DBILOGFP, "%s\n\n", sql);
+	if (TSQL) TRC(DBILOGFP, "%s;\n\n", sql);
 
+	TRACE_PQEXEC;
 	result = PQexec(imp_dbh->conn, sql);
 	status = _sqlstate(aTHX_ imp_dbh, result);
 
@@ -2519,13 +2632,16 @@ int pg_quickexec (SV * dbh, const char * sql, int asyncflag)
 
 	switch (status) {
 	case PGRES_TUPLES_OK:
+		TRACE_PQNTUPLES;
 		rows = PQntuples(result);
 		break;
 	case PGRES_COMMAND_OK:
 		/* non-select statement */
+		TRACE_PQCMDSTATUS;
 		cmdStatus = PQcmdStatus(result);
 		if ((0==strncmp(cmdStatus, "DELETE", 6)) || (0==strncmp(cmdStatus, "INSERT", 6)) || 
 			(0==strncmp(cmdStatus, "UPDATE", 6))) {
+			TRACE_PQCMDTUPLES;
 			rows = atoi(PQcmdTuples(result));
 		}
 		break;
@@ -2539,20 +2655,27 @@ int pg_quickexec (SV * dbh, const char * sql, int asyncflag)
 	case PGRES_BAD_RESPONSE:
 	case PGRES_NONFATAL_ERROR:
 		rows = -2;
+		TRACE_PQERRORMESSAGE;
 		pg_error(aTHX_ dbh, status, PQerrorMessage(imp_dbh->conn));
 		break;
 	case PGRES_FATAL_ERROR:
 	default:
 		rows = -2;
+		TRACE_PQERRORMESSAGE;
 		pg_error(aTHX_ dbh, status, PQerrorMessage(imp_dbh->conn));
 		break;
 	}
 
-	if (result)
+	if (result) {
+		TRACE_PQCLEAR;
 		PQclear(result);
-	else
+	}
+	else {
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_quickexec (no result)\n", THEADER);
 		return -2;
+	}
 
+	TRACE_PQTRANSACTIONSTATUS;
 	txn_status = PQtransactionStatus(imp_dbh->conn);
 
 	if (PQTRANS_IDLE == txn_status) {
@@ -2565,9 +2688,8 @@ int pg_quickexec (SV * dbh, const char * sql, int asyncflag)
 		}
 	}
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_quickexec ends; rows=%d, txn_status=%d\n", rows, txn_status);
-
+	if (TEND) TRC(DBILOGFP, "%sEnd pg_quickexec (rows: %d, txn_status: %d)\n",
+				  THEADER, rows, txn_status);
 	return rows;
 
 } /* end of pg_quickexec */
@@ -2591,8 +2713,7 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 	int           num_fields;
 	int           ret = -2;
 	
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: dbd_st_execute\n");
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin dbd_st_execute\n", THEADER);
 	
 	if (NULL == imp_dbh->conn)
 		croak("execute on disconnected handle");
@@ -2606,6 +2727,7 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 		for (currph=imp_sth->ph; NULL != currph; currph=currph->nextph) {
 			if (NULL == currph->bind_type) {
 				pg_error(aTHX_ sth, PGRES_FATAL_ERROR, "execute called with an unbound placeholder");
+				if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_execute (error: unbound placeholder)\n", THEADER);
 				return -2;
 			}
 			if (currph->isinout) {
@@ -2619,20 +2741,21 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 
 	/* Check for old async transactions */
 	if (imp_dbh->async_status) {
-	  if (dbis->debug >= 7) {
-		(void)PerlIO_printf
-		  (DBILOGFP, "dbdpg: Attempting to handle existing async transaction\n");
-	  }	  
-	  ret = handle_old_async(aTHX_ sth, imp_dbh, imp_sth->async_flag);
-	  if (ret)
-		return ret;
+		if (TRACE7) TRC(DBILOGFP, "%sAttempting to handle existing async transaction\n", THEADER);
+		ret = handle_old_async(aTHX_ sth, imp_dbh, imp_sth->async_flag);
+		if (ret) {
+			if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_execute (async ret: %d)\n", THEADER, ret);
+			return ret;
+		}
 	}
 
 	/* If not autocommit, start a new transaction */
 	if (!imp_dbh->done_begin && !DBIc_has(imp_dbh, DBIcf_AutoCommit)) {
 		status = _result(aTHX_ imp_dbh, "begin");
 		if (PGRES_COMMAND_OK != status) {
+			TRACE_PQERRORMESSAGE;
 			pg_error(aTHX_ sth, status, PQerrorMessage(imp_dbh->conn));
+			if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_execute (error: begin failed)\n", THEADER);
 			return -2;
 		}
 		imp_dbh->done_begin = DBDPG_TRUE;
@@ -2640,6 +2763,7 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 
 	/* clear old result (if any) */
 	if (imp_sth->result) {
+		TRACE_PQCLEAR;
 		PQclear(imp_sth->result);
 		imp_sth->result = NULL;
 	}
@@ -2723,11 +2847,16 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 	   OR
 	   6b. All placeholders are bound (and "pg_server_prepare" is 2)
 	*/
-	if (dbis->debug >= 7) {
-		(void)PerlIO_printf
-			(DBILOGFP, "dbdpg: PQexec* decision: dml=%d direct=%d server_prepare=%d numbound=%d numphs=%d default=%d\n",
-			 imp_sth->is_dml, imp_sth->direct, imp_sth->server_prepare, imp_sth->numbound, imp_sth->numphs, imp_sth->has_default);
-	}
+	if (TRACE4) TRC(DBILOGFP,
+					"%sPQexec* decision: dml=%d direct=%d server_prepare=%d numbound=%d numphs=%d default=%d\n",
+					THEADER, 
+					imp_sth->is_dml,
+					imp_sth->direct,
+					imp_sth->server_prepare,
+					imp_sth->numbound,
+					imp_sth->numphs,
+					imp_sth->has_default);
+
 	if (imp_sth->is_dml
 		&& !imp_sth->direct
 		&& 0 != imp_sth->server_prepare
@@ -2738,55 +2867,57 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 			|| (imp_sth->numbound == imp_sth->numphs))
 		){
 	
-		if (dbis->debug >= 5)
-			(void)PerlIO_printf(DBILOGFP, "dbdpg: PQexecPrepared\n");
+		if (TRACE4) TRC(DBILOGFP, "%sPQexecPrepared\n", THEADER);
 
 		/* Prepare if it has not already been prepared (or it needs repreparing) */
 		if (NULL == imp_sth->prepare_name) {
 			if (imp_sth->prepared_by_us) {
-				if (dbis->debug >= 5)
-					(void)PerlIO_printf(DBILOGFP, "dbdpg: Re-preparing statement\n");
+				if (TRACE5) TRC(DBILOGFP, "%sRe-preparing statement\n", THEADER);
 			}
 			if (pg_st_prepare_statement(aTHX_ sth, imp_sth)!=0) {
 				Safefree(paramValues);
 				Safefree(paramLengths);
 				Safefree(paramFormats);
+				if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_execute (error)\n", THEADER);
 				return -2;
 			}
 		}
 		else {
-			if (dbis->debug >= 5)
-				(void)PerlIO_printf(DBILOGFP, "dbdpg: Using previously prepared statement (%s)\n", imp_sth->prepare_name);
+			if (TRACE5) TRC(DBILOGFP, "%sUsing previously prepared statement (%s)\n",
+							THEADER, imp_sth->prepare_name);
 		}
 		
-		if (dbis->debug >= 10) {
+		if (TRACE7) {
 			for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,x++) {
-				(void)PerlIO_printf(DBILOGFP, "dbdpg: PQexecPrepared item #%d\n", x);
-				(void)PerlIO_printf(DBILOGFP, "dbdpg: -> Value: (%s)\n",
-									(paramFormats && paramFormats[x]==1) ? "(binary, not shown)" 
+				TRC(DBILOGFP, "%sPQexecPrepared item #%d\n", THEADER, x);
+				TRC(DBILOGFP, "%s-> Value: (%s)\n",
+					THEADER, (paramFormats && paramFormats[x]==1) ? "(binary, not shown)" 
 									: paramValues[x]);
-				(void)PerlIO_printf(DBILOGFP, "dbdpg: -> Length: (%d)\n", paramLengths ? paramLengths[x] : 0);
-				(void)PerlIO_printf(DBILOGFP, "dbdpg: -> Format: (%d)\n", paramFormats ? paramFormats[x] : 0);
+				TRC(DBILOGFP, "%s-> Length: (%d)\n", THEADER, paramLengths ? paramLengths[x] : 0);
+				TRC(DBILOGFP, "%s-> Format: (%d)\n", THEADER, paramFormats ? paramFormats[x] : 0);
 			}
 		}
 		
-		if (dbis->debug >= 5)
-			(void)PerlIO_printf(DBILOGFP, "dbdpg: Running PQexecPrepared with (%s)\n", imp_sth->prepare_name);
-		if (dbis->debug & 256) {
-			(void)PerlIO_printf(DBILOGFP, "EXECUTE %s (\n", imp_sth->prepare_name);
+		if (TRACE5) TRC(DBILOGFP, "%sRunning PQexecPrepared with (%s)\n",
+						THEADER, imp_sth->prepare_name);
+		if (TSQL) {
+			TRC(DBILOGFP, "EXECUTE %s (\n", imp_sth->prepare_name);
 			for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,x++) {
-				(void)PerlIO_printf(DBILOGFP, "$%d: %s\n", x+1, paramValues[x]);
+				TRC(DBILOGFP, "$%d: %s\n", x+1, paramValues[x]);
 			}
-			(void)PerlIO_printf(DBILOGFP, ");\n\n");
+			TRC(DBILOGFP, ");\n\n");
 		}
 
-		if (imp_sth->async_flag & PG_ASYNC)
-		  ret = PQsendQueryPrepared
-			(imp_dbh->conn, imp_sth->prepare_name, imp_sth->numphs, paramValues, paramLengths, paramFormats, 0);
-		else
-		  imp_sth->result = PQexecPrepared
-			(imp_dbh->conn, imp_sth->prepare_name, imp_sth->numphs, paramValues, paramLengths, paramFormats, 0);
-
+		if (imp_sth->async_flag & PG_ASYNC) {
+			TRACE_PQSENDQUERYPREPARED;
+			ret = PQsendQueryPrepared
+				(imp_dbh->conn, imp_sth->prepare_name, imp_sth->numphs, paramValues, paramLengths, paramFormats, 0);
+		}
+		else {
+			TRACE_PQEXECPREPARED;
+			imp_sth->result = PQexecPrepared
+				(imp_dbh->conn, imp_sth->prepare_name, imp_sth->numphs, paramValues, paramLengths, paramFormats, 0);
+		}
 	} /* end new-style prepare */
 	else {
 		
@@ -2801,9 +2932,8 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 			&& !imp_sth->has_current
 			&& (1 == imp_sth->server_prepare || imp_sth->numbound == imp_sth->numphs)
 			) {
-		  
-			if (dbis->debug >= 5)
-				(void)PerlIO_printf(DBILOGFP, "dbdpg: PQexecParams\n");
+
+			if (TRACE5) TRC(DBILOGFP, "%sPQexecParams\n", THEADER);
 
 			/* Figure out how big the statement plus placeholders will be */
 			for (currseg=imp_sth->seg; NULL != currseg; currseg=currseg->nextseg) {
@@ -2835,32 +2965,35 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 				paramTypes[x++] = (currph->defaultval) ? 0 : (Oid)currph->bind_type->type_id;
 			}
 		
-			if (dbis->debug >= 10) {
+			if (TRACE7) {
 				for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,x++) {
-					(void)PerlIO_printf(DBILOGFP, "dbdpg: PQexecParams item #%d\n", x);
-					(void)PerlIO_printf(DBILOGFP, "dbdpg: -> Type: (%d)\n", paramTypes[x]);
-					(void)PerlIO_printf(DBILOGFP, "dbdpg: -> Value: (%s)\n", paramValues[x]);
-					(void)PerlIO_printf(DBILOGFP, "dbdpg: -> Length: (%d)\n", paramLengths ? paramLengths[x] : 0);
-					(void)PerlIO_printf(DBILOGFP, "dbdpg: -> Format: (%d)\n", paramFormats ? paramFormats[x] : 0);
+					TRC(DBILOGFP, "%sPQexecParams item #%d\n", THEADER, x);
+					TRC(DBILOGFP, "%s-> Type: (%d)\n", THEADER, paramTypes[x]);
+					TRC(DBILOGFP, "%s-> Value: (%s)\n", THEADER, paramValues[x]);
+					TRC(DBILOGFP, "%s-> Length: (%d)\n", THEADER, paramLengths ? paramLengths[x] : 0);
+					TRC(DBILOGFP, "%s-> Format: (%d)\n", THEADER, paramFormats ? paramFormats[x] : 0);
 				}
 			}
 
-			if (dbis->debug & 256) {
-				(void)PerlIO_printf(DBILOGFP, "EXECUTE %s (\n", statement);
+			if (TSQL) {
+				TRC(DBILOGFP, "EXECUTE %s (\n", statement);
 				for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,x++) {
-					(void)PerlIO_printf(DBILOGFP, "$%d: %s\n", x+1, paramValues[x]);
+					TRC(DBILOGFP, "$%d: %s\n", x+1, paramValues[x]);
 				}
-				(void)PerlIO_printf(DBILOGFP, ");\n\n");
+				TRC(DBILOGFP, ");\n\n");
 			}
 
-			if (dbis->debug >= 5)
-				(void)PerlIO_printf(DBILOGFP, "dbdpg: Running PQexecParams with (%s)\n", statement);
-			if (imp_sth->async_flag & PG_ASYNC)
-			  ret = PQsendQueryParams
-				(imp_dbh->conn, statement, imp_sth->numphs, paramTypes, paramValues, paramLengths, paramFormats, 0);
-			else
-			  imp_sth->result = PQexecParams
-				(imp_dbh->conn, statement, imp_sth->numphs, paramTypes, paramValues, paramLengths, paramFormats, 0);
+			if (TRACE5) TRC(DBILOGFP, "%sRunning PQexecParams with (%s)\n", THEADER, statement);
+			if (imp_sth->async_flag & PG_ASYNC) {
+				TRACE_PQSENDQUERYPARAMS;
+				ret = PQsendQueryParams
+					(imp_dbh->conn, statement, imp_sth->numphs, paramTypes, paramValues, paramLengths, paramFormats, 0);
+			}
+			else {
+				TRACE_PQEXECPARAMS;
+				imp_sth->result = PQexecParams
+					(imp_dbh->conn, statement, imp_sth->numphs, paramTypes, paramValues, paramLengths, paramFormats, 0);
+			}
 			Safefree(paramTypes);
 		}
 		
@@ -2868,8 +3001,7 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 
 		else {
 
-			if (dbis->debug >= 5)
-				(void)PerlIO_printf(DBILOGFP, "dbdpg: PQexec\n");
+			if (TRACE5) TRC(DBILOGFP, "%sPQexec\n", THEADER);
 
 			/* Go through and quote each value, then turn into a giant statement */
 			for (currseg=imp_sth->seg; NULL != currseg; currseg=currseg->nextseg) {
@@ -2886,17 +3018,20 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 			}
 			statement[execsize] = '\0';
 
-			if (dbis->debug >= 5)
-				(void)PerlIO_printf(DBILOGFP, "dbdpg: Running %s with (%s)\n", 
-									imp_sth->async_flag & 1 ? "PQsendQuery" : "PQexec", statement);
+			if (TRACE5) TRC(DBILOGFP, "%sRunning %s with (%s)\n", 
+							THEADER, imp_sth->async_flag & 1 ? "PQsendQuery" : "PQexec", statement);
 			
-			if (dbis->debug & 256)
-				(void)PerlIO_printf(DBILOGFP, "%s\n\n", statement);
+			if (TSQL)
+				TRC(DBILOGFP, "%s;\n\n", statement);
 
-			if (imp_sth->async_flag & PG_ASYNC)
-			  ret = PQsendQuery(imp_dbh->conn, statement);
-			else
-			  imp_sth->result = PQexec(imp_dbh->conn, statement);
+			if (imp_sth->async_flag & PG_ASYNC) {
+				TRACE_PQSENDQUERY;
+				ret = PQsendQuery(imp_dbh->conn, statement);
+			}
+			else {
+				TRACE_PQEXEC;
+				imp_sth->result = PQexec(imp_dbh->conn, statement);
+			}
 
 		} /* end PQexec */
 
@@ -2912,12 +3047,11 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 
 	/* If running asynchronously, we don't stick around for the result */
 	if (imp_sth->async_flag & PG_ASYNC) {
-		if (dbis->debug >= 2)
-		  (void)PerlIO_printf
-			(DBILOGFP, "dbdpg: Early return for async query");
+		if (TRACEWARN) TRC(DBILOGFP, "%sEarly return for async query", THEADER);
 		imp_dbh->async_status = 1;
 		imp_sth->async_status = 1;
 		imp_dbh->async_sth = imp_sth;
+		if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_execute (async)\n", THEADER);
 		return 0;
 	}
 
@@ -2925,31 +3059,35 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 
 	imp_dbh->copystate = 0; /* Assume not in copy mode until told otherwise */
 	if (PGRES_TUPLES_OK == status) {
+		TRACE_PQNFIELDS;
 		num_fields = PQnfields(imp_sth->result);
 		imp_sth->cur_tuple = 0;
 		DBIc_NUM_FIELDS(imp_sth) = num_fields;
 		DBIc_ACTIVE_on(imp_sth);
+		TRACE_PQNTUPLES;
 		ret = PQntuples(imp_sth->result);
-		if (dbis->debug >= 5)
-			(void)PerlIO_printf
-				(DBILOGFP, "dbdpg: Status was PGRES_TUPLES_OK, fields=%d, tuples=%d\n",
-				 num_fields, ret);
+		if (TRACE5) TRC(DBILOGFP,
+						"%sStatus was PGRES_TUPLES_OK, fields=%d, tuples=%d\n",
+						THEADER, num_fields, ret);
 	}
 	else if (PGRES_COMMAND_OK == status) {
 		/* non-select statement */
 		char *cmdStatus = NULL;
 		if (imp_sth->result) {
+			TRACE_PQCMDSTATUS;
 			cmdStatus = PQcmdStatus(imp_sth->result);
 		}
-		if (dbis->debug >= 5)
-			(void)PerlIO_printf(DBILOGFP, "dbdpg: Status was PGRES_COMMAND_OK\n");
+		if (TRACE5)
+			TRC(DBILOGFP, "%sStatus was PGRES_COMMAND_OK\n", THEADER);
                 /* XXX DANGER We could be comparing against NULL */
 		if ((0==strncmp(cmdStatus, "DELETE", 6)) || (0==strncmp(cmdStatus, "INSERT", 6)) || 
 			(0==strncmp(cmdStatus, "UPDATE", 6))) {
+			TRACE_PQCMDTUPLES;
 			ret = atoi(PQcmdTuples(imp_sth->result));
 		}
 		else {
 			/* No rows affected, but check for change of state */
+			TRACE_PQTRANSACTIONSTATUS;
 			if (PQTRANS_IDLE == PQtransactionStatus(imp_dbh->conn)) {
 				imp_dbh->done_begin = DBDPG_FALSE;
 				/* If begin_work has been called, turn AutoCommit back on and BegunWork off */
@@ -2958,21 +3096,24 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 					DBIc_set(imp_dbh, DBIcf_BegunWork, 0);
 				}
 			}
+			if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_execute (OK, no rows)\n", THEADER);
 			return 0;
 		}
 	}
 	else if (PGRES_COPY_OUT == status || PGRES_COPY_IN == status) {
-		if (dbis->debug >= 5)
-			(void)PerlIO_printf(DBILOGFP, "dbdpg: Status was PGRES_COPY_%s\n",
-								PGRES_COPY_OUT == status ? "OUT" : "IN");
+		if (TRACE5)
+			TRC(DBILOGFP, "%sStatus was PGRES_COPY_%s\n",
+				THEADER, PGRES_COPY_OUT == status ? "OUT" : "IN");
 		/* Copy Out/In data transfer in progress */
 		imp_dbh->copystate = status;
+		if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_execute (COPY)\n", THEADER);
 		return -1;
 	}
 	else {
-		if (dbis->debug >= 5)
-			(void)PerlIO_printf(DBILOGFP, "dbdpg: Invalid status returned (%d)\n", status);
+		if (TRACE5) TRC(DBILOGFP, "%sInvalid status returned (%d)\n", THEADER, status);
+		TRACE_PQERRORMESSAGE;
 		pg_error(aTHX_ sth, status, PQerrorMessage(imp_dbh->conn));
+		if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_execute (error: bad status)\n", THEADER);
 		return -2;
 	}
 	
@@ -2980,6 +3121,7 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 	
 	imp_sth->rows = ret;
 
+	if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_execute (rows: %d)\n", THEADER, ret);
 	return ret;
 
 } /* end of dbd_st_execute */
@@ -2988,6 +3130,7 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 /* ================================================================== */
 static int is_high_bit_set(pTHX_ const unsigned char * val, STRLEN size)
 {
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin is_high_bit_set\n", THEADER);
 	while (*val && size--)
 		if (*val++ & 0x80) return 1;
 	return 0;
@@ -3009,20 +3152,22 @@ AV * dbd_st_fetch (SV * sth, imp_sth_t * imp_sth)
 	STRLEN            len;
 	AV *              av;
 	
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: dbd_st_fetch\n");
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin dbd_st_fetch\n", THEADER);
 
 	/* Check that execute() was executed successfully */
 	if ( !DBIc_ACTIVE(imp_sth) ) {
 		pg_error(aTHX_ sth, PGRES_NONFATAL_ERROR, "no statement executing\n");	
+		if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_fetch (error: no statement)\n", THEADER);
 		return Nullav;
 	}
 	
+	TRACE_PQNTUPLES;
 	if (imp_sth->cur_tuple == PQntuples(imp_sth->result) ) {
-		if (dbis->debug >= 5)
-			(void)PerlIO_printf(DBILOGFP, "dbdpg: Fetched the last tuple (%d)\n", imp_sth->cur_tuple);
+		if (TRACE5)
+			TRC(DBILOGFP, "%sFetched the last tuple (%d)\n", THEADER, imp_sth->cur_tuple);
 		imp_sth->cur_tuple = 0;
 		DBIc_ACTIVE_off(imp_sth);
+		if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_fetch (last tuple)\n", THEADER);
 		return Nullav; /* we reached the last tuple */
 	}
 
@@ -3035,11 +3180,14 @@ AV * dbd_st_fetch (SV * sth, imp_sth_t * imp_sth)
 	if (NULL == imp_sth->type_info) {
 		Newz(0, imp_sth->type_info, (unsigned)num_fields, sql_type_info_t*); /* freed in dbd_st_destroy */
 		for (i = 0; i < num_fields; ++i) {
+			TRACE_PQFTYPE;
 			imp_sth->type_info[i] = pg_type_data((int)PQftype(imp_sth->result, i));
 			if (imp_sth->type_info[i] == NULL) {
-				if (dbis->debug >= 1)
-					(void)PerlIO_printf(DBILOGFP, "dbdpg: Unknown type returned by Postgres: %d. Setting to UNKNOWN\n",
-										PQftype(imp_sth->result, i));
+				if (TRACEWARN) {
+					TRACE_PQFTYPE;
+					TRC(DBILOGFP, "%sUnknown type returned by Postgres: %d. Setting to UNKNOWN\n",
+						THEADER, PQftype(imp_sth->result, i));
+				}
 				imp_sth->type_info[i] = pg_type_data(PG_UNKNOWN);
 			}
 		}
@@ -3048,15 +3196,17 @@ AV * dbd_st_fetch (SV * sth, imp_sth_t * imp_sth)
 	for (i = 0; i < num_fields; ++i) {
 		SV *sv;
 
-		if (dbis->debug >= 5)
-			(void)PerlIO_printf(DBILOGFP, "dbdpg: Fetching field #%d\n", i);
+		if (TRACE5)
+			TRC(DBILOGFP, "%sFetching field #%d\n", THEADER, i);
 
 		sv = AvARRAY(av)[i];
 
+		TRACE_PQGETISNULL;
 		if (PQgetisnull(imp_sth->result, imp_sth->cur_tuple, i)!=0) {
 			SvROK(sv) ? (void)sv_unref(sv) : (void)SvOK_off(sv);
 		}
 		else {
+			TRACE_PQGETVALUE;
 			value = (unsigned char*)PQgetvalue(imp_sth->result, imp_sth->cur_tuple, i); 
 
 			type_info = imp_sth->type_info[i];
@@ -3129,7 +3279,7 @@ AV * dbd_st_fetch (SV * sth, imp_sth_t * imp_sth)
 		}
 	}
 
-
+	if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_fetch\n", THEADER);
 	return av;
 
 } /* end of dbd_st_fetch */
@@ -3140,6 +3290,9 @@ AV * dbd_st_fetch (SV * sth, imp_sth_t * imp_sth)
 static void pg_db_free_savepoints_to (pTHX_ imp_dbh_t * imp_dbh, const char *savepoint)
 {
 	I32 i;
+
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_free_savepoints_to\n", THEADER);
+
 	for (i = av_len(imp_dbh->savepoints); i >= 0; i--) {
 		SV * const elem = av_pop(imp_dbh->savepoints);
 		if (strEQ(SvPV_nolen(elem), savepoint)) {
@@ -3148,6 +3301,8 @@ static void pg_db_free_savepoints_to (pTHX_ imp_dbh_t * imp_dbh, const char *sav
 		}
 		sv_2mortal(elem);
 	}
+
+	if (TEND) TRC(DBILOGFP, "%sEnd pg_db_free_savepoints_to\n", THEADER);
 }
 
 
@@ -3155,9 +3310,9 @@ static void pg_db_free_savepoints_to (pTHX_ imp_dbh_t * imp_dbh, const char *sav
 int dbd_st_rows (SV * sth, imp_sth_t * imp_sth)
 {
 	dTHX;
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: dbd_st_rows sth=%d\n", sth);
-	
+
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin dbd_st_rows (sth: %d)\n", THEADER, sth);
+
 	return imp_sth->rows;
 
 } /* end of dbd_st_rows */
@@ -3169,11 +3324,11 @@ int dbd_st_finish (SV * sth, imp_sth_t * imp_sth)
 	dTHX;
 	D_imp_dbh_from_sth;
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: dbdpg_finish sth=%d async=%d\n",
-							sth, imp_dbh->async_status);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin dbdpg_finish (sth: %d async: %d)\n",
+					THEADER, sth, imp_dbh->async_status);
 	
 	if (DBIc_ACTIVE(imp_sth) && imp_sth->result) {
+		TRACE_PQCLEAR;
 		PQclear(imp_sth->result);
 		imp_sth->result = NULL;
 		imp_sth->rows = 0;
@@ -3181,18 +3336,19 @@ int dbd_st_finish (SV * sth, imp_sth_t * imp_sth)
 	
 	/* Are we in the middle of an async for this statement handle? */
 	if (imp_dbh->async_status) {
-	  if (imp_sth->async_status) {
-		handle_old_async(aTHX_ sth, imp_dbh, PG_OLDQUERY_WAIT);
-	  }
+		if (imp_sth->async_status) {
+			handle_old_async(aTHX_ sth, imp_dbh, PG_OLDQUERY_WAIT);
+		}
 	}
 
 	imp_sth->async_status = 0;
 	imp_dbh->async_sth = NULL;
 
 	DBIc_ACTIVE_off(imp_sth);
+	if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_finish\n", THEADER);
 	return 1;
 
-} /* end of sbs_st_finish */
+} /* end of dbd_st_finish */
 
 
 /* ================================================================== */
@@ -3204,23 +3360,24 @@ static int pg_st_deallocate_statement (pTHX_ SV * sth, imp_sth_t * imp_sth)
 	int                     status;
 	PGTransactionStatusType tstatus;
 	
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_st_deallocate_statement\n");
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_st_deallocate_statement\n", THEADER);
 
-	if (NULL == imp_dbh->conn || NULL == imp_sth->prepare_name)
+	if (NULL == imp_dbh->conn || NULL == imp_sth->prepare_name) {
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_st_deallocate_statement (0)\n", THEADER);
 		return 0;
+	}
 	
 	tempsqlstate[0] = '\0';
 
 	/* What is our status? */
 	tstatus = pg_db_txn_status(aTHX_ imp_dbh);
-	if (dbis->debug >= 5)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: txn_status is %d\n", tstatus);
+	if (TRACE5)
+		TRC(DBILOGFP, "%stxn_status is %d\n", THEADER, tstatus);
 
 	/* If we are in a failed transaction, rollback before deallocating */
 	if (PQTRANS_INERROR == tstatus) {
-		if (dbis->debug >= 4)
-			(void)PerlIO_printf(DBILOGFP, "dbdpg: Issuing rollback before deallocate\n");
+		if (TRACE4)
+			TRC(DBILOGFP, "%sIssuing rollback before deallocate\n", THEADER);
 		{
 			/* If a savepoint has been set, rollback to the last savepoint instead of the entire transaction */
 			I32	alen = av_len(imp_dbh->savepoints);
@@ -3228,8 +3385,8 @@ static int pg_st_deallocate_statement (pTHX_ SV * sth, imp_sth_t * imp_sth)
 				char	*cmd;
 				SV * const sp = *av_fetch(imp_dbh->savepoints, alen, 0);
 				New(0, cmd, SvLEN(sp) + 13, char); /* Freed below */
-				if (dbis->debug >= 4)
-					(void)PerlIO_printf(DBILOGFP, "dbdpg: Rolling back to savepoint %s\n", SvPV_nolen(sp));
+				if (TRACE4)
+					TRC(DBILOGFP, "%sRolling back to savepoint %s\n", THEADER, SvPV_nolen(sp));
 				sprintf(cmd, "rollback to %s", SvPV_nolen(sp));
 				strncpy(tempsqlstate, imp_dbh->sqlstate, strlen(imp_dbh->sqlstate)+1);
 				status = _result(aTHX_ imp_dbh, cmd);
@@ -3242,8 +3399,8 @@ static int pg_st_deallocate_statement (pTHX_ SV * sth, imp_sth_t * imp_sth)
 		}
 		if (PGRES_COMMAND_OK != status) {
 			/* This is not fatal, it just means we cannot deallocate */
-			if (dbis->debug >= 4)
-				(void)PerlIO_printf(DBILOGFP, "dbdpg: Rollback failed, so no deallocate\n");
+			if (TRACEWARN) TRC(DBILOGFP, "%sRollback failed, so no deallocate\n", THEADER);
+			if (TEND) TRC(DBILOGFP, "%sEnd pg_st_deallocate_statement (cannot deallocate)\n", THEADER);
 			return 1;
 		}
 	}
@@ -3252,13 +3409,15 @@ static int pg_st_deallocate_statement (pTHX_ SV * sth, imp_sth_t * imp_sth)
 
 	sprintf(stmt, "DEALLOCATE %s", imp_sth->prepare_name);
 
-	if (dbis->debug >= 5)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: Deallocating (%s)\n", imp_sth->prepare_name);
+	if (TRACE5)
+		TRC(DBILOGFP, "%sDeallocating (%s)\n", THEADER, imp_sth->prepare_name);
 
 	status = _result(aTHX_ imp_dbh, stmt);
 	Safefree(stmt);
 	if (PGRES_COMMAND_OK != status) {
+		TRACE_PQERRORMESSAGE;
 		pg_error(aTHX_ sth, status, PQerrorMessage(imp_dbh->conn));
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_st_deallocate_statement (error: status not OK)\n", THEADER);
 		return 2;
 	}
 
@@ -3268,6 +3427,7 @@ static int pg_st_deallocate_statement (pTHX_ SV * sth, imp_sth_t * imp_sth)
 		strncpy(imp_dbh->sqlstate, tempsqlstate, strlen(tempsqlstate)+1);
 	}
 
+	if (TEND) TRC(DBILOGFP, "%sEnd pg_st_deallocate_statement\n", THEADER);
 	return 0;
 
 } /* end of pg_st_deallocate_statement */
@@ -3283,31 +3443,31 @@ void dbd_st_destroy (SV * sth, imp_sth_t * imp_sth)
 	ph_t *  currph;
 	ph_t *  nextph;
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: dbd_st_destroy\n");
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin dbd_st_destroy\n", THEADER);
 
 	if (NULL == imp_sth->seg) /* Already been destroyed! */
 		croak("dbd_st_destroy called twice!");
 
 	/* If the InactiveDestroy flag has been set, we go no further */
 	if (DBIc_IADESTROY(imp_dbh)) {
-		if (dbis->debug >= 4) {
-			(void)PerlIO_printf(DBILOGFP, "dbdpg: skipping sth destroy due to InactiveDestroy\n");
+		if (TRACE4) {
+			TRC(DBILOGFP, "%sskipping sth destroy due to InactiveDestroy\n", THEADER);
 		}
 		DBIc_IMPSET_off(imp_sth); /* let DBI know we've done it */
+		if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_destroy (InactiveDestroy set)\n", THEADER);
 		return;
 	}
 
 	if (imp_dbh->async_status) {
-	  handle_old_async(aTHX_ sth, imp_dbh, PG_OLDQUERY_WAIT);
+		handle_old_async(aTHX_ sth, imp_dbh, PG_OLDQUERY_WAIT);
 	}
 
 	/* Deallocate only if we named this statement ourselves and we still have a good connection */
 	/* On rare occasions, dbd_db_destroy is called first and we can no longer rely on imp_dbh */
 	if (imp_sth->prepared_by_us && DBIc_ACTIVE(imp_dbh)) {
 		if (pg_st_deallocate_statement(aTHX_ sth, imp_sth)!=0) {
-			if (dbis->debug >= 4)
-				(void)PerlIO_printf(DBILOGFP, "dbdpg: Could not deallocate\n");
+			if (TRACEWARN)
+				TRC(DBILOGFP, "%sCould not deallocate\n", THEADER);
 		}
 	}
 
@@ -3316,6 +3476,7 @@ void dbd_st_destroy (SV * sth, imp_sth_t * imp_sth)
 	Safefree(imp_sth->firstword);
 
 	if (imp_sth->result) {
+		TRACE_PQCLEAR;
 		PQclear(imp_sth->result);
 		imp_sth->result = NULL;
 	}
@@ -3349,6 +3510,8 @@ void dbd_st_destroy (SV * sth, imp_sth_t * imp_sth)
 
 	DBIc_IMPSET_off(imp_sth); /* let DBI know we've done it */
 
+	if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_destroy\n", THEADER);
+
 } /* end of dbd_st_destroy */
 
 
@@ -3360,26 +3523,28 @@ pg_db_putline (SV * dbh, const char * buffer)
 	D_imp_dbh(dbh);
 	int copystatus;
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_db_putline\n");
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_putline\n", THEADER);
 
 	/* We must be in COPY IN state */
 	if (PGRES_COPY_IN != imp_dbh->copystate)
 		croak("pg_putline can only be called directly after issuing a COPY IN command\n");
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: Running PQputCopyData\n");
-
+	TRACE_PQPUTCOPYDATA;
 	copystatus = PQputCopyData(imp_dbh->conn, buffer, (int)strlen(buffer));
 	if (-1 == copystatus) {
+		TRACE_PQERRORMESSAGE;
 		pg_error(aTHX_ dbh, PGRES_FATAL_ERROR, PQerrorMessage(imp_dbh->conn));
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_putline (error: copystatus not -1)\n", THEADER);
 		return 0;
 	}
 	else if (1 != copystatus) {
 		croak("PQputCopyData gave a value of %d\n", copystatus);
 	}
+
+	if (TEND) TRC(DBILOGFP, "%sEnd pg_db_putline\n", THEADER);
 	return 0;
-}
+
+} /* end of pg_db_putline */
 
 
 /* ================================================================== */
@@ -3394,8 +3559,7 @@ pg_db_getline (SV * dbh, SV * svbuf, int length)
 
 	buffer = SvPV_nolen(svbuf);
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_db_getline\n");
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_getline\n", THEADER);
 
 	tempbuf = NULL;
 
@@ -3404,26 +3568,30 @@ pg_db_getline (SV * dbh, SV * svbuf, int length)
 		croak("pg_getline can only be called directly after issuing a COPY command\n");
 
 	length = 0; /* Make compilers happy */
-	if (dbis->debug >= 5)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: Running PQgetCopyData\n");
+	TRACE_PQGETCOPYDATA;
 	copystatus = PQgetCopyData(imp_dbh->conn, &tempbuf, 0);
 
 	if (-1 == copystatus) {
 		*buffer = '\0';
 		imp_dbh->copystate=0;
+		TRACE_PQENDCOPY;
 		PQendcopy(imp_dbh->conn); /* Can't hurt */
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_getline (-1)\n", THEADER);
 		return -1;
 	}
 	else if (copystatus < 1) {
+		TRACE_PQERRORMESSAGE;
 		pg_error(aTHX_ dbh, PGRES_FATAL_ERROR, PQerrorMessage(imp_dbh->conn));
 	}
 	else {
 		sv_setpv(svbuf, tempbuf);
+		TRACE_PQFREEMEM;
 		PQfreemem(tempbuf);
 	}
+	if (TEND) TRC(DBILOGFP, "%sEnd pg_db_getline (0)\n", THEADER);
 	return 0;
 
-}
+} /* end of pg_db_getline */
 
 
 /* ================================================================== */
@@ -3435,8 +3603,7 @@ pg_db_getcopydata (SV * dbh, SV * dataline, int async)
 	int    copystatus;
 	char * tempbuf;
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_db_getcopydata\n");
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_getcopydata\n", THEADER);
 
 	/* We must be in COPY OUT state */
 	if (PGRES_COPY_OUT != imp_dbh->copystate)
@@ -3444,15 +3611,20 @@ pg_db_getcopydata (SV * dbh, SV * dataline, int async)
 
 	tempbuf = NULL;
 
+	TRACE_PQGETCOPYDATA;
 	copystatus = PQgetCopyData(imp_dbh->conn, &tempbuf, async);
 
 	if (copystatus > 0) {
 		sv_setpv(dataline, tempbuf);
+		TRACE_PQFREEMEM;
 		PQfreemem(tempbuf);
 	}
 	else if (0 == copystatus) { /* async and still in progress: consume and return */
+		TRACE_PQCONSUMEINPUT;
 		if (!PQconsumeInput(imp_dbh->conn)) {
+			TRACE_PQERRORMESSAGE;
 			pg_error(aTHX_ dbh, PGRES_FATAL_ERROR, PQerrorMessage(imp_dbh->conn));
+			if (TEND) TRC(DBILOGFP, "%sEnd pg_db_getcopydata (error: async in progress)\n", THEADER);
 			return -2;
 		}
 	}
@@ -3461,18 +3633,26 @@ pg_db_getcopydata (SV * dbh, SV * dataline, int async)
 		ExecStatusType status;
 		SvCUR_set(dataline, 0);
 		imp_dbh->copystate=0;
+		TRACE_PQGETRESULT;
 		result = PQgetResult(imp_dbh->conn);
 		status = _sqlstate(aTHX_ imp_dbh, result);
+		TRACE_PQCLEAR;
 		PQclear(result);
 		if (PGRES_COMMAND_OK != status) {
+			TRACE_PQERRORMESSAGE;
 			pg_error(aTHX_ dbh, status, PQerrorMessage(imp_dbh->conn));
 		}
 	}
 	else {
+		TRACE_PQERRORMESSAGE;
 		pg_error(aTHX_ dbh, PGRES_FATAL_ERROR, PQerrorMessage(imp_dbh->conn));
 	}
+
+	if (TEND) TRC(DBILOGFP, "%sEnd pg_db_getcopydata\n", THEADER);
 	return copystatus;
-}
+
+} /* end of pg_db_getcopydata */
+
 
 /* ================================================================== */
 int
@@ -3482,13 +3662,13 @@ pg_db_putcopydata (SV * dbh, SV * dataline)
 	D_imp_dbh(dbh);
 	int copystatus;
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_db_putcopydata\n");
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_putcopydata\n", THEADER);
 
 	/* We must be in COPY IN state */
 	if (PGRES_COPY_IN != imp_dbh->copystate)
 		croak("pg_putcopydata can only be called directly after issuing a COPY command\n");
 
+	TRACE_PQPUTCOPYDATA;
 	copystatus = PQputCopyData
 		(
 		 imp_dbh->conn,
@@ -3501,11 +3681,15 @@ pg_db_putcopydata (SV * dbh, SV * dataline)
 	else if (0 == copystatus) { /* non-blocking mode only */
 	}
 	else {
+		TRACE_PQERRORMESSAGE;
 		pg_error(aTHX_ dbh, PGRES_FATAL_ERROR, PQerrorMessage(imp_dbh->conn));
 	}
 
+	if (TEND) TRC(DBILOGFP, "%sEnd pg_db_putcopydata\n", THEADER);	
 	return copystatus == 1 ? 1 : 0;
-}
+
+} /* end of pg_db_putcopydata */
+
 
 /* ================================================================== */
 int pg_db_putcopyend (SV * dbh)
@@ -3516,46 +3700,57 @@ int pg_db_putcopyend (SV * dbh)
 
 	dTHX;
 	D_imp_dbh(dbh);
-	int            copystatus;
+	int copystatus;
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: dbd_pg_putcopyend\n");
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_putcopyend\n", THEADER);
 
 	if (0 == imp_dbh->copystate) {
 		warn("pg_putcopyend cannot be called until a COPY is issued");
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_putcopyend (warning: copystate is 0)\n", THEADER);
 		return 0;
 	}
 
 	if (PGRES_COPY_OUT == imp_dbh->copystate) {
 		warn("PQputcopyend does not need to be called when using PGgetcopydata");
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_putcopyend (warning: copy state is OUT)\n", THEADER);
 		return 0;
 	}
 
 	/* Must be PGRES_COPY_IN at this point */
 
+	TRACE_PQPUTCOPYEND;
 	copystatus = PQputCopyEnd(imp_dbh->conn, NULL);
 
 	if (1 == copystatus) {
 		PGresult * result;
 		ExecStatusType status;
 		imp_dbh->copystate = 0;
+		TRACE_PQGETRESULT;
 		result = PQgetResult(imp_dbh->conn);
 		status = _sqlstate(aTHX_ imp_dbh, result);
+		TRACE_PQCLEAR;
 		PQclear(result);
 		if (PGRES_COMMAND_OK != status) {
+			TRACE_PQERRORMESSAGE;
 			pg_error(aTHX_ dbh, status, PQerrorMessage(imp_dbh->conn));
+			if (TEND) TRC(DBILOGFP, "%sEnd pg_db_putcopyend (error: status not OK)\n", THEADER);
 			return 0;
 		}
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_putcopyend (1)\n", THEADER);
 		return 1;
 	}
 	else if (0 == copystatus) { /* non-blocking mode only */
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_putcopyend (0)\n", THEADER);
 		return 0;
 	}
 	else {
+		TRACE_PQERRORMESSAGE;
 		pg_error(aTHX_ dbh, PGRES_FATAL_ERROR, PQerrorMessage(imp_dbh->conn));
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_putcopyend (error: copystatus unknown)\n", THEADER);
 		return 0;
 	}
-}
+
+} /* end of pg_db_putcopyend */
 
 
 /* ================================================================== */
@@ -3567,39 +3762,46 @@ int pg_db_endcopy (SV * dbh)
 	PGresult *     result;
 	ExecStatusType status;
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: dbd_pg_endcopy\n");
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_endcopy\n", THEADER);
 
 	if (0==imp_dbh->copystate)
 		croak("pg_endcopy cannot be called until a COPY is issued");
 
 	if (PGRES_COPY_IN == imp_dbh->copystate) {
-		if (dbis->debug >= 5)
-			(void)PerlIO_printf(DBILOGFP, "dbdpg: Running PQputCopyEnd\n");
+		TRACE_PQPUTCOPYEND;
 		copystatus = PQputCopyEnd(imp_dbh->conn, NULL);
 		if (-1 == copystatus) {
+			TRACE_PQERRORMESSAGE;
 			pg_error(aTHX_ dbh, PGRES_FATAL_ERROR, PQerrorMessage(imp_dbh->conn));
+			if (TEND) TRC(DBILOGFP, "%sEnd pg_db_endcopy (error)\n", THEADER);
 			return 1;
 		}
 		else if (1 != copystatus)
 			croak("PQputCopyEnd returned a value of %d\n", copystatus);
 		/* Get the final result of the copy */
+		TRACE_PQGETRESULT;
 		result = PQgetResult(imp_dbh->conn);
 		status = _sqlstate(aTHX_ imp_dbh, result);
+		TRACE_PQCLEAR;
 		PQclear(result);
 		if (PGRES_COMMAND_OK != status) {
+			TRACE_PQERRORMESSAGE;
 			pg_error(aTHX_ dbh, status, PQerrorMessage(imp_dbh->conn));
+			if (TEND) TRC(DBILOGFP, "%sEnd pg_db_endcopy (error: status not OK)\n", THEADER);
 			return 1;
 		}
 		copystatus = 0;
 	}
 	else {
+		TRACE_PQENDCOPY;
 		copystatus = PQendcopy(imp_dbh->conn);
 	}
 
 	imp_dbh->copystate = 0;
+	if (TEND) TRC(DBILOGFP, "%sEnd pg_db_endcopy\n", THEADER);
 	return copystatus;
-}
+
+} /* end of pg_db_endcopy */
 
 
 /* ================================================================== */
@@ -3608,11 +3810,14 @@ void pg_db_pg_server_trace (SV * dbh, FILE * fh)
 	dTHX;
 	D_imp_dbh(dbh);
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_db_pg_server_trace\n");
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_pg_server_trace\n", THEADER);
 
+	TRACE_PQTRACE;
 	PQtrace(imp_dbh->conn, fh);
-}
+
+	if (TEND) TRC(DBILOGFP, "%sEnd pg_db_pg_server_trace\n", THEADER);
+
+} /* end of pg_db_pg_server_trace */
 
 
 /* ================================================================== */
@@ -3621,11 +3826,14 @@ void pg_db_pg_server_untrace (SV * dbh)
 	dTHX;
 	D_imp_dbh(dbh);
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_db_pg_server_untrace\n");
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_pg_server_untrace\n", THEADER);
 
+	TRACE_PQUNTRACE;
 	PQuntrace(imp_dbh->conn);
-}
+
+	if (TEND) TRC(DBILOGFP, "%sEnd pg_db_pg_server_untrace\n", THEADER);
+
+} /* end of pg_db_pg_server_untrace */
 
 
 /* ================================================================== */
@@ -3635,8 +3843,7 @@ int pg_db_savepoint (SV * dbh, imp_dbh_t * imp_dbh, char * savepoint)
 	int    status;
 	char * action;
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_db_savepoint (%s)\n", savepoint);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_savepoint (name: %s)\n", THEADER, savepoint);
 
 	New(0, action, strlen(savepoint) + 11, char); /* freed below */
 
@@ -3646,14 +3853,18 @@ int pg_db_savepoint (SV * dbh, imp_dbh_t * imp_dbh, char * savepoint)
 	sprintf(action, "savepoint %s", savepoint);
 
 	/* no action if AutoCommit = on or the connection is invalid */
-	if ((NULL == imp_dbh->conn) || (DBIc_has(imp_dbh, DBIcf_AutoCommit)))
+	if ((NULL == imp_dbh->conn) || (DBIc_has(imp_dbh, DBIcf_AutoCommit))) {
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_savepoint (0)\n", THEADER);
 		return 0;
+	}
 
 	/* Start a new transaction if this is the first command */
 	if (!imp_dbh->done_begin) {
 		status = _result(aTHX_ imp_dbh, "begin");
 		if (PGRES_COMMAND_OK != status) {
+			TRACE_PQERRORMESSAGE;
 			pg_error(aTHX_ dbh, status, PQerrorMessage(imp_dbh->conn));
+			if (TEND) TRC(DBILOGFP, "%sEnd pg_db_savepoint (error: status not OK for begin)\n", THEADER);
 			return -2;
 		}
 		imp_dbh->done_begin = DBDPG_TRUE;
@@ -3663,13 +3874,17 @@ int pg_db_savepoint (SV * dbh, imp_dbh_t * imp_dbh, char * savepoint)
 	Safefree(action);
 
 	if (PGRES_COMMAND_OK != status) {
+		TRACE_PQERRORMESSAGE;
 		pg_error(aTHX_ dbh, status, PQerrorMessage(imp_dbh->conn));
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_savepoint (error: status not OK for savepoint)\n", THEADER);
 		return 0;
 	}
 
 	av_push(imp_dbh->savepoints, newSVpv(savepoint,0));
+	if (TEND) TRC(DBILOGFP, "%sEnd pg_db_savepoint\n", THEADER);
 	return 1;
-}
+
+} /* end of pg_db_savepoint */
 
 
 /* ================================================================== */
@@ -3679,8 +3894,7 @@ int pg_db_rollback_to (SV * dbh, imp_dbh_t * imp_dbh, const char *savepoint)
 	int    status;
 	char * action;
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_db_rollback_to (%s)\n", savepoint);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_rollback_to (name: %s)\n", THEADER, savepoint);
 
 	New(0, action, strlen(savepoint) + 13, char);
 
@@ -3690,20 +3904,26 @@ int pg_db_rollback_to (SV * dbh, imp_dbh_t * imp_dbh, const char *savepoint)
 	sprintf(action, "rollback to %s", savepoint);
 
 	/* no action if AutoCommit = on or the connection is invalid */
-	if ((NULL == imp_dbh->conn) || (DBIc_has(imp_dbh, DBIcf_AutoCommit)))
+	if ((NULL == imp_dbh->conn) || (DBIc_has(imp_dbh, DBIcf_AutoCommit))) {
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_rollback_to (0)\n", THEADER);
 		return 0;
+	}
 
 	status = _result(aTHX_ imp_dbh, action);
 	Safefree(action);
 
 	if (PGRES_COMMAND_OK != status) {
+		TRACE_PQERRORMESSAGE;
 		pg_error(aTHX_ dbh, status, PQerrorMessage(imp_dbh->conn));
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_rollback_to (error: status not OK for rollback)\n", THEADER);
 		return 0;
 	}
 
 	pg_db_free_savepoints_to(aTHX_ imp_dbh, savepoint);
+	if (TEND) TRC(DBILOGFP, "%sEnd pg_db_rollback_to\n", THEADER);
 	return 1;
-}
+
+} /* end of pg_db_rollback_to */
 
 
 /* ================================================================== */
@@ -3713,8 +3933,7 @@ int pg_db_release (SV * dbh, imp_dbh_t * imp_dbh, char * savepoint)
 	int    status;
 	char * action;
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_db_release (%s)\n", savepoint);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_release (name: %s)\n", THEADER, savepoint);
 
 	New(0, action, strlen(savepoint) + 9, char);
 
@@ -3724,20 +3943,26 @@ int pg_db_release (SV * dbh, imp_dbh_t * imp_dbh, char * savepoint)
 	sprintf(action, "release %s", savepoint);
 
 	/* no action if AutoCommit = on or the connection is invalid */
-	if ((NULL == imp_dbh->conn) || (DBIc_has(imp_dbh, DBIcf_AutoCommit)))
+	if ((NULL == imp_dbh->conn) || (DBIc_has(imp_dbh, DBIcf_AutoCommit))) {
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_release (0)\n", THEADER);
 		return 0;
+	}
 
 	status = _result(aTHX_ imp_dbh, action);
 	Safefree(action);
 
 	if (PGRES_COMMAND_OK != status) {
+		TRACE_PQERRORMESSAGE;
 		pg_error(aTHX_ dbh, status, PQerrorMessage(imp_dbh->conn));
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_release (error: status not OK for release)\n", THEADER);
 		return 0;
 	}
 
 	pg_db_free_savepoints_to(aTHX_ imp_dbh, savepoint);
+	if (TEND) TRC(DBILOGFP, "%sEnd pg_db_release\n", THEADER);
 	return 1;
-}
+
+} /* end of pg_db_release */
 
 
 /* ================================================================== */
@@ -3745,17 +3970,23 @@ int pg_db_release (SV * dbh, imp_dbh_t * imp_dbh, char * savepoint)
 static int pg_db_start_txn (pTHX_ SV * dbh, imp_dbh_t * imp_dbh)
 {
 	int status = -1;
+
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_start_txn\n", THEADER);
+
 	/* If not autocommit, start a new transaction */
 	if (!imp_dbh->done_begin && !DBIc_has(imp_dbh, DBIcf_AutoCommit)) {
 		status = _result(aTHX_ imp_dbh, "begin");
 		if (PGRES_COMMAND_OK != status) {
+			TRACE_PQERRORMESSAGE;
 			pg_error(aTHX_ dbh, status, PQerrorMessage(imp_dbh->conn));
+			if (TEND) TRC(DBILOGFP, "%sEnd pg_db_start_txn (error: status not OK for begin)\n", THEADER);
 			return 0;
 		}
 		imp_dbh->done_begin = DBDPG_TRUE;
 	}
+	if (TEND) TRC(DBILOGFP, "%sEnd pg_db_start_txn\n", THEADER);
 	return 1;
-}
+} /* end of pg_db_start_txn */
 
 
 /* Large object functions */
@@ -3766,8 +3997,7 @@ unsigned int pg_db_lo_creat (SV * dbh, int mode)
 	dTHX;
 	D_imp_dbh(dbh);
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_db_lo_creat (%d)\n", mode);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_pg_lo_creat (mode: %d)\n", THEADER, mode);
 
 	if (!pg_db_start_txn(aTHX_ dbh,imp_dbh))
 		return 0; /* No other option, because lo_creat returns an Oid */
@@ -3781,8 +4011,8 @@ int pg_db_lo_open (SV * dbh, unsigned int lobjId, int mode)
 	dTHX;
 	D_imp_dbh(dbh);
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_db_lo_open (%d) (%d)\n", lobjId, mode);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_pg_lo_open (mode: %d objectid: %ld)\n",
+					THEADER, mode, lobjId);
 
 	if (!pg_db_start_txn(aTHX_ dbh,imp_dbh))
 		return -2;
@@ -3796,8 +4026,7 @@ int pg_db_lo_close (SV * dbh, int fd)
 	dTHX;
 	D_imp_dbh(dbh);
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_db_lo_close (%d)\n", fd);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_lo_close (fd: %d)\n", THEADER, fd);
 
 	return lo_close(imp_dbh->conn, fd); /* <0 on error, 0 if ok */
 }
@@ -3808,8 +4037,8 @@ int pg_db_lo_read (SV * dbh, int fd, char * buf, size_t len)
 	dTHX;
 	D_imp_dbh(dbh);
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_db_lo_read (%d) (%d)\n", fd, len);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_lo_read (fd: %d length: %d)\n",
+					THEADER, fd, len);
 
 	return lo_read(imp_dbh->conn, fd, buf, len); /* bytes read, <0 on error */
 }
@@ -3820,8 +4049,8 @@ int pg_db_lo_write (SV * dbh, int fd, char * buf, size_t len)
 	dTHX;
 	D_imp_dbh(dbh);
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_db_lo_write (%d) (%d)\n", fd, len);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_lo_write (fd: %d length: %d)\n",
+					THEADER, fd, len);
 
 	return lo_write(imp_dbh->conn, fd, buf, len); /* bytes written, <0 on error */
 }
@@ -3832,8 +4061,8 @@ int pg_db_lo_lseek (SV * dbh, int fd, int offset, int whence)
 	dTHX;
 	D_imp_dbh(dbh);
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_db_lo_lseek (%d) (%d) (%d)\n", fd, offset, whence);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_lo_lseek (fd: %d offset: %d whence: %d)\n",
+					THEADER, fd, offset, whence);
 
 	return lo_lseek(imp_dbh->conn, fd, offset, whence); /* new position, -1 on error */
 }
@@ -3844,8 +4073,7 @@ int pg_db_lo_tell (SV * dbh, int fd)
 	dTHX;
 	D_imp_dbh(dbh);
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_db_lo_tell (%d)\n", fd);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_lo_tell (fd: %d)\n", THEADER, fd);
 
 	return lo_tell(imp_dbh->conn, fd); /* current position, <0 on error */
 }
@@ -3856,8 +4084,7 @@ int pg_db_lo_unlink (SV * dbh, unsigned int lobjId)
 	dTHX;
 	D_imp_dbh(dbh);
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_db_lo_unlink (%d)\n", lobjId);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_lo_unlink (objectid: %d)\n", THEADER, lobjId);
 
 	if (!pg_db_start_txn(aTHX_ dbh,imp_dbh))
 		return -2;
@@ -3871,8 +4098,7 @@ unsigned int pg_db_lo_import (SV * dbh, char * filename)
 	dTHX;
 	D_imp_dbh(dbh);
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_db_lo_import (%s)\n", filename);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_lo_import (filename: %s)\n", THEADER, filename);
 
 	if (!pg_db_start_txn(aTHX_ dbh,imp_dbh))
 		return 0; /* No other option, because lo_import returns an Oid */
@@ -3886,8 +4112,8 @@ int pg_db_lo_export (SV * dbh, unsigned int lobjId, char * filename)
 	dTHX;
 	D_imp_dbh(dbh);
 
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_db_lo_export id:(%d) file:(%s)\n", lobjId, filename);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_lo_export (objectid: %d filename: %s)\n",
+					THEADER, lobjId, filename);
 
 	if (!pg_db_start_txn(aTHX_ dbh,imp_dbh))
 		return -2;
@@ -3907,8 +4133,8 @@ int dbd_st_blob_read (SV * sth, imp_sth_t * imp_sth, int lobjId, long offset, lo
 	SV *   bufsv;
 	char * tmp;
 	
-	if (dbis->debug >= 4)
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: dbd_st_blob_read (%d) (%d) (%d)\n", lobjId, offset, len);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin dbd_st_blob_read (objectid: %d offset: %d length: %d)\n",
+					THEADER, lobjId, offset, len);
 
 	/* safety checks */
 	if (lobjId <= 0) {
@@ -3941,7 +4167,9 @@ int dbd_st_blob_read (SV * sth, imp_sth_t * imp_sth, int lobjId, long offset, lo
 	/* open large object */
 	lobj_fd = lo_open(imp_dbh->conn, (unsigned)lobjId, INV_READ);
 	if (lobj_fd < 0) {
+		TRACE_PQERRORMESSAGE;
 		pg_error(aTHX_ sth, PGRES_FATAL_ERROR, PQerrorMessage(imp_dbh->conn));
+		if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_blob_read (error: open failed)\n", THEADER);
 		return 0;
 	}
 	
@@ -3949,7 +4177,9 @@ int dbd_st_blob_read (SV * sth, imp_sth_t * imp_sth, int lobjId, long offset, lo
 	if (offset > 0) {
 		ret = lo_lseek(imp_dbh->conn, lobj_fd, (int)offset, SEEK_SET);
 		if (ret < 0) {
+			TRACE_PQERRORMESSAGE;
 			pg_error(aTHX_ sth, PGRES_FATAL_ERROR, PQerrorMessage(imp_dbh->conn));
+			if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_blob_read (error: bad seek)\n", THEADER);
 			return 0;
 		}
 	}
@@ -3976,14 +4206,16 @@ int dbd_st_blob_read (SV * sth, imp_sth_t * imp_sth, int lobjId, long offset, lo
 	/* close large object */
 	ret = lo_close(imp_dbh->conn, lobj_fd);
 	if (ret < 0) {
+		TRACE_PQERRORMESSAGE;
 		pg_error(aTHX_ sth, PGRES_FATAL_ERROR, PQerrorMessage(imp_dbh->conn));
+		if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_blob_read (error: close failed)\n", THEADER);
 		return 0;
 	}
 	
+	if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_blob_read (bytes: %d)\n", THEADER, (int)nread);
 	return (int)nread;
 
 } /* end of dbd_st_blob_read */
-
 
 
 /* ================================================================== */
@@ -3996,72 +4228,83 @@ int pg_db_result (SV *h, imp_dbh_t *imp_dbh)
 	int rows;
 	char *cmdStatus = NULL;
 
-	if (dbis->debug >= 4) { (void)PerlIO_printf(DBILOGFP, "dbdpg: pg_db_result\n"); }
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_result\n", THEADER);
 
 	if (1 != imp_dbh->async_status) {
 		pg_error(aTHX_ h, PGRES_FATAL_ERROR, "No asynchronous query is running\n");
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_result (error: no async)\n", THEADER);
 		return -2;
 	}	
 
 	imp_dbh->copystate = 0; /* Assume not in copy mode until told otherwise */
 
+	TRACE_PQGETRESULT;
 	while ((result = PQgetResult(imp_dbh->conn)) != NULL) {
-	  /* TODO: Better multiple result-set handling */
-	  status = _sqlstate(aTHX_ imp_dbh, result);
-	  switch (status) {
-	  case PGRES_TUPLES_OK:
-		rows = PQntuples(result);
+		/* TODO: Better multiple result-set handling */
+		status = _sqlstate(aTHX_ imp_dbh, result);
+		switch (status) {
+		case PGRES_TUPLES_OK:
+			TRACE_PQNTUPLES;
+			rows = PQntuples(result);
+
+			if (imp_dbh->async_sth) {
+				imp_dbh->async_sth->cur_tuple = 0;
+				TRACE_PQNFIELDS;
+				DBIc_NUM_FIELDS(imp_dbh->async_sth) = PQnfields(result);
+				DBIc_ACTIVE_on(imp_dbh->async_sth);
+			}
+
+			break;
+		case PGRES_COMMAND_OK:
+			/* non-select statement */
+			TRACE_PQCMDSTATUS;
+			cmdStatus = PQcmdStatus(result);
+			if ((0==strncmp(cmdStatus, "DELETE", 6)) || (0==strncmp(cmdStatus, "INSERT", 6)) || 
+				(0==strncmp(cmdStatus, "UPDATE", 6))) {
+				TRACE_PQCMDTUPLES;
+				rows = atoi(PQcmdTuples(result));
+			}
+			break;
+		case PGRES_COPY_OUT:
+		case PGRES_COPY_IN:
+			/* Copy Out/In data transfer in progress */
+			imp_dbh->copystate = status;
+			rows = -1;
+			break;
+		case PGRES_EMPTY_QUERY:
+		case PGRES_BAD_RESPONSE:
+		case PGRES_NONFATAL_ERROR:
+			rows = -2;
+			TRACE_PQERRORMESSAGE;
+			pg_error(aTHX_ h, status, PQerrorMessage(imp_dbh->conn));
+			break;
+		case PGRES_FATAL_ERROR:
+		default:
+			rows = -2;
+			TRACE_PQERRORMESSAGE;
+			pg_error(aTHX_ h, status, PQerrorMessage(imp_dbh->conn));
+			break;
+		}
 
 		if (imp_dbh->async_sth) {
-		  imp_dbh->async_sth->cur_tuple = 0;
-		  DBIc_NUM_FIELDS(imp_dbh->async_sth) = PQnfields(result);
-		  DBIc_ACTIVE_on(imp_dbh->async_sth);
+			if (imp_dbh->async_sth->result) { /* For potential multi-result sets */
+				TRACE_PQCLEAR;
+				PQclear(imp_dbh->async_sth->result);
+			}
+			imp_dbh->async_sth->result = result;
 		}
-
-		break;
-	  case PGRES_COMMAND_OK:
-		/* non-select statement */
-		cmdStatus = PQcmdStatus(result);
-		if ((0==strncmp(cmdStatus, "DELETE", 6)) || (0==strncmp(cmdStatus, "INSERT", 6)) || 
-			(0==strncmp(cmdStatus, "UPDATE", 6))) {
-		  rows = atoi(PQcmdTuples(result));
+		else {
+			TRACE_PQCLEAR;
+			PQclear(result);
 		}
-		break;
-	  case PGRES_COPY_OUT:
-	  case PGRES_COPY_IN:
-		/* Copy Out/In data transfer in progress */
-		imp_dbh->copystate = status;
-		rows = -1;
-		break;
-	  case PGRES_EMPTY_QUERY:
-	  case PGRES_BAD_RESPONSE:
-	  case PGRES_NONFATAL_ERROR:
-		rows = -2;
-		pg_error(aTHX_ h, status, PQerrorMessage(imp_dbh->conn));
-		break;
-	  case PGRES_FATAL_ERROR:
-	  default:
-		rows = -2;
-		pg_error(aTHX_ h, status, PQerrorMessage(imp_dbh->conn));
-		break;
-	  }
-
-	  if (imp_dbh->async_sth) {
-		if (imp_dbh->async_sth->result) /* For potential multi-result sets */
-		  PQclear(imp_dbh->async_sth->result);
-		imp_dbh->async_sth->result = result;
-	  }
-	  else {
-		  PQclear(result);
-	  }
 	}
 
-	if (dbis->debug >= 4) { (void)PerlIO_printf(DBILOGFP, "dbdpg: pg_db_result returning %d\n", rows); }
 	if (imp_dbh->async_sth) {
-	  imp_dbh->async_sth->rows = rows;
-	  imp_dbh->async_sth->async_status = 0;
+		imp_dbh->async_sth->rows = rows;
+		imp_dbh->async_sth->async_status = 0;
 	}
 	imp_dbh->async_status = 0;
+	if (TEND) TRC(DBILOGFP, "%sEnd pg_db_result (rows: %d)\n", THEADER, rows);
 	return rows;
 
 } /* end of pg_db_result */
@@ -4078,24 +4321,29 @@ Returns:
   -2 for other errors
 ==================================================================
 */
-
 int pg_db_ready(SV *h, imp_dbh_t *imp_dbh)
 {
 	dTHX;
-	if (dbis->debug >= 4) {
-		(void)PerlIO_printf(DBILOGFP, "dbdpg: pg_db_ready, async_status is %d\n",imp_dbh->async_status);
-	}
+
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_ready (async status: %d)\n",
+					THEADER, imp_dbh->async_status);
 
 	if (0 == imp_dbh->async_status) {
 		pg_error(aTHX_ h, PGRES_FATAL_ERROR, "No asynchronous query is running\n");
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_ready (error: no async)\n", THEADER);
 		return -1;
 	}	
 
+	TRACE_PQCONSUMEINPUT;
 	if (!PQconsumeInput(imp_dbh->conn)) {
-	  pg_error(aTHX_ h, PGRES_FATAL_ERROR, PQerrorMessage(imp_dbh->conn));
-	  return -2;
+		TRACE_PQERRORMESSAGE;
+		pg_error(aTHX_ h, PGRES_FATAL_ERROR, PQerrorMessage(imp_dbh->conn));
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_ready (error: consume failed)\n", THEADER);
+		return -2;
 	}
 
+	if (TEND) TRC(DBILOGFP, "%sEnd pg_db_ready\n", THEADER);
+	TRACE_PQISBUSY;
 	return PQisBusy(imp_dbh->conn) ? 0 : 1;
 
 } /* end of pg_db_ready */
@@ -4110,6 +4358,7 @@ In this case, pg_cancel will return false.
 NOTE: We only return true if we cancelled and rolled back!
 */
 
+/* ================================================================== */
 int pg_db_cancel(SV *h, imp_dbh_t *imp_dbh)
 {
 	dTHX;
@@ -4118,71 +4367,91 @@ int pg_db_cancel(SV *h, imp_dbh_t *imp_dbh)
 	PGresult *result;
 	ExecStatusType status;
 
-	if (dbis->debug >= 4) { (void)PerlIO_printf(DBILOGFP, "dbdpg: pg_db_cancel, async=%d\n", imp_dbh->async_status); }
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_cancel (async status: %d)\n",
+					THEADER, imp_dbh->async_status);
 
 	if (0 == imp_dbh->async_status) {
-	  pg_error(aTHX_ h, PGRES_FATAL_ERROR, "No asynchronous query is running");
-	  return DBDPG_FALSE;
+		pg_error(aTHX_ h, PGRES_FATAL_ERROR, "No asynchronous query is running");
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_cancel (error: no async)\n", THEADER);
+		return DBDPG_FALSE;
 	}
 
 	if (-1 == imp_dbh->async_status) {
-	  pg_error(aTHX_ h, PGRES_FATAL_ERROR, "Asychronous query has already been cancelled");
-	  return DBDPG_FALSE;
+		pg_error(aTHX_ h, PGRES_FATAL_ERROR, "Asychronous query has already been cancelled");
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_cancel (error: async cancelled)\n", THEADER);
+		return DBDPG_FALSE;
 	}
 
 	/* Get the cancel structure */
+	TRACE_PQGETCANCEL;
 	cancel = PQgetCancel(imp_dbh->conn);
 
 	/* This almost always works. If not, free our structure and complain looudly */
+	TRACE_PQGETCANCEL;
 	if (! PQcancel(cancel,errbuf,sizeof(errbuf))) {
-	  PQfreeCancel(cancel);
-	  if (dbis->debug >= 1) { (void)PerlIO_printf(DBILOGFP, "dbdpg: PQcancel failed: %s\n", errbuf); }
-	  pg_error(aTHX_ h, PGRES_FATAL_ERROR, "PQcancel failed");
-	  return DBDPG_FALSE;
+		TRACE_PQFREECANCEL;
+		PQfreeCancel(cancel);
+		if (TRACEWARN) { TRC(DBILOGFP, "%sPQcancel failed: %s\n", THEADER, errbuf); }
+		pg_error(aTHX_ h, PGRES_FATAL_ERROR, "PQcancel failed");
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_cancel (error: cancel failed)\n", THEADER);
+		return DBDPG_FALSE;
 	}
+	TRACE_PQFREECANCEL;
 	PQfreeCancel(cancel);
 
 	/* Whatever else happens, we should no longer be inside of an async query */
 	imp_dbh->async_status = -1;
 	if (imp_dbh->async_sth)
-	  imp_dbh->async_sth->async_status = -1;
+		imp_dbh->async_sth->async_status = -1;
 
 	/* Read in the result - assume only one */
+	TRACE_PQGETRESULT;
 	result = PQgetResult(imp_dbh->conn);
 	if (!result) {
-	  pg_error(aTHX_ h, PGRES_FATAL_ERROR, "Failed to get a result after PQcancel");
-	  return DBDPG_FALSE;
+		pg_error(aTHX_ h, PGRES_FATAL_ERROR, "Failed to get a result after PQcancel");
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_cancel (error: no result)\n", THEADER);
+		return DBDPG_FALSE;
 	}
 
 	status = _sqlstate(aTHX_ imp_dbh, result);
 
 	/* If we actually cancelled a running query, perform a rollback */
 	if (0 == strncmp(imp_dbh->sqlstate, "57014", 5)) {
-	  if (dbis->debug >= 0) { (void)PerlIO_printf(DBILOGFP, "dbdpg: Rolling back after cancelled query\n"); }
-	  dbd_db_rollback(h, imp_dbh);
-	  return DBDPG_TRUE;
+		if (TRACE3) { TRC(DBILOGFP, "%sRolling back after cancelled query\n", THEADER); }
+		dbd_db_rollback(h, imp_dbh);
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_cancel (rollback)\n", THEADER);
+		return DBDPG_TRUE;
 	}
 
 	/* If we got any other error, make sure we report it */
 	if (0 != strncmp(imp_dbh->sqlstate, "00000", 5)) {
-	  if (dbis->debug >= 0) { (void)PerlIO_printf(DBILOGFP, "dbdpg: Query was not cancelled: was already finished\n"); }
-	  pg_error(aTHX_ h, status, PQerrorMessage(imp_dbh->conn));
+		if (TRACEWARN) TRC(DBILOGFP,
+						   "%sQuery was not cancelled: was already finished\n", THEADER);
+		TRACE_PQERRORMESSAGE;
+		pg_error(aTHX_ h, status, PQerrorMessage(imp_dbh->conn));
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_cancel (error)\n", THEADER);
 	}
-	
+	else if (TEND) TRC(DBILOGFP, "%sEnd pg_db_cancel\n", THEADER);
 	return DBDPG_FALSE;
-
+					
 } /* end of pg_db_cancel */
 
 
+/* ================================================================== */
 int pg_db_cancel_sth(SV *sth, imp_sth_t *imp_sth)
 {
 	dTHX;
 	D_imp_dbh_from_sth;
+	bool cancel_result;
 
-	const bool cancel_result = pg_db_cancel(sth, imp_dbh);
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin pg_db_cancel_sth (async status: %d)\n",
+					THEADER, imp_dbh->async_status);
+
+	cancel_result = pg_db_cancel(sth, imp_dbh);
 
 	dbd_st_finish(sth, imp_sth);
 
+	if (TEND) TRC(DBILOGFP, "%sEnd pg_db_cancel_sth\n", THEADER);
 	return cancel_result;
 
 } /* end of pg_db_cancel_sth */
@@ -4193,73 +4462,90 @@ Finish up an existing async query, either by cancelling it,
 or by waiting for a result.
 
  */
-static int handle_old_async(pTHX_ SV * handle, imp_dbh_t * imp_dbh, int asyncflag)
-{
+/* ================================================================== */
+static int handle_old_async(pTHX_ SV * handle, imp_dbh_t * imp_dbh, int asyncflag) {
 
-  PGresult *result;
-  ExecStatusType status;
+	PGresult *result;
+	ExecStatusType status;
 
-  if (dbis->debug >= 4) { (void)PerlIO_printf(DBILOGFP, "dbdpg: handle_old_sync flag=%d\n", asyncflag); }
+	if (TBEGIN) TRC(DBILOGFP, "%sBegin handle_old_sync (flag: %d)\n", THEADER, asyncflag);
 
-  if (asyncflag & PG_OLDQUERY_CANCEL) {
-	/* Cancel the outstanding query */
-	if (dbis->debug >= 1) { (void)PerlIO_printf(DBILOGFP, "dbdpg: Cancelling old async command\n"); }
-	if (PQisBusy(imp_dbh->conn)) {
-	  PGcancel *cancel;
-	  char errbuf[256];
-	  int cresult;
-	  if (dbis->debug >= 1) { (void)PerlIO_printf(DBILOGFP, "dbdpg: Attempting to cancel query\n"); }
-	  cancel = PQgetCancel(imp_dbh->conn);
-	  cresult = PQcancel(cancel,errbuf,255);
-	  if (! cresult) {
-		if (dbis->debug >= 1) { (void)PerlIO_printf(DBILOGFP, "dbdpg: PQcancel failed: %s\n", errbuf); }
-		pg_error(aTHX_ handle, PGRES_FATAL_ERROR, "Could not cancel previous command");
-		return -2;
-	  }
-	  PQfreeCancel(cancel);
-	  /* Suck up the cancellation notice */
-	  while ((result = PQgetResult(imp_dbh->conn)) != NULL) {
-	  }
-	  /* We need to rollback! - reprepare!? */
-	  PQexec(imp_dbh->conn, "rollback");
-	  imp_dbh->done_begin = DBDPG_FALSE;
-	}
-  }
-  else if (asyncflag & PG_OLDQUERY_WAIT || imp_dbh->async_status == -1) {
-	/* Finish up the outstanding query and throw out the result, unless an error */
-	if (dbis->debug >= 1) { (void)PerlIO_printf(DBILOGFP, "dbdpg: Waiting for old async command to finish\n"); }
-	while ((result = PQgetResult(imp_dbh->conn)) != NULL) {
-	  status = _sqlstate(aTHX_ imp_dbh, result);
-	  PQclear(result);
-	  if (status == PGRES_COPY_IN) { /* In theory, this should be caught by copystate, but we'll be careful */
-		if (-1 == PQputCopyEnd(imp_dbh->conn, NULL)) {
-		  pg_error(aTHX_ handle, PGRES_FATAL_ERROR, PQerrorMessage(imp_dbh->conn));
-		  return -2;
+	if (asyncflag & PG_OLDQUERY_CANCEL) {
+		/* Cancel the outstanding query */
+		if (TRACE3) { TRC(DBILOGFP, "%sCancelling old async command\n", THEADER); }
+		TRACE_PQISBUSY;
+		if (PQisBusy(imp_dbh->conn)) {
+			PGcancel *cancel;
+			char errbuf[256];
+			int cresult;
+			if (TRACE3) TRC(DBILOGFP, "%sAttempting to cancel query\n", THEADER);
+			TRACE_PQGETCANCEL;
+			cancel = PQgetCancel(imp_dbh->conn);
+			TRACE_PQCANCEL;
+			cresult = PQcancel(cancel,errbuf,255);
+			if (! cresult) {
+				if (TRACEWARN) { TRC(DBILOGFP, "%sPQcancel failed: %s\n", THEADER, errbuf); }
+				pg_error(aTHX_ handle, PGRES_FATAL_ERROR, "Could not cancel previous command");
+				if (TEND) TRC(DBILOGFP, "%sEnd handle_old_async (error: could not cancel)\n", THEADER);
+				return -2;
+			}
+			TRACE_PQFREECANCEL;
+			PQfreeCancel(cancel);
+			/* Suck up the cancellation notice */
+			TRACE_PQGETRESULT;
+			while ((result = PQgetResult(imp_dbh->conn)) != NULL) {
+			}
+			/* We need to rollback! - reprepare!? */
+			TRACE_PQEXEC;
+			PQexec(imp_dbh->conn, "rollback");
+			imp_dbh->done_begin = DBDPG_FALSE;
 		}
-	  }
-	  else if (status == PGRES_COPY_OUT) { /* Won't be as nice with this one */
-		pg_error(aTHX_ handle, PGRES_FATAL_ERROR, "Must finish copying first");
-		return -2;
-	  }
-	  else if (status != PGRES_EMPTY_QUERY
-			   && status != PGRES_COMMAND_OK
-			   && status != PGRES_TUPLES_OK) {
-		pg_error(aTHX_ handle, status, PQerrorMessage(imp_dbh->conn));
-		return -2;
-	  }
 	}
-  }
-  else {
-	pg_error(aTHX_ handle, PGRES_FATAL_ERROR, "Cannot execute until previous async query has finished");
-	return -2;
-  }
+	else if (asyncflag & PG_OLDQUERY_WAIT || imp_dbh->async_status == -1) {
+		/* Finish up the outstanding query and throw out the result, unless an error */
+		if (TRACE3) { TRC(DBILOGFP, "%sWaiting for old async command to finish\n", THEADER); }
+		TRACE_PQGETRESULT;
+		while ((result = PQgetResult(imp_dbh->conn)) != NULL) {
+			status = _sqlstate(aTHX_ imp_dbh, result);
+			TRACE_PQCLEAR;
+			PQclear(result);
+			if (status == PGRES_COPY_IN) { /* In theory, this should be caught by copystate, but we'll be careful */
+				TRACE_PQPUTCOPYEND;
+				if (-1 == PQputCopyEnd(imp_dbh->conn, NULL)) {
+					TRACE_PQERRORMESSAGE;
+					pg_error(aTHX_ handle, PGRES_FATAL_ERROR, PQerrorMessage(imp_dbh->conn));
+					if (TEND) TRC(DBILOGFP, "%sEnd handle_old_async (error: PQputCopyEnd)\n", THEADER);
+					return -2;
+				}
+			}
+			else if (status == PGRES_COPY_OUT) { /* Won't be as nice with this one */
+				pg_error(aTHX_ handle, PGRES_FATAL_ERROR, "Must finish copying first");
+				if (TEND) TRC(DBILOGFP, "%sEnd handle_old_async (error: COPY_OUT status)\n", THEADER);
+				return -2;
+			}
+			else if (status != PGRES_EMPTY_QUERY
+					 && status != PGRES_COMMAND_OK
+					 && status != PGRES_TUPLES_OK) {
+				TRACE_PQERRORMESSAGE;
+				pg_error(aTHX_ handle, status, PQerrorMessage(imp_dbh->conn));
+				if (TEND) TRC(DBILOGFP, "%sEnd handle_old_async (error: bad status)\n", THEADER);
+				return -2;
+			}
+		}
+	}
+	else {
+		pg_error(aTHX_ handle, PGRES_FATAL_ERROR, "Cannot execute until previous async query has finished");
+		if (TEND) TRC(DBILOGFP, "%sEnd handle_old_async (error: unfinished)\n", THEADER);
+		return -2;
+	}
 
-  /* If we made it this far, safe to assume there is no running query */
-  imp_dbh->async_status = 0;
-  if (imp_dbh->async_sth)
-  	imp_dbh->async_sth->async_status = 0;
+	/* If we made it this far, safe to assume there is no running query */
+	imp_dbh->async_status = 0;
+	if (imp_dbh->async_sth)
+		imp_dbh->async_sth->async_status = 0;
 
-  return 0;
+	if (TEND) TRC(DBILOGFP, "%sEnd handle_old_async\n", THEADER);
+	return 0;
 
 } /* end of handle_old_async */
 
