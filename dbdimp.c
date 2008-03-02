@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 10832 2008-02-26 13:43:52Z turnstep $
+  $Id: dbdimp.c 10864 2008-03-02 02:46:41Z turnstep $
 
   Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -271,23 +271,21 @@ int dbd_db_login (SV * dbh, imp_dbh_t * imp_dbh, char * dbname, char * uid, char
 static void pg_error (pTHX_ SV * h, ExecStatusType error_num, const char * error_msg)
 {
 	D_imp_xxh(h);
-	char *      err;
+	size_t error_len;
 	imp_dbh_t * imp_dbh = (imp_dbh_t *)(DBIc_TYPE(imp_xxh) == DBIt_ST ? DBIc_PARENT_COM(imp_xxh) : imp_xxh);
 
 	if (TSTART) TRC(DBILOGFP, "%sBegin pg_error (message: %s number: %d)\n",
 					THEADER, error_msg, error_num);
 
-	New(0, err, strlen(error_msg)+1, char); /* freed below */
-	strcpy(err, error_msg);
+	error_len = strlen(error_msg);
 
 	/* Strip final newline so line number appears for warn/die */
-	if (err[strlen(err)] == 10)
-		err[strlen(err)] = '\0';
+	if (error_len > 0 && error_msg[error_len-1] == 10)
+		error_len--;
 
 	sv_setiv(DBIc_ERR(imp_xxh), (IV)error_num);
-	sv_setpv(DBIc_ERRSTR(imp_xxh), (char*)err);
+	sv_setpvn(DBIc_ERRSTR(imp_xxh), error_msg, error_len);
 	sv_setpv(DBIc_STATE(imp_xxh), (char*)imp_dbh->sqlstate);
-	Safefree(err);
 
 	if (TEND) TRC(DBILOGFP, "%sEnd pg_error\n", THEADER);
 
@@ -1056,13 +1054,10 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 			PGresult *result;
 			int status = -1;
 			D_imp_dbh_from_sth;
-			char *statement;
 			int nullable; /* 0 = not nullable, 1 = nullable 2 = unknown */
 			int y;
 			retsv = newRV(sv_2mortal((SV*)av));
 
-			New(0, statement, 100, char); /* freed below */
-			statement[0] = '\0';
 			while(--fields >= 0) {
 				nullable=2;
 				TRACE_PQFTABLE;
@@ -1070,9 +1065,9 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 				TRACE_PQFTABLECOL;
 				y = PQftablecol(imp_sth->result, fields);
 				if (InvalidOid != x && y > 0) { /* We know what table and column this came from */
-					sprintf(statement,
+					char statement[128];
+					snprintf(statement, sizeof(statement),
 							"SELECT attnotnull FROM pg_catalog.pg_attribute WHERE attrelid=%d AND attnum=%d", x, y);
-					statement[strlen(statement)]='\0';
 					TRACE_PQEXEC;
 					result = PQexec(imp_dbh->conn, statement);
 					TRACE_PQRESULTSTATUS;
@@ -1097,7 +1092,6 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 				}
 				(void)av_store(av, fields, newSViv(nullable));
 			}
-			Safefree(statement);
 		}
 		break;
 
@@ -2021,7 +2015,7 @@ static int pg_st_prepare_statement (pTHX_ SV * sth, imp_sth_t * imp_sth)
 		int params = 0;
 		if (imp_sth->numbound!=0) {
 			params = imp_sth->numphs;
-			Newz(0, paramTypes, (unsigned)imp_sth->numphs, Oid);
+			Newz(0, paramTypes, imp_sth->numphs, Oid);
 			for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph) {
 				paramTypes[x++] = (currph->defaultval) ? 0 : (Oid)currph->bind_type->type_id;
 			}
@@ -2775,7 +2769,7 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 				currph->quotedlen = 7;
 			}
 			else if (currph->iscurrent) {
-				Renew(currph->quoted, 8, char); /* freed in dbd_st_destroy */
+				Renew(currph->quoted, 18, char); /* freed in dbd_st_destroy */
 				strncpy(currph->quoted, "CURRENT_TIMESTAMP", 18);
 				currph->quotedlen = 17;
 			}
@@ -2799,7 +2793,7 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 	}
 	else { /* We are using a server that can handle PQexecParams/PQexecPrepared */
 		/* Put all values into an array to pass to PQexecPrepared */
-		Newz(0, paramValues, (unsigned)imp_sth->numphs, const char *); /* freed below */
+		Newz(0, paramValues, imp_sth->numphs, const char *); /* freed below */
 		for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph) {
 			paramValues[x++] = currph->value;
 		}
@@ -2807,8 +2801,8 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 		/* Binary or regular? */
 
 		if (imp_sth->has_binary) {
-			Newz(0, paramLengths, (unsigned)imp_sth->numphs, int); /* freed below */
-			Newz(0, paramFormats, (unsigned)imp_sth->numphs, int); /* freed below */
+			Newz(0, paramLengths, imp_sth->numphs, int); /* freed below */
+			Newz(0, paramFormats, imp_sth->numphs, int); /* freed below */
 			for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,x++) {
 				if (PG_BYTEA==currph->bind_type->type_id) {
 					paramLengths[x] = (int)currph->valuelen;
@@ -2945,7 +2939,7 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 			statement[execsize] = '\0';
 			
 			/* Populate paramTypes */
-			Newz(0, paramTypes, (unsigned)imp_sth->numphs, Oid);
+			Newz(0, paramTypes, imp_sth->numphs, Oid);
 			for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph) {
 				paramTypes[x++] = (currph->defaultval) ? 0 : (Oid)currph->bind_type->type_id;
 			}
@@ -3163,7 +3157,7 @@ AV * dbd_st_fetch (SV * sth, imp_sth_t * imp_sth)
 
 	/* Set up the type_info array if we have not seen it yet */
 	if (NULL == imp_sth->type_info) {
-		Newz(0, imp_sth->type_info, (unsigned)num_fields, sql_type_info_t*); /* freed in dbd_st_destroy */
+		Newz(0, imp_sth->type_info, num_fields, sql_type_info_t*); /* freed in dbd_st_destroy */
 		for (i = 0; i < num_fields; ++i) {
 			TRACE_PQFTYPE;
 			imp_sth->type_info[i] = pg_type_data((int)PQftype(imp_sth->result, i));
@@ -3830,12 +3824,8 @@ int pg_db_savepoint (SV * dbh, imp_dbh_t * imp_dbh, char * savepoint)
 
 	if (TSTART) TRC(DBILOGFP, "%sBegin pg_db_savepoint (name: %s)\n", THEADER, savepoint);
 
-	New(0, action, strlen(savepoint) + 11, char); /* freed below */
-
 	if (imp_dbh->pg_server_version < 80000)
 		croak("Savepoints are only supported on server version 8.0 or higher");
-
-	sprintf(action, "savepoint %s", savepoint);
 
 	/* no action if AutoCommit = on or the connection is invalid */
 	if ((NULL == imp_dbh->conn) || (DBIc_has(imp_dbh, DBIcf_AutoCommit))) {
@@ -3855,6 +3845,8 @@ int pg_db_savepoint (SV * dbh, imp_dbh_t * imp_dbh, char * savepoint)
 		imp_dbh->done_begin = DBDPG_TRUE;
 	}
 
+	New(0, action, strlen(savepoint) + 11, char); /* freed below */
+	sprintf(action, "savepoint %s", savepoint);
 	status = _result(aTHX_ imp_dbh, action);
 	Safefree(action);
 
@@ -3881,12 +3873,8 @@ int pg_db_rollback_to (SV * dbh, imp_dbh_t * imp_dbh, const char *savepoint)
 
 	if (TSTART) TRC(DBILOGFP, "%sBegin pg_db_rollback_to (name: %s)\n", THEADER, savepoint);
 
-	New(0, action, strlen(savepoint) + 13, char);
-
 	if (imp_dbh->pg_server_version < 80000)
 		croak("Savepoints are only supported on server version 8.0 or higher");
-
-	sprintf(action, "rollback to %s", savepoint);
 
 	/* no action if AutoCommit = on or the connection is invalid */
 	if ((NULL == imp_dbh->conn) || (DBIc_has(imp_dbh, DBIcf_AutoCommit))) {
@@ -3894,6 +3882,8 @@ int pg_db_rollback_to (SV * dbh, imp_dbh_t * imp_dbh, const char *savepoint)
 		return 0;
 	}
 
+	New(0, action, strlen(savepoint) + 13, char);
+	sprintf(action, "rollback to %s", savepoint);
 	status = _result(aTHX_ imp_dbh, action);
 	Safefree(action);
 
@@ -3920,12 +3910,8 @@ int pg_db_release (SV * dbh, imp_dbh_t * imp_dbh, char * savepoint)
 
 	if (TSTART) TRC(DBILOGFP, "%sBegin pg_db_release (name: %s)\n", THEADER, savepoint);
 
-	New(0, action, strlen(savepoint) + 9, char);
-
 	if (imp_dbh->pg_server_version < 80000)
 		croak("Savepoints are only supported on server version 8.0 or higher");
-
-	sprintf(action, "release %s", savepoint);
 
 	/* no action if AutoCommit = on or the connection is invalid */
 	if ((NULL == imp_dbh->conn) || (DBIc_has(imp_dbh, DBIcf_AutoCommit))) {
@@ -3933,6 +3919,8 @@ int pg_db_release (SV * dbh, imp_dbh_t * imp_dbh, char * savepoint)
 		return 0;
 	}
 
+	New(0, action, strlen(savepoint) + 9, char);
+	sprintf(action, "release %s", savepoint);
 	status = _result(aTHX_ imp_dbh, action);
 	Safefree(action);
 
