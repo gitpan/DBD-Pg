@@ -1,11 +1,11 @@
 DBD::Pg  --  the DBI PostgreSQL interface for Perl
 
-# $Id: README 10860 2008-03-02 02:11:43Z turnstep $
+# $Id: README 10872 2008-03-03 17:03:27Z turnstep $
 
 DESCRIPTION:
 ------------
 
-This is version 2.2.1 of DBD-Pg.  The web site for this interface is at:
+This is version 2.2.2 of DBD-Pg.  The web site for this interface is at:
 
 	http://search.cpan.org/dist/DBD-Pg/
 

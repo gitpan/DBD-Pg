@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 10864 2008-03-02 02:46:41Z turnstep $
+  $Id: dbdimp.c 10869 2008-03-03 16:34:52Z turnstep $
 
   Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -3193,7 +3193,6 @@ AV * dbd_st_fetch (SV * sth, imp_sth_t * imp_sth)
 			if (type_info
 				&& 0 == strncmp(type_info->arrayout, "array", 5)
 				&& imp_dbh->expand_array) {
-				//fprintf(stderr, "Hey! We gots an array!\n");
 				sv_replace(sv, pg_destringify_array(aTHX_ imp_dbh, value, type_info));
 			}
 			else {

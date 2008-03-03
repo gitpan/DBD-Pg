@@ -1,5 +1,5 @@
 # -*-cperl-*-
-#  $Id: Pg.pm 10863 2008-03-02 02:43:41Z turnstep $
+#  $Id: Pg.pm 10872 2008-03-03 17:03:27Z turnstep $
 #
 #  Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.2.1');
+	use version; our $VERSION = qv('2.2.2');
 
 	use DBI ();
 	use DynaLoader ();
@@ -229,7 +229,7 @@ use 5.006001;
 	use strict;
 
 	sub parse_trace_flag {
-		my ($dbh, $flag) = @_;
+		my ($h, $flag) = @_;
 		return DBD::Pg->parse_trace_flag($flag);
 	}
 
@@ -1575,6 +1575,11 @@ use 5.006001;
 {
 	package DBD::Pg::st;
 
+	sub parse_trace_flag {
+		my ($h, $flag) = @_;
+		return DBD::Pg->parse_trace_flag($flag);
+	}
+
 	sub bind_param_array {
 
 		## The DBI version is broken, so we implement a near-copy here
@@ -1646,7 +1651,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.2.1 of the DBD::Pg module
+This documents version 2.2.2 of the DBD::Pg module
 
 =head1 SYNOPSIS
 
@@ -1795,6 +1800,9 @@ to data_sources. For example, to specify an alternate port and host:
 
 =head1 METHODS COMMON TO ALL HANDLES
 
+For all of the methods below, $h can be either a database handle ($dbh) 
+or a statement handle ($sth).
+
 =over 4
 
 =item B<err>
@@ -1860,8 +1868,8 @@ Implemented by DBI, no driver-specific impact.
 
 =item B<parse_trace_flag> and B<parse_trace_flags>
 
-  $dbh->trace($dbh->parse_trace_flag('SQL|pglibpq'));
-  $dbh->trace($dbh->parse_trace_flag('1|pgstart'));
+  $h->trace($h->parse_trace_flag('SQL|pglibpq'));
+  $h->trace($h->parse_trace_flag('1|pgstart'));
 
   my $value = DBD::Pg->parse_trace_flags('pglibpq');
   DBI->trace($value);

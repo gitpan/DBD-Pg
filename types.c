@@ -1,6 +1,6 @@
 /*
 
-   $Id: types.c 10831 2008-02-26 13:43:15Z turnstep $
+   $Id: types.c 10871 2008-03-03 16:50:04Z turnstep $
 
    Copyright (c) 2003-2008 Greg Sabino Mullane and others: see the Changes file
    
@@ -156,8 +156,6 @@ static sql_type_info_t pg_types[] = {
 sql_type_info_t* pg_type_data(int sql_type)
 {
 	dTHX;
-
-	if (TSTART) TRC(DBILOGFP, "%sBegin pg_type_data (sql_type: %d)\n", THEADER, sql_type);
 
 	switch(sql_type) {
 
@@ -326,8 +324,6 @@ static sql_type_info_t sql_types[] = {
 sql_type_info_t* sql_type_data(int sql_type)
 {
 	dTHX;
-
-	if (TSTART) TRC(DBILOGFP, "%sBegin sql_type_data (sql_type: %d)\n", THEADER, sql_type);
 
 	switch(sql_type) {
 		case SQL_BOOLEAN:                      return &sql_types[0];
@@ -591,7 +587,7 @@ open $newfh, '>', "$file.tmp" or die qq{Could not write to "$file.tmp": $!\n};
 print $newfh 
 '/' . q{*
 
-   $Id: types.c 10831 2008-02-26 13:43:15Z turnstep $
+   $Id: types.c 10871 2008-03-03 16:50:04Z turnstep $
 
    Copyright (c) 2003-2008 Greg Sabino Mullane and others: see the Changes file
    
@@ -654,8 +650,6 @@ print $newfh
 {
 \tdTHX;
 
-\tif (TSTART) TRC(DBILOGFP, \"%sBegin pg_type_data (sql_type: %d)\\n\", THEADER, sql_type);
-
 \tswitch(sql_type) {
 \n";
 
@@ -682,7 +676,7 @@ for my $name (sort { $a cmp $b } keys %pgtype) {
 print $newfh "\};\n\n";
 
 print $newfh "sql_type_info_t* sql_type_data(int sql_type)\n\{\n";
-print $newfh "\tdTHX;\n\n\tif (TSTART) TRC(DBILOGFP, \"%sBegin sql_type_data (sql_type: %d)\\n\", THEADER, sql_type);\n\n";
+
 print $newfh "\tswitch(sql_type) \{\n";
 for (sort { $pos{$a} <=> $pos{$b} } keys %pos) {
 	printf $newfh qq{\t\tcase %-*s return \&sql_types\[%d\];\n}, 1+$maxlen, "$_:", $pos{$_};
