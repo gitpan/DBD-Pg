@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 10869 2008-03-03 16:34:52Z turnstep $
+  $Id: dbdimp.c 10937 2008-03-18 17:39:19Z turnstep $
 
   Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -65,7 +65,7 @@ typedef enum
 	(SvROK(h) && SvTYPE(SvRV(h)) == SVt_PVHV &&					\
 	 SvRMAGICAL(SvRV(h)) && (SvMAGIC(SvRV(h)))->mg_type == 'P')
 
-static void pg_error(pTHX_ SV *h, ExecStatusType error_num, const char *error_msg);
+static void pg_error(pTHX_ SV *h, int error_num, const char *error_msg);
 static void pg_warn (void * arg, const char * message);
 static ExecStatusType _result(pTHX_ imp_dbh_t *imp_dbh, const char *sql);
 static ExecStatusType _sqlstate(pTHX_ imp_dbh_t *imp_dbh, PGresult *result);
@@ -181,7 +181,7 @@ int dbd_db_login (SV * dbh, imp_dbh_t * imp_dbh, char * dbname, char * uid, char
 	connstatus = PQstatus(imp_dbh->conn);
 	if (CONNECTION_OK != connstatus) {
 		TRACE_PQERRORMESSAGE;
-		pg_error(aTHX_ dbh, (ExecStatusType)connstatus, PQerrorMessage(imp_dbh->conn));
+		pg_error(aTHX_ dbh, connstatus, PQerrorMessage(imp_dbh->conn));
 		strncpy(imp_dbh->sqlstate, "08006", 6); /* "CONNECTION FAILURE" */
 		TRACE_PQFINISH;
 		PQfinish(imp_dbh->conn);
@@ -268,7 +268,7 @@ int dbd_db_login (SV * dbh, imp_dbh_t * imp_dbh, char * dbname, char * uid, char
 /* ================================================================== */
 
 /* Database specific error handling. */
-static void pg_error (pTHX_ SV * h, ExecStatusType error_num, const char * error_msg)
+static void pg_error (pTHX_ SV * h, int error_num, const char * error_msg)
 {
 	D_imp_xxh(h);
 	size_t error_len;
@@ -797,7 +797,7 @@ int dbd_db_STORE_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv, SV * valuesv
 			/* Default to "1" if an invalid value is passed in */
 			imp_dbh->pg_errorlevel = 0==newval ? 0 : 2==newval ? 2 : 1;
 			TRACE_PQSETERRORVERBOSITY;
-			(void)PQsetErrorVerbosity(imp_dbh->conn, imp_dbh->pg_errorlevel);
+			(void)PQsetErrorVerbosity(imp_dbh->conn, (PGVerbosity)imp_dbh->pg_errorlevel);
 			if (TRACE5)
 				TRC(DBILOGFP, "%sReset error verbosity to %d\n", THEADER, imp_dbh->pg_errorlevel);
 			retval = 1;
@@ -868,13 +868,29 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 	/* Some can be done before we have a result: */
 	switch (kl) {
 
+	case 8: /* pg_bound */
+
+		if (strEQ("pg_bound", key)) {
+			HV *pvhv = newHV();
+			ph_t *currph;
+			int i;
+			for (i=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,i++) {
+				(void)hv_store_ent 
+					(pvhv,
+					 (3==imp_sth->placeholder_type ? newSVpv(currph->fooname,0) : newSViv(i+1)),
+					 newSViv(NULL == currph->bind_type ? 0 : 1), 0);
+			}
+			retsv = newRV_noinc((SV*)pvhv);
+		}
+		break;
+
 	case 9: /* pg_direct */
 
 		if (strEQ("pg_direct", key))
 			retsv = newSViv((IV)imp_sth->direct);
 		break;
 
-	case 10: /* ParamTypes  pg_segments */
+	case 10: /* ParamTypes */
 
 		if (strEQ("ParamTypes", key)) {
 			HV *pvhv = newHV();
@@ -894,18 +910,9 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 			}
 			retsv = newRV_noinc((SV*)pvhv);
 		}
-		else if (strEQ("pg_segments", key)) {
-			AV *arr = newAV();
-			seg_t *currseg;
-			int i;
-			for (i=0,currseg=imp_sth->seg; NULL != currseg; currseg=currseg->nextseg,i++) {
-				av_push(arr, newSVpv(currseg->segment ? currseg->segment : "NULL",0));
-			}
-			retsv = newRV_noinc((SV*)arr);
-		}
 		break;
 
-	case 11: /* ParamValues */
+	case 11: /* ParamValues pg_segments pg_numbound */
 
 		if (strEQ("ParamValues", key)) {
 			HV *pvhv = newHV();
@@ -926,6 +933,23 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 				}
 			}
 			retsv = newRV_noinc((SV*)pvhv);
+		}
+		else if (strEQ("pg_segments", key)) {
+			AV *arr = newAV();
+			seg_t *currseg;
+			int i;
+			for (i=0,currseg=imp_sth->seg; NULL != currseg; currseg=currseg->nextseg,i++) {
+				av_push(arr, newSVpv(currseg->segment ? currseg->segment : "NULL",0));
+			}
+			retsv = newRV_noinc((SV*)arr);
+		}
+		else if (strEQ("pg_numbound", key)) {
+			ph_t *currph;
+			int i = 0;
+			for (currph=imp_sth->ph; NULL != currph; currph=currph->nextph) {
+				i += NULL == currph->bind_type ? 0 : 1;
+			}
+			retsv = newSViv(i);
 		}
 		break;
 

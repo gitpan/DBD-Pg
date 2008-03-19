@@ -1,5 +1,5 @@
 # -*-cperl-*-
-#  $Id: Pg.pm 10872 2008-03-03 17:03:27Z turnstep $
+#  $Id: Pg.pm 10938 2008-03-18 17:41:00Z turnstep $
 #
 #  Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.2.2');
+	use version; our $VERSION = qv('2.3.0');
 
 	use DBI ();
 	use DynaLoader ();
@@ -1651,7 +1651,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.2.2 of the DBD::Pg module
+This documents version 2.3.0 of the DBD::Pg module
 
 =head1 SYNOPSIS
 
@@ -1928,11 +1928,6 @@ differentiate it from the DBI tracing output.
 Outputs a message showing the connection string right before a new database connection 
 is attempted, a message when the connection was successful, and a message right after 
 the database has been disconnected. Also output if trace level is 5 or greater.
-
-=item pgquote
-
-Outputs a message at the start of each quoting function. Not very useful outside of 
-DBD::Pg internal debugging purposes.
 
 =back
 
@@ -3268,6 +3263,17 @@ Supported by this driver as proposed by DBI.
 =item B<RowCache>  (integer, read-only)
 
 Not supported by this driver.
+
+=item B<pg_numbound>  (integer, read-only)
+
+PostgreSQL specific attribute. Returns the number of placeholders
+that are currently bound (via bind_param).
+
+=item B<pg_bound>  (hash-ref, read-only)
+
+PostgreSQL specific attribute. Returns a hash of all named placeholders. The
+key is the name of the placeholder, and the value is a 0 or a 1, indicating if
+the placeholder has been bound yet (e.g. via bind_param)
 
 =item B<pg_size>  (array-ref, read-only)
 
