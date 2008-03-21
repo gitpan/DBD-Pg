@@ -1,5 +1,5 @@
 # -*-cperl-*-
-#  $Id: Pg.pm 10938 2008-03-18 17:41:00Z turnstep $
+#  $Id: Pg.pm 10972 2008-03-21 16:38:54Z turnstep $
 #
 #  Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.3.0');
+	use version; our $VERSION = qv('2.4.0');
 
 	use DBI ();
 	use DynaLoader ();
@@ -1651,7 +1651,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.3.0 of the DBD::Pg module
+This documents version 2.4.0 of the DBD::Pg module
 
 =head1 SYNOPSIS
 
@@ -3263,6 +3263,11 @@ Supported by this driver as proposed by DBI.
 =item B<RowCache>  (integer, read-only)
 
 Not supported by this driver.
+
+=item B<pg_current_row>  (integer, read-only)
+
+PostgreSQL specific attribute. Returns the number of the tuple (row) that was
+most recently fetched. Returns zero before and after fetching is performed.
 
 =item B<pg_numbound>  (integer, read-only)
 

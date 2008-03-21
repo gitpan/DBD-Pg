@@ -1,6 +1,11 @@
 ('GSM' is Greg Sabino Mullane, greg@turnstep.com)
 
-2.3.0
+2.4.0 Released March 21, 2008
+
+	- Remove problematic and unneeded Test::Warn test from 00basic.t.
+	- Add $sth->{pg_current_row} [GSM]
+
+2.3.0 Released March 19, 2008 (subversion r10951)
 
 	- Add $sth->{pg_bound} and $sth->{pg_numbound} [GSM]
 	- Fix broken call to $sth->{pg_segments} [GSM]
@@ -13,17 +18,17 @@
 
 2.2.1 Released March 1, 2008 (subversion r10865)
 
-	- Fixed memory leaks in dbdimp.c (CPAN bug #33743)
+	- Fix memory leaks in dbdimp.c (CPAN bug #33743)
 		[Alexey Tourbin]
-	- Fixed strlen problems in dbdimp.c (CPAN bug #33737)
+	- Fix strlen problems in dbdimp.c (CPAN bug #33737)
 		[Alexey Tourbin]
-	- Fixed char count in Renew() (CPAN bug #33738)
+	- Fix char count in Renew() (CPAN bug #33738)
 		[Alexey Tourbin]
 	- Change local trace_flags to lowercase.
 
 2.2.0 Released February 27, 2008 (subversion r10849)
 
-	- Introduced enhanced trace flags. See the documentation 
+	- Introduce enhanced trace flags. See the documentation 
 		 on parse_trace_flags() for details. [GSM]
 	- Remove version.pm dependency from Makefile.PL
 		(CPAN bug #33429)

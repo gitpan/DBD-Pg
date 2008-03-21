@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 10937 2008-03-18 17:39:19Z turnstep $
+  $Id: dbdimp.c 10961 2008-03-20 14:08:19Z turnstep $
 
   Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -953,10 +953,12 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 		}
 		break;
 
-	case 14: /* pg_prepare_now */
+	case 14: /* pg_prepare_now pg_current_row */
 
 		if (strEQ("pg_prepare_now", key))
 			retsv = newSViv((IV)imp_sth->prepare_now);
+		else if (strEQ("pg_current_row", key))
+			retsv = newSViv(imp_sth->cur_tuple);
 		break;
 
 	case 15: /* pg_prepare_name */
