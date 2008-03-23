@@ -1,4 +1,4 @@
-# $Id: Makefile.PL 10972 2008-03-21 16:38:54Z turnstep $
+# $Id: Makefile.PL 10988 2008-03-23 16:44:35Z turnstep $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -7,7 +7,7 @@ use warnings;
 use 5.006001;
 
 ## No version.pm for this one, as the prereqs are not loaded yet.
-my $VERSION = '2.4.0';
+my $VERSION = '2.5.0';
 
 my $lib;
 BEGIN {
@@ -119,12 +119,6 @@ else {
 
 my $defines = " -DPGLIBVERSION=$serverversion -DPGDEFPORT=$defaultport";
 my $comp_opts = $Config{q{ccflags}} . $defines;
-
-for (1..$Config{config_argc}) {
-	my $arg = $Config{"config_arg$_"};
-	## Not used for the moment
-	#$defines .= " $arg" if $arg =~ /^\-D/;
-}
 
 if ($ENV{DBDPG_GCCDEBUG}) {
 	warn "Enabling many compiler options\n";
