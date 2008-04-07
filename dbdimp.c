@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 10961 2008-03-20 14:08:19Z turnstep $
+  $Id: dbdimp.c 11054 2008-04-07 16:45:39Z turnstep $
 
   Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -1960,8 +1960,11 @@ static int pg_st_prepare_statement (pTHX_ SV * sth, imp_sth_t * imp_sth)
 
 	Renew(imp_sth->prepare_name, 25, char); /* freed in dbd_st_destroy */
 
-	/* Name is simply "dbdpg_PID_#" */
-	sprintf(imp_sth->prepare_name,"dbdpg_%d_%d", imp_dbh->pid_number, imp_dbh->prepare_number);
+	/* Name is "dbdpg_xPID_#", where x is 'p'ositive or 'n'egative */
+	sprintf(imp_sth->prepare_name,"dbdpg_%c%d_%d",
+			(imp_dbh->pid_number < 0 ? 'n' : 'p'),
+			abs(imp_dbh->pid_number),
+			imp_dbh->prepare_number);
 
 	if (TRACE5)
 		TRC(DBILOGFP, "%sNew statement name (%s), oldprepare is %d\n",

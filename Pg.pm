@@ -1,5 +1,5 @@
 # -*-cperl-*-
-#  $Id: Pg.pm 10988 2008-03-23 16:44:35Z turnstep $
+#  $Id: Pg.pm 11055 2008-04-07 16:46:23Z turnstep $
 #
 #  Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.5.0');
+	use version; our $VERSION = qv('2.5.1');
 
 	use DBI ();
 	use DynaLoader ();
@@ -362,23 +362,20 @@ use 5.006001;
 
 	sub ping {
 		my $dbh = shift;
-		local $SIG{__WARN__} = sub { } if $dbh->{PrintError};
-		local $dbh->{RaiseError} = 0 if $dbh->{RaiseError};
+		local $SIG{__WARN__} = sub { } if $dbh->FETCH('PrintError');
 		my $ret = DBD::Pg::db::_ping($dbh);
 		return $ret < 1 ? 0 : $ret;
 	}
 
 	sub pg_ping {
 		my $dbh = shift;
-		local $SIG{__WARN__} = sub { } if $dbh->{PrintError};
-		local $dbh->{RaiseError} = 0 if $dbh->{RaiseError};
+		local $SIG{__WARN__} = sub { } if $dbh->FETCH('PrintError');
 		return DBD::Pg::db::_ping($dbh);
 	}
 
 	sub pg_type_info {
 		my($dbh,$pg_type) = @_;
-		local $SIG{__WARN__} = sub { } if $dbh->{PrintError};
-		local $dbh->{RaiseError} = 0 if $dbh->{RaiseError};
+		local $SIG{__WARN__} = sub { } if $dbh->FETCH('PrintError');
 		my $ret = DBD::Pg::db::_pg_type_info($pg_type);
 		return $ret;
 	}
@@ -1411,7 +1408,7 @@ use 5.006001;
       45 => ["SQL_TABLE_TERM",                      "table"                   ],
       46 => ["SQL_TXN_CAPABLE",                     2                         ],
       72 => ["SQL_TXN_ISOLATION_OPTION",            15                        ],
-      47  => ["SQL_USER_NAME",                      $dbh->{CURRENT_USER}      ],
+      47 => ["SQL_USER_NAME",                       $dbh->{CURRENT_USER}      ],
 
 ## Supported SQL
 
@@ -1659,7 +1656,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.5.0 of the DBD::Pg module
+This documents version 2.5.1 of the DBD::Pg module
 
 =head1 SYNOPSIS
 
