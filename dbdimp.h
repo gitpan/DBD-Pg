@@ -1,5 +1,5 @@
 /*
-	$Id: dbdimp.h 10936 2008-03-18 16:29:33Z turnstep $
+	$Id: dbdimp.h 11071 2008-04-13 01:19:31Z turnstep $
 	
     Copyright (c) 2000-2008 Greg Sabino Mullane and others: see the Changes file
 	Portions Copyright (c) 1997-2000 Edmund Mergl
@@ -103,6 +103,7 @@ struct imp_sth_st {
 	bool   has_current;      /* does it have one or more 'DEFAULT' values? */
 	bool   dollaronly;       /* Only use $1 as placeholders, allow all else */
 	bool   use_inout;        /* Any placeholders using inout? */
+	bool   all_bound;        /* Have all placeholders been bound? */
 };
 
 
@@ -183,7 +184,7 @@ SV * pg_db_pg_notifies (SV *dbh, imp_dbh_t *imp_dbh);
 
 SV * pg_stringify_array(SV * input, const char * array_delim, int server_version);
 
-int pg_quickexec (SV *dbh, const char *sql, int asyncflag);
+int pg_quickexec (SV *dbh, const char *sql, const int asyncflag);
 
 int pg_db_putline (SV *dbh, const char *buffer);
 

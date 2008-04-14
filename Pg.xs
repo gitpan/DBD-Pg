@@ -1,5 +1,5 @@
 /*
-  $Id: Pg.xs 10830 2008-02-26 13:26:30Z turnstep $
+  $Id: Pg.xs 11069 2008-04-12 16:51:29Z turnstep $
 
   Copyright (c) 2000-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 1997-2000 Edmund Mergl
@@ -282,7 +282,7 @@ void do(dbh, statement, attr=Nullsv, ...)
 		int retval;
 		int asyncflag = 0;
 
-		if (strlen(statement)<1) { /* Corner case */
+		if (statement[0] == '\0') { /* Corner case */
 			XST_mUNDEF(0);
 			return;
 		}

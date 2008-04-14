@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 11054 2008-04-07 16:45:39Z turnstep $
+  $Id: dbdimp.c 11071 2008-04-13 01:19:31Z turnstep $
 
   Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -76,7 +76,7 @@ static int is_high_bit_set(pTHX_ const unsigned char *val, STRLEN size);
 static int pg_st_deallocate_statement(pTHX_ SV *sth, imp_sth_t *imp_sth);
 static PGTransactionStatusType pg_db_txn_status (pTHX_ imp_dbh_t *imp_dbh);
 static int pg_db_start_txn (pTHX_ SV *dbh, imp_dbh_t *imp_dbh);
-static int handle_old_async(pTHX_ SV * handle, imp_dbh_t * imp_dbh, int asyncflag);
+static int handle_old_async(pTHX_ SV * handle, imp_dbh_t * imp_dbh, const int asyncflag);
 
 /* ================================================================== */
 void dbd_init (dbistate_t *dbistate)
@@ -1363,6 +1363,7 @@ int dbd_st_prepare (SV * sth, imp_sth_t * imp_sth, char * statement, SV * attrib
 	imp_sth->has_default      = DBDPG_FALSE; /* Are any of the params DEFAULT? */
 	imp_sth->has_current      = DBDPG_FALSE; /* Are any of the params DEFAULT? */
 	imp_sth->use_inout        = DBDPG_FALSE; /* Are any of the placeholders using inout? */
+	imp_sth->all_bound        = DBDPG_FALSE; /* Have all placeholders been bound? */
 
 
 	/* We inherit some preferences from the database handle */
@@ -2564,7 +2565,7 @@ static SV * pg_destringify_array(pTHX_ imp_dbh_t *imp_dbh, unsigned char * input
 
 
 /* ================================================================== */
-int pg_quickexec (SV * dbh, const char * sql, int asyncflag)
+int pg_quickexec (SV * dbh, const char * sql, const int asyncflag)
 {
 	dTHX;
 	D_imp_dbh(dbh);
@@ -2647,10 +2648,20 @@ int pg_quickexec (SV * dbh, const char * sql, int asyncflag)
 		/* non-select statement */
 		TRACE_PQCMDSTATUS;
 		cmdStatus = PQcmdStatus(result);
-		if ((0==strncmp(cmdStatus, "DELETE", 6)) || (0==strncmp(cmdStatus, "INSERT", 6)) || 
-			(0==strncmp(cmdStatus, "UPDATE", 6))) {
-			TRACE_PQCMDTUPLES;
-			rows = atoi(PQcmdTuples(result));
+		/* If the statement indicates a number of rows, we want to return that */
+		/* Note: COPY and FETCH do not currently reach here, although they return numbers */
+		if (0 == strncmp(cmdStatus, "INSERT", 6)) {
+			/* INSERT(space)oid(space)numrows */
+			for (rows=8; cmdStatus[rows-1] != ' '; rows++) {
+			}
+			rows = atoi(cmdStatus + rows);
+		}
+		else if (0 == strncmp(cmdStatus, "MOVE", 4)) {
+			rows = atoi(cmdStatus + 5);
+		}
+		else if (0 == strncmp(cmdStatus, "DELETE", 6)
+ 			  || 0 == strncmp(cmdStatus, "UPDATE", 6)) {
+			rows = atoi(cmdStatus + 7);
 		}
 		break;
 	case PGRES_COPY_OUT:
@@ -2731,7 +2742,7 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 		croak("Must call pg_endcopy before issuing more commands");
 
 	/* Ensure that all the placeholders have been bound */
-	if (imp_sth->numphs!=0) {
+	if (!imp_sth->all_bound && imp_sth->numphs!=0) {
 		for (currph=imp_sth->ph; NULL != currph; currph=currph->nextph) {
 			if (NULL == currph->bind_type) {
 				pg_error(aTHX_ sth, PGRES_FATAL_ERROR, "execute called with an unbound placeholder");
@@ -2745,6 +2756,7 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 				currph->value[currph->valuelen] = '\0';
 			}
 		}
+		imp_sth->all_bound = DBDPG_TRUE;
 	}
 
 	/* Check for old async transactions */
@@ -3081,19 +3093,32 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 	else if (PGRES_COMMAND_OK == status) {
 		/* non-select statement */
 		char *cmdStatus = NULL;
+		bool gotrows = DBDPG_FALSE;
+
+		if (TRACE5)
+			TRC(DBILOGFP, "%sStatus was PGRES_COMMAND_OK\n", THEADER);
+
 		if (imp_sth->result) {
 			TRACE_PQCMDSTATUS;
 			cmdStatus = PQcmdStatus(imp_sth->result);
+			if (0 == strncmp(cmdStatus, "INSERT", 6)) {
+				/* INSERT(space)oid(space)numrows */
+				for (ret=8; cmdStatus[ret-1] != ' '; ret++) {
+				}
+				ret = atoi(cmdStatus + ret);
+				gotrows = DBDPG_TRUE;
+			}
+			else if (0 == strncmp(cmdStatus, "MOVE", 4)) {
+				ret = atoi(cmdStatus + 5);
+				gotrows = DBDPG_TRUE;
+			}
+			else if (0 == strncmp(cmdStatus, "DELETE", 6)
+					 || 0 == strncmp(cmdStatus, "UPDATE", 6)) {
+				ret = atoi(cmdStatus + 7);
+				gotrows = DBDPG_TRUE;
+			}
 		}
-		if (TRACE5)
-			TRC(DBILOGFP, "%sStatus was PGRES_COMMAND_OK\n", THEADER);
-                /* XXX DANGER We could be comparing against NULL */
-		if ((0==strncmp(cmdStatus, "DELETE", 6)) || (0==strncmp(cmdStatus, "INSERT", 6)) || 
-			(0==strncmp(cmdStatus, "UPDATE", 6))) {
-			TRACE_PQCMDTUPLES;
-			ret = atoi(PQcmdTuples(imp_sth->result));
-		}
-		else {
+		if (!gotrows) {
 			/* No rows affected, but check for change of state */
 			TRACE_PQTRANSACTIONSTATUS;
 			if (PQTRANS_IDLE == PQtransactionStatus(imp_dbh->conn)) {
@@ -3170,7 +3195,7 @@ AV * dbd_st_fetch (SV * sth, imp_sth_t * imp_sth)
 	}
 	
 	TRACE_PQNTUPLES;
-	if (imp_sth->cur_tuple == PQntuples(imp_sth->result) ) {
+	if (imp_sth->cur_tuple == imp_sth->rows) {
 		if (TRACE5)
 			TRC(DBILOGFP, "%sFetched the last tuple (%d)\n", THEADER, imp_sth->cur_tuple);
 		imp_sth->cur_tuple = 0;
@@ -4260,10 +4285,18 @@ int pg_db_result (SV *h, imp_dbh_t *imp_dbh)
 			/* non-select statement */
 			TRACE_PQCMDSTATUS;
 			cmdStatus = PQcmdStatus(result);
-			if ((0==strncmp(cmdStatus, "DELETE", 6)) || (0==strncmp(cmdStatus, "INSERT", 6)) || 
-				(0==strncmp(cmdStatus, "UPDATE", 6))) {
-				TRACE_PQCMDTUPLES;
-				rows = atoi(PQcmdTuples(result));
+			if (0 == strncmp(cmdStatus, "INSERT", 6)) {
+				/* INSERT(space)oid(space)numrows */
+				for (rows=8; cmdStatus[rows-1] != ' '; rows++) {
+				}
+				rows = atoi(cmdStatus + rows);
+			}
+			else if (0 == strncmp(cmdStatus, "MOVE", 4)) {
+				rows = atoi(cmdStatus + 5);
+			}
+			else if (0 == strncmp(cmdStatus, "DELETE", 6)
+					 || 0 == strncmp(cmdStatus, "UPDATE", 6)) {
+				rows = atoi(cmdStatus + 7);
 			}
 			break;
 		case PGRES_COPY_OUT:
@@ -4464,7 +4497,7 @@ or by waiting for a result.
 
  */
 /* ================================================================== */
-static int handle_old_async(pTHX_ SV * handle, imp_dbh_t * imp_dbh, int asyncflag) {
+static int handle_old_async(pTHX_ SV * handle, imp_dbh_t * imp_dbh, const int asyncflag) {
 
 	PGresult *result;
 	ExecStatusType status;

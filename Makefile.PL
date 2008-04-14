@@ -1,4 +1,4 @@
-# $Id: Makefile.PL 11055 2008-04-07 16:46:23Z turnstep $
+# $Id: Makefile.PL 11084 2008-04-14 15:39:10Z turnstep $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -7,16 +7,18 @@ use warnings;
 use 5.006001;
 
 ## No version.pm for this one, as the prereqs are not loaded yet.
-my $VERSION = '2.5.1';
+my $VERSION = '2.5.2_1';
 
 my $lib;
 BEGIN {
-    my %sep = (MacOS   => ':',
+    my %sep = (
+			   MacOS   => ':',
                MSWin32 => '\\',
                os2     => '\\',
                VMS     => '\\',
                NetWare => '\\',
-               dos     => '\\');
+               dos     => '\\',
+			   );
     my $s = $sep{$^O} || '/';
     $lib = join $s, 't', 'lib';
 }
@@ -24,6 +26,40 @@ BEGIN {
 use lib $lib;
 if ($VERSION =~ /_/) {
 	print "WARNING! This is a test version ($VERSION) and should not be used in production!\n";
+}
+
+if (grep { /help/ } @ARGV) {
+	print qq{
+Usage: perl $0
+
+No other options are necessary, although you may need to
+set some evironment variables. See the README file for full details.
+
+In brief:
+
+By default Makefile.PL uses App::Info to find the location of the
+PostgreSQL library and include directories.  However, if you want to
+control it yourself, define the environment variables POSTGRES_INCLUDE
+and POSTGRES_LIB, or define just POSTGRES_HOME. Note that if you have
+compiled PostgreSQL with SSL support, you must define the POSTGRES_LIB
+environment variable and add "-lssl" to it, like this:
+
+export POSTGRES_LIB="/usr/local/pgsql/lib -lssl"
+
+The usual steps to install DBD::Pg:
+
+1.   perl Makefile.PL
+2.   make
+3.   make test
+4.   make install
+
+Do steps 1 to 3 as a normal user, not as root!
+
+If all else fails, email dbd-pg\@perl.org for help.
+
+};
+	exit 1;
+
 }
 
 print "Configuring DBD::Pg $VERSION\n";
@@ -100,21 +136,16 @@ if ($serverversion < 70400) {
 }
 
 my $dbi_arch_dir;
-if ($os eq 'MSWin32') {
-	$dbi_arch_dir = "\$(INSTALLSITEARCH)/auto/DBI";
-}
-else {
-	{
-		eval {
-			require DBI::DBD;
-		};
-		if ($@) {
-			print "Could not load DBI::DBD - is the DBI module installed?\n";
-			exit 0;
-		}
-		local *STDOUT; ## Prevent duplicate debug info as WriteMakefile also calls this
-		$dbi_arch_dir = DBI::DBD::dbd_dbi_arch_dir();
+{
+	eval {
+		require DBI::DBD;
+	};
+	if ($@) {
+		print "Could not load DBI::DBD - is the DBI module installed?\n";
+		exit 0;
 	}
+	local *STDOUT; ## Prevent duplicate debug info as WriteMakefile also calls this
+	$dbi_arch_dir = DBI::DBD::dbd_dbi_arch_dir();
 }
 
 my $defines = " -DPGLIBVERSION=$serverversion -DPGDEFPORT=$defaultport";
@@ -169,7 +200,7 @@ if ($os eq 'hpux') {
 }
 elsif ($os =~ /Win32/) {
 	my $msdir = $POSTGRES_LIB;
-	$msdir =~ s#"$#/ms"#;
+	$msdir =~ s{"$}{/ms"};
 	$opts{LIBS}[0] .= " -L$msdir";
 }
 
@@ -177,13 +208,13 @@ if ($Config{dlsrc} =~ /dl_none/) {
     $opts{LINKTYPE} = 'static';
 }
 
-sub MY::postamble {
-	no strict 'subs';
+sub MY::postamble { ## no critic ProhibitQualifiedSubDeclarations
+	no strict 'subs'; ## no critic ProhibitNoStrict
 	my $string = DBI::DBD->dbd_postamble();
 	use strict 'subs';
 	## Evil, evil stuff - but we really want to suppress the "duplicate function" message!
 	$string =~ s/dependancy/dependency/g; ## why not, while we are here
-	$string =~ s#(BASEEXT\)/g)#$1; s/^do\\\(/dontdo\\\(/#;
+	$string =~ s{(BASEEXT\)/g)}{$1; s/^do\\\(/dontdo\\\(/};
 
         my $tags = <<'MAKE_FRAG';
 .PHONY: tags
@@ -238,7 +269,8 @@ MAKE_SPLINT
 
 my $output = WriteMakefile(%opts);
 
-if (!exists $output->{EXTRALIBS} or $output->{EXTRALIBS} !~ /\-lpq/) {
+if (!exists $output->{EXTRALIBS} or
+	($output->{EXTRALIBS} !~ /\-lpq/ and $output->{EXTRALIBS} !~ /libpq/)) {
 
 	my $makefile = exists $output->{MAKEFILE}
 		? "\nRemoving ($output->{MAKEFILE})\n" : '';

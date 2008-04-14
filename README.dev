@@ -1,5 +1,5 @@
 
-## $Id: README.dev 10953 2008-03-19 16:05:15Z turnstep $
+## $Id: README.dev 11083 2008-04-14 15:38:51Z turnstep $
 
 This file is for those interested in developing DBD::Pg. It is hoped that it 
 will be a good introduction as well as a continual reference. Suggestions 
@@ -77,7 +77,10 @@ Makefile.PL - The main file that starts everything off. Used by ExtUtils::MakeMa
 
 Makefile - Generated automatically by Makefile.PL
 
-META.yml - YAML description file. Updated by hand and contains version number in two places.
+META.yml - YAML description file. Updated by hand and contains version number in three places.
+
+lib/Bundle/DBD/Pg.pm - Simple file used to enable perl -MCPAN -e 'install Bundle::DBD::Pg'
+  Contains a version number.
 
 
 * Distribution files:
@@ -126,6 +129,7 @@ types.c - Lists all known data types for PostgreSQL.
   types.h types.c Pg.xs Pg.pm t/01constants.t 99_pod.t
 
 types.h - Helper file for types.c
+
 
 * Test files:
 
@@ -473,16 +477,17 @@ indicate a change in functionality, new features, etc. The revision number is us
 tweaks and bug fixes, and must be completely compatible with the version before it.
 
 Beta versions (aka release candidates) are the version with an underscore at the end of it. The 
-tells CPAN not to consider this a "real" release. For example, if the upcoming release is 2.2.3, 
+tells CPAN not to consider this a "real" release. For example, if the upcoming release is 2.2.4, 
 the first release candidate would be 2.2.3_1. A second would be 2.2.3_2 etc.
 
-Version numbers are currently set in five files:
+Version numbers are currently set in six files:
 
 README (one or two places)
 Pg.pm (two places)
 Changes
 Makefile.PL
-META.yml (two places)
+META.yml (three places)
+lib/Bundle/DBD/Pg.pm
 
 
 ===============
