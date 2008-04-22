@@ -1,12 +1,12 @@
 
 DBD::Pg  --  the DBI PostgreSQL interface for Perl
 
-# $Id: README 11094 2008-04-16 18:13:30Z turnstep $
+# $Id: README 11132 2008-04-22 17:58:30Z turnstep $
 
 DESCRIPTION:
 ------------
 
-This is version 2.6.0 of DBD-Pg.  The web site for this interface, and 
+This is version 2.6.1 of DBD-Pg.  The web site for this interface, and 
 the latst vesion, can be found at:
 
 	http://search.cpan.org/dist/DBD-Pg/
@@ -124,6 +124,10 @@ set DBD_TRACE unless requested, and send only the relevant sections.
 If the first connection fails and DBI_DSN is not set, the tests may 
 attempt to connect as the user 'postgres' to the database 'postgres'. 
 See the t/dbdpg_test_setup.pl for the exact process.
+
+Please consdier installing CPAN::Reporter so that your tests are 
+automatically gathered and reported, which helps the development 
+of DBD::Pg.
 
 TROUBLESHOOTING:
 ----------------

@@ -1,6 +1,12 @@
 ('GSM' is Greg Sabino Mullane, greg@turnstep.com)
 
-2.6.0 Released April 16, 2008
+2.6.1 Released April 22, 2008
+
+	- Don't free placeholder section, fixes problem when using 
+		more than one named placeholder with the same name.
+		(CPAN bug #35303) [GSM]
+
+2.6.0 Released April 16, 2008 (subversion r11095)
 
 	- Make pg_notifies a true function, so that you can now
 		use $dbh->pg_notifies instead of $dbh->func('pg_notifies') [GSM]

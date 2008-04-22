@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 11089 2008-04-16 03:18:48Z turnstep $
+  $Id: dbdimp.c 11131 2008-04-22 17:56:31Z turnstep $
 
   Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -1796,7 +1796,6 @@ static void pg_st_split_statement (pTHX_ imp_sth_t * imp_sth, int version, char 
 				if (0==strncmp(thisph->fooname, statement-sectionsize, sectionsize)) {
 					newseg->placeholder = xint;
 					newseg->ph = thisph;
-					Safefree(thisph);
 					break;
 				}
 			}

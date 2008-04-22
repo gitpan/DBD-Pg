@@ -1,5 +1,5 @@
 
-## $Id: README.dev 11083 2008-04-14 15:38:51Z turnstep $
+## $Id: README.dev 11105 2008-04-17 16:26:55Z turnstep $
 
 This file is for those interested in developing DBD::Pg. It is hoped that it 
 will be a good introduction as well as a continual reference. Suggestions 
@@ -712,6 +712,9 @@ resources depend on the subject:
 
 The canonical URL:
 http://search.cpan.org/dist/DBD-Pg/
+
+* CPAN::Reporter test results:
+http://cpantesters.perl.org/show/DBD-Pg.html
 
 * DBI
 
