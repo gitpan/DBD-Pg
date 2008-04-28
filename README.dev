@@ -1,5 +1,5 @@
 
-## $Id: README.dev 11105 2008-04-17 16:26:55Z turnstep $
+## $Id: README.dev 11145 2008-04-27 18:53:33Z turnstep $
 
 This file is for those interested in developing DBD::Pg. It is hoped that it 
 will be a good introduction as well as a continual reference. Suggestions 
@@ -64,6 +64,8 @@ README - the main file that explains the module, where to get it, and guides
   in it (or two, if this is a beta/release candidate)
 
 README.win32 - the directions on how to install DBD::Pg on a Win32 box.
+
+README.testdatabase - created by the tests to cache connection information.
 
 TODO - Rough list of upcoming tasks.
 
@@ -175,6 +177,9 @@ t/99_pod.t - Verifies the POD of Pg.pm. Requires Test::POD version 0.95, and
   Test::Pod::Coverage 1.04.
 
 t/99_yaml.t - Uses Test::YAML::Meta to verify the META.yml file.
+
+dbdpg_test_database - May be created by the test suite as a place to store 
+a new database cluster.
 
 
 * Helper files

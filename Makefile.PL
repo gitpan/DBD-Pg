@@ -1,4 +1,4 @@
-# $Id: Makefile.PL 11132 2008-04-22 17:58:30Z turnstep $
+# $Id: Makefile.PL 11144 2008-04-27 18:49:24Z turnstep $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -7,7 +7,7 @@ use warnings;
 use 5.006001;
 
 ## No version.pm for this one, as the prereqs are not loaded yet.
-my $VERSION = '2.6.1';
+my $VERSION = '2.6.1_1';
 
 my $lib;
 BEGIN {
@@ -188,7 +188,7 @@ my %opts =
 	 PERL_MALLOC_OK => 1,
 	 NEEDS_LINKING  => 1,
 	 NO_META        => 1,
-	 clean          => { FILES => 'trace Pg.xsi' },
+	 clean          => { FILES => 'trace Pg.xsi README.testdatabase' },
 );
 
 if ($os eq 'hpux') {
