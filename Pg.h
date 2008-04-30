@@ -1,5 +1,5 @@
 /*
-   $Id: Pg.h 11088 2008-04-16 03:17:45Z turnstep $
+   $Id: Pg.h 11155 2008-04-30 21:40:17Z turnstep $
 
    Copyright (c) 2000-2008 Greg Sabino Mullane and others: see the Changes file
    Copyright (c) 1997-2000 Edmund Mergl
@@ -142,6 +142,7 @@ DBISTATE_DECLARE;
 #define TRACE_PQNTUPLES            TRACE_XX "%sPQntuples\n",             THEADER)
 #define TRACE_PQOIDVALUE           TRACE_XX "%sPQoidValue\n",            THEADER)
 #define TRACE_PQOPTIONS            TRACE_XX "%sPQoptions\n",             THEADER)
+#define TRACE_PQPARAMETERSTATUS    TRACE_XX "%sPQparameterStatus\n",     THEADER)
 #define TRACE_PQPASS               TRACE_XX "%sPQpass\n",                THEADER)
 #define TRACE_PQPORT               TRACE_XX "%sPQport\n",                THEADER)
 #define TRACE_PQPREPARE            TRACE_XX "%sPQprepare\n",             THEADER)
