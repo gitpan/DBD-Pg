@@ -194,7 +194,7 @@ sub connect_database {
 		};
 		last GETHANDLE if $@;
 
-		if ($info !~ /\@postgresql\.org/) {
+		if (!defined $info or $info !~ /\@postgresql\.org/) {
 			$@ = 'Bad initdb output';
 			last GETHANDLE;
 		}
@@ -268,7 +268,7 @@ sub connect_database {
 		## If we've got netstat available, we'll trust that
 		$info = '';
 		eval {
-			$info = qx{netstat -lnx};
+			$info = qx{netstat -na 2>&1};
 		};
 		if ($@) {
 			warn "netstat call failed, trying port $testport\n";
@@ -278,7 +278,8 @@ sub connect_database {
 			$testport = 5440;
 			my $maxport = 5470;
 			{
-				last if $info !~ /PGSQL\.$testport$/m;
+				last if $info !~ /PGSQL\.$testport$/m
+					and $info !~ /\b127\.0\.0\.1:$testport\b/m;
 				last if ++$testport >= $maxport;
 				redo;
 			}
@@ -287,7 +288,6 @@ sub connect_database {
 				last GETHANDLE;
 			}
 		}
-
 		$@ = '';
 		## Change to this new port and fire it up
 		my $conf = "$test_database_dir/postgresql.conf";
@@ -353,6 +353,8 @@ sub connect_database {
 		}
 		close $fh or die qq{Could not close "$helpfile": $!\n};
 	}
+
+	$@ and return $helpconnect, $@, undef;
 
   GOTDBH:
 	## This allows things like data_sources() to work if we did an initdb
@@ -494,9 +496,9 @@ sub cleanup_database {
 
 sub shutdown_test_database {
 
-	if (-e $test_database_dir) {
+	if (-e $test_database_dir and -e "$test_database_dir/postmaster.pid") {
 		eval {
-			qx{pg_ctl -D $test_database_dir -m fast stop};
+			qx{pg_ctl -D $test_database_dir -m fast stop 2>&1};
 		};
 		return $@;
 	}
