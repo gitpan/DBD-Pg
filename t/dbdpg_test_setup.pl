@@ -195,7 +195,7 @@ sub connect_database {
 		last GETHANDLE if $@;
 
 		if (!defined $info or $info !~ /\@postgresql\.org/) {
-			$@ = 'Bad initdb output';
+			$@ = "Bad initdb output: $info";
 			last GETHANDLE;
 		}
 
@@ -203,14 +203,9 @@ sub connect_database {
 		warn "Please wait, creating new database for testing\n";
 		$info = '';
 		eval {
-			$info = qx{initdb -D $test_database_dir 2>&1};
+			$info = qx{initdb -E UTF8 -D $test_database_dir 2>&1};
 		};
 		last GETHANDLE if $@;
-
-		if ($info =~ /FATAL/) {
-			$@ = "initdb gave a FATAL error: $info";
-			last GETHANDLE;
-		}
 
 		## initdb and pg_ctl cannot be run as root, so let's handle that
 		if ($info =~ /run as root/) {
@@ -240,7 +235,7 @@ sub connect_database {
 				$founduser++;
 				$info = '';
 				eval {
-					$info = qx{su -l $user -c "initdb -D $test_database_dir" 2>&1};
+					$info = qx{su -l $user -c "initdb -E UTF8 -D $test_database_dir" 2>&1};
 				};
 				if (!$@ and $info =~ /owned by user "$user"/) {
 					$testuser = $user;
@@ -256,6 +251,16 @@ sub connect_database {
 				last GETHANDLE;
 			}
 			## At this point, both $su and $testuser are set
+		}
+
+		if ($info =~ /FATAL/) {
+			$@ = "initdb gave a FATAL error: $info";
+			last GETHANDLE;
+		}
+
+		if ($info !~ /pg_ctl/) {
+			$@ = "initdb did not give a pg_ctl string: $info";
+			last GETHANDLE;
 		}
 
 		## Which user do we connect as?

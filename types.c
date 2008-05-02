@@ -1,6 +1,6 @@
 /*
 
-   $Id: types.c 10871 2008-03-03 16:50:04Z turnstep $
+   $Id: types.c 11185 2008-05-02 17:04:44Z turnstep $
 
    Copyright (c) 2003-2008 Greg Sabino Mullane and others: see the Changes file
    
@@ -373,7 +373,9 @@ my $maxlen = 1;
 my %pgtype;
 my $thisname = 0;
 while(<F>) {
-	if (/^DATA\(insert OID\s+=\s+(\d+)\s+\(\s+(\S+)\s+\S+ \S+\s+\S+\s+[tf]\s+. ([tf]) \\(\d+) (\d+)\s+(\d+) (\d+) (\S+) (\S+) (\S+) (\S+)/o) {
+	s/FLOAT8PASSBYVAL/t/;
+	s/FLOAT4PASSBYVAL/t/;
+	if (/^DATA\(insert OID\s+=\s+(\d+)\s+\(\s+(\S+)\s+\S+ \S+\s+\S+\s+[t|f]\s+. ([tf]) \\(\d+) (\d+)\s+(\d+) (\d+) (\S+) (\S+) (\S+) (\S+)/o) {
 		my ($oid,$name,$typedef,$delim,$typrelid,$typelem,$typarray,$tin,$tout,$bin,$bout) = 
 			($1,$2,$3,chr(oct($4)),$5,$6,$7,$8,$9,$10,$11);
 		die "Duplicated OID $oid!: $_\n" if exists $pgtype{$oid};
@@ -402,7 +404,7 @@ while(<F>) {
 		$pgtype{$thisname}{description} = $1;
 	}
 	elsif (/^DATA/) {
-		die "Bad line: $_\n";
+		die "Bad line at $. ->$_\n";
    }
 }
 close(F);
@@ -587,7 +589,7 @@ open $newfh, '>', "$file.tmp" or die qq{Could not write to "$file.tmp": $!\n};
 print $newfh 
 '/' . q{*
 
-   $Id: types.c 10871 2008-03-03 16:50:04Z turnstep $
+   $Id: types.c 11185 2008-05-02 17:04:44Z turnstep $
 
    Copyright (c) 2003-2008 Greg Sabino Mullane and others: see the Changes file
    
@@ -675,7 +677,7 @@ for my $name (sort { $a cmp $b } keys %pgtype) {
 }
 print $newfh "\};\n\n";
 
-print $newfh "sql_type_info_t* sql_type_data(int sql_type)\n\{\n";
+print $newfh "sql_type_info_t* sql_type_data(int sql_type)\n\{\n\tdTHX;\n\n";
 
 print $newfh "\tswitch(sql_type) \{\n";
 for (sort { $pos{$a} <=> $pos{$b} } keys %pos) {
