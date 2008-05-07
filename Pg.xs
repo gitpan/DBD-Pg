@@ -1,5 +1,5 @@
 /*
-  $Id: Pg.xs 11069 2008-04-12 16:51:29Z turnstep $
+  $Id: Pg.xs 11187 2008-05-02 17:11:54Z turnstep $
 
   Copyright (c) 2000-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 1997-2000 Edmund Mergl
@@ -248,7 +248,7 @@ quote(dbh, to_quote_sv, type_sv=Nullsv)
 				
 			to_quote = SvPV(to_quote_sv, len);
 			/* Need good debugging here */
-			quoted = type_info->quote(to_quote, len, &retlen);
+			quoted = type_info->quote(to_quote, len, &retlen, 0);
 			RETVAL = newSVpvn(quoted, retlen);
 			if (SvUTF8(to_quote_sv)) /* What about overloaded objects? */
 				SvUTF8_on(RETVAL);

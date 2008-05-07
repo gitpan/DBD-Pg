@@ -16,7 +16,7 @@ my ($helpconnect,$connerror,$dbh) = connect_database();
 if (! defined $dbh) {
 	plan skip_all => 'Connection to database failed, cannot continue testing';
 }
-plan tests => 132;
+plan tests => 131;
 
 isnt( $dbh, undef, 'Connect to database for handle attributes testing');
 
@@ -90,7 +90,7 @@ d InactiveDestroy (must be the last one tested)
 
 };
 
-my ($attrib,$SQL,$sth,$warning,$result,$expected);
+my ($attrib,$SQL,$sth,$warning,$result,$expected,$t);
 
 # Get the DSN and user from the test file, if it exists
 my ($testdsn, $testuser) = get_test_settings();
@@ -336,7 +336,7 @@ SKIP: {
 	$sth->execute(1);
 	local $dbh->{pg_enable_utf8} = 1;
 	my $utf8_str = chr(0x100).'dam'; # LATIN CAPITAL LETTER A WITH MACRON
-	is( $dbh->quote( $utf8_str ), "'$utf8_str'", 'quote() handles utf8.' );
+
 	$SQL = "INSERT INTO dbd_pg_test (id, pname, val) VALUES (40, '$utf8_str', 'Orange')";
 	is( $dbh->do($SQL), '1', 'Able to insert unicode character into the database');
 	$sth->execute(40);
@@ -349,7 +349,6 @@ SKIP: {
 	ok( !Encode::is_utf8($name2), 'ASCII text returned from database does not have utf8 bit set');
 	$sth->finish();
 }
-
 
 #
 # Use the handle attribute "Warn" to check inheritance

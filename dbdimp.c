@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 11156 2008-04-30 22:39:27Z turnstep $
+  $Id: dbdimp.c 11196 2008-05-05 01:02:24Z turnstep $
 
   Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -626,11 +626,15 @@ SV * dbd_db_FETCH_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv)
 		}
 		break;
 
-	case 6: /* pg_pid */
+	case 6: /* pg_pid pg_scs */
 
 		if (strEQ("pg_pid", key)) {
 			TRACE_PQBACKENDPID;
 			retsv = newSViv((IV)PQbackendPID(imp_dbh->conn));
+		}
+		else if (strEQ("pg_scs", key)) {
+			TRACE_PQPARAMETERSTATUS;
+			retsv = newSVpv(PQparameterStatus(imp_dbh->conn,"standard_conforming_strings"),0);
 		}
 		break;
 
@@ -731,8 +735,17 @@ SV * dbd_db_FETCH_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv)
 		if (strEQ("pg_placeholder_dollaronly", key))
 			retsv = newSViv((IV)imp_dbh->dollaronly);
 		break;
+
+	case 30: /* pg_standard_conforming_strings */
+
+		if (strEQ("pg_standard_conforming_strings", key)) {
+			TRACE_PQPARAMETERSTATUS;
+			retsv = newSVpv(PQparameterStatus(imp_dbh->conn,"standard_conforming_strings"),0);
+		}
+		break;
+
 	}
-	
+
 	if (TEND) TRC(DBILOGFP, "%sEnd dbd_db_FETCH_attrib\n", THEADER);
 
 	if (!retsv)
@@ -2813,7 +2826,7 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 				if (currph->quoted)
 					Safefree(currph->quoted);
 				currph->quoted = currph->bind_type->quote
-					(currph->value, currph->valuelen, &currph->quotedlen); /* freed in dbd_st_destroy */
+					(currph->value, currph->valuelen, &currph->quotedlen, 0); /* freed in dbd_st_destroy */
 			}
 		}
 		/* Set the size of each actual in-place placeholder */
@@ -4241,7 +4254,7 @@ int pg_db_result (SV *h, imp_dbh_t *imp_dbh)
 	dTHX;
 	PGresult *result;
 	ExecStatusType status = PGRES_FATAL_ERROR;
-	int rows;
+	int rows = 0;
 	char *cmdStatus = NULL;
 
 	if (TSTART) TRC(DBILOGFP, "%sBegin pg_db_result\n", THEADER);
@@ -4410,7 +4423,7 @@ int pg_db_cancel(SV *h, imp_dbh_t *imp_dbh)
 	TRACE_PQGETCANCEL;
 	cancel = PQgetCancel(imp_dbh->conn);
 
-	/* This almost always works. If not, free our structure and complain looudly */
+	/* This almost always works. If not, free our structure and complain loudly */
 	TRACE_PQGETCANCEL;
 	if (! PQcancel(cancel,errbuf,sizeof(errbuf))) {
 		TRACE_PQFREECANCEL;
