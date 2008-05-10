@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 11196 2008-05-05 01:02:24Z turnstep $
+  $Id: dbdimp.c 11237 2008-05-10 20:21:00Z turnstep $
 
   Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -213,16 +213,6 @@ int dbd_db_login (SV * dbh, imp_dbh_t * imp_dbh, char * dbname, char * uid, char
 			if (cnt == 2) /* Account for devel version e.g. 8.3beta1 */
 				vrev = 0;
 			imp_dbh->pg_server_version = (100 * vmaj + vmin) * 100 + vrev;
-		}
-	}
-
-	/* Check the status of standard_conforming_strings */
-	imp_dbh->standard_escape = DBDPG_FALSE;
-	if (imp_dbh->pg_server_version >= 80100) { /* cannot be true until 8.1 */
-		TRACE_PQPARAMETERSTATUS;
-		if (NULL != PQparameterStatus(imp_dbh->conn, "standard_conforming_strings")
-			&& 0==strncmp("on", PQparameterStatus(imp_dbh->conn, "standard_conforming_strings"), 2)) {
-			imp_dbh->standard_escape = DBDPG_TRUE;
 		}
 	}
 
@@ -626,15 +616,11 @@ SV * dbd_db_FETCH_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv)
 		}
 		break;
 
-	case 6: /* pg_pid pg_scs */
+	case 6: /* pg_pid */
 
 		if (strEQ("pg_pid", key)) {
 			TRACE_PQBACKENDPID;
 			retsv = newSViv((IV)PQbackendPID(imp_dbh->conn));
-		}
-		else if (strEQ("pg_scs", key)) {
-			TRACE_PQPARAMETERSTATUS;
-			retsv = newSVpv(PQparameterStatus(imp_dbh->conn,"standard_conforming_strings"),0);
 		}
 		break;
 
@@ -672,7 +658,7 @@ SV * dbd_db_FETCH_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv)
 			retsv = boolSV(DBIc_has(imp_dbh, DBIcf_AutoCommit));
 		else if (strEQ("pg_bool_tf", key))
 			retsv = newSViv((IV)imp_dbh->pg_bool_tf);
-		else if (strEQ("pg_pid_number", key))
+		else if (strEQ("pg_pid_number", key)) /* Undocumented on purpose */
 			retsv = newSViv((IV)imp_dbh->pid_number);
 		else if (strEQ("pg_options", key)) {
 			TRACE_PQOPTIONS;
@@ -2825,8 +2811,12 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 			else {
 				if (currph->quoted)
 					Safefree(currph->quoted);
-				currph->quoted = currph->bind_type->quote
-					(currph->value, currph->valuelen, &currph->quotedlen, 0); /* freed in dbd_st_destroy */
+				currph->quoted = currph->bind_type->quote(
+					currph->value,
+					currph->valuelen,
+					&currph->quotedlen,
+					imp_dbh->pg_server_version >= 80100 ? 1 : 0
+														  ); /* freed in dbd_st_destroy */
 			}
 		}
 		/* Set the size of each actual in-place placeholder */

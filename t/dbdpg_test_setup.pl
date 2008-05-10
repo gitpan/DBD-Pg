@@ -191,8 +191,7 @@ sub connect_database {
 		## Use the initdb found by App::Info
 		my $initdb = $ENV{PGINITDB} || '';
 		if (!$initdb or ! -e $initdb) {
-			$@ = 'Could not find an initdb executable to create a test database';
-			last GETHANDLE;
+			$initdb = 'initdb';
 		}
 		$info = '';
 		eval {
@@ -206,8 +205,7 @@ sub connect_database {
 
 		## Make sure pg_ctl is available as well before we go further
 		if (! -e $pg_ctl) {
-		  $@ = 'Could not find a pg_ctl executable to start the test database';
-		  last GETHANDLE;
+			$pg_ctl = 'pg_ctl';
 		}
 		$info = '';
 		eval {
@@ -283,7 +281,7 @@ sub connect_database {
 			## Assume this is already good to go
 		}
 		elsif ($info !~ /pg_ctl/) {
-			$@ = 'initdb did not give a pg_ctl string';
+			$@ = "initdb did not give a pg_ctl string: $info";
 			last GETHANDLE;
 		}
 
