@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 11237 2008-05-10 20:21:00Z turnstep $
+  $Id: dbdimp.c 11266 2008-05-14 13:08:45Z turnstep $
 
   Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -604,7 +604,7 @@ SV * dbd_db_FETCH_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv)
 	char * key = SvPV(keysv,kl);
 	SV *   retsv = Nullsv;
 	
-	if (TSTART) TRC(DBILOGFP, "%sBegin dbd_db_FETCH (key: %s dbh: %d)\n", THEADER, key, (int)dbh);
+	if (TSTART) TRC(DBILOGFP, "%sBegin dbd_db_FETCH (key: %s)\n", THEADER, dbh ? key : key);
 	
 	switch (kl) {
 
@@ -851,7 +851,7 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 	SV *              retsv = Nullsv;
 	int               fields, x;
 
-	if (TSTART) TRC(DBILOGFP, "%sBegin dbd_st_FETCH (key: %s sth: %d)\n", THEADER, key, (int)sth);
+	if (TSTART) TRC(DBILOGFP, "%sBegin dbd_st_FETCH (key: %s)\n", THEADER, key);
 	
 	/* Some can be done before we have a result: */
 	switch (kl) {
@@ -1186,8 +1186,8 @@ int dbd_st_STORE_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv, SV * valuesv
 	char * value = SvPV(valuesv,vl);
 	int    retval = 0;
 
-	if (TSTART) TRC(DBILOGFP, "%sBegin dbd_st_STORE (key: %s value: %s sth: %d)\n",
-					THEADER, key, value, (int)sth);
+	if (TSTART) TRC(DBILOGFP, "%sBegin dbd_st_STORE (key: %s value: %s)\n",
+					THEADER, key, value);
 	
 	switch (kl) {
 
@@ -1246,7 +1246,7 @@ int dbd_discon_all (SV * drh, imp_drh_t * imp_drh)
 {
 	dTHX;
 
-	if (TSTART) TRC(DBILOGFP, "%sBegin dbd_discon_all (drh: %d)\n", THEADER, (int)drh);
+	if (TSTART) TRC(DBILOGFP, "%sBegin dbd_discon_all\n", THEADER);
 
 	/* The disconnect_all concept is flawed and needs more work */
 	if (!PL_dirty && !SvTRUE(perl_get_sv("DBI::PERL_ENDING",0))) {
@@ -1266,7 +1266,7 @@ int pg_db_getfd (SV * dbh, imp_dbh_t * imp_dbh)
 {
 	dTHX;
 
-	if (TSTART) TRC(DBILOGFP, "%sBegin pg_db_getfd (dbh: %d)\n", THEADER, (int)dbh);
+	if (TSTART) TRC(DBILOGFP, "%sBegin pg_db_getfd\n", THEADER);
 
 	TRACE_PQSOCKET;
 	return PQsocket(imp_dbh->conn);
@@ -2474,7 +2474,8 @@ static SV * pg_destringify_array(pTHX_ imp_dbh_t *imp_dbh, unsigned char * input
 			if ('\\' == *input) { /* Eat backslashes */
 				input++;
 			}
-			string[section_size++] = *input;
+			string[section_size++] = *input++;
+			continue;
 		}
 		else if ('{' == *input) {
 			AV * const newav = newAV();
@@ -3336,7 +3337,7 @@ int dbd_st_rows (SV * sth, imp_sth_t * imp_sth)
 {
 	dTHX;
 
-	if (TSTART) TRC(DBILOGFP, "%sBegin dbd_st_rows (sth: %d)\n", THEADER, (int)sth);
+	if (TSTART) TRC(DBILOGFP, "%sBegin dbd_st_rows\n", THEADER);
 
 	return imp_sth->rows;
 

@@ -1,5 +1,5 @@
 # -*-cperl-*-
-#  $Id: Pg.pm 11249 2008-05-11 20:53:53Z turnstep $
+#  $Id: Pg.pm 11267 2008-05-14 13:09:18Z turnstep $
 #
 #  Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.7.1');
+	use version; our $VERSION = qv('2.7.2');
 
 	use DBI ();
 	use DynaLoader ();
@@ -86,7 +86,7 @@ use 5.006001;
 		return 0x08000000 if $flag eq 'pgprefix';
 		return 0x10000000 if $flag eq 'pglogin';
 		return 0x20000000 if $flag eq 'pgquote';
-		return DBI::parse_trace_flag($dbh, $flag);
+		return DBI::parse_trace_flag($class, $flag);
 	}
 	sub parse_trace_flags {
 		my ($class, $flags) = @_;
@@ -1679,7 +1679,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.7.1 of the DBD::Pg module
+This documents version 2.7.2 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
@@ -1898,10 +1898,10 @@ With a second argument, only writes the message if the minimum level is currentl
 
 =item B<parse_trace_flag> and B<parse_trace_flags>
 
-  $h->trace($h->parse_trace_flag('SQL|pglibpq'));
-  $h->trace($h->parse_trace_flag('1|pgstart'));
+  $h->trace($h->parse_trace_flags('SQL|pglibpq'));
+  $h->trace($h->parse_trace_flags('1|pgstart'));
 
-  my $value = DBD::Pg->parse_trace_flags('pglibpq');
+  my $value = DBD::Pg->parse_trace_flag('pglibpq');
   DBI->trace($value);
 
 The parse_trace_flags method is used to convert one or more named 
