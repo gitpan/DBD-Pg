@@ -1,5 +1,5 @@
 /*
-	$Id: dbdimp.h 11220 2008-05-09 02:14:39Z turnstep $
+	$Id: dbdimp.h 11312 2008-05-25 13:20:28Z turnstep $
 	
     Copyright (c) 2000-2008 Greg Sabino Mullane and others: see the Changes file
 	Portions Copyright (c) 1997-2000 Edmund Mergl
@@ -22,11 +22,11 @@ struct imp_dbh_st {
 	bool    pg_enable_utf8;    /* should we attempt to make utf8 strings? Set by user, default is 0 */
 	bool    prepare_now;       /* force immediate prepares, even with placeholders. Set by user, default is 0 */
 	bool    done_begin;        /* have we done a begin? (e.g. are we in a transaction?) */
-	bool    dollaronly;        /* Only consider $1, $2 ... as valid placeholders */
-	bool    expand_array;      /* Transform arrays from the db into Perl arrays? Default is 1 */
+	bool    dollaronly;        /* only consider $1, $2 ... as valid placeholders */
+	bool    expand_array;      /* transform arrays from the db into Perl arrays? Default is 1 */
 
 	int     pg_protocol;       /* value of PQprotocolVersion, usually 3 (could also be 0) */
-	int     pg_server_version; /* Server version e.g. 80100 */
+	int     pg_server_version; /* server version e.g. 80100 */
 	int     pid_number;        /* prefixed before prepare_number */
 	int     prepare_number;    /* internal prepared statement name modifier */
 	int     copystate;         /* 0=none PGRES_COPY_IN PGRES_COPY_OUT */

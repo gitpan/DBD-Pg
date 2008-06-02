@@ -1,12 +1,12 @@
 
 DBD::Pg  --  the DBI PostgreSQL interface for Perl
 
-# $Id: README 11267 2008-05-14 13:09:18Z turnstep $
+# $Id: README 11317 2008-05-25 17:12:54Z turnstep $
 
 DESCRIPTION:
 ------------
 
-This is version 2.7.2 of DBD-Pg.  The web site for this interface, and 
+This is version 2.8.0 of DBD::Pg.  The web site for this interface, and 
 the latest version, can be found at:
 
 	http://search.cpan.org/dist/DBD-Pg/
@@ -125,7 +125,7 @@ within the tests themselves by setting DBD_TRACE to whatever
 trace level you want. Be aware that setting the trace level can 
 result in extremely verbose output.
 
-When reporting test failures, please use TEST_VERBOSE=1, do *not* 
+When reporting test failures, please use TEST_VERBOSE=1, but do *not* 
 set DBD_TRACE unless requested, and send only the relevant sections.
 
 If the first connection fails and DBI_DSN is not set, the tests may 
@@ -167,16 +167,20 @@ the documentation for more details.
 
 * PostgreSQL library issues:
 
-If you are using the shared library libpq.so check if your dynamic
-loader finds libpq.so. With Linux the command /sbin/ldconfig -v should
-tell you where it finds libpq.so. If ldconfig does not find libpq.so,
-either add an appropriate entry to /etc/ld.so.conf and re-run ldconfig
-or add the path to the environment variable LD_LIBRARY_PATH.
+DBD::Pg uses the libpq library that comes with Postgres. If the shared libpq 
+library is not available, DBD::Pg will error with a message that 
+usually mentions a file names libpq.so, like this:
 
-A typical error message resulting from not finding libpq.so is: 
+    Can't load './blib/arch/auto/DBD/Pg/Pg.so' for module DBD::Pg: libpq.so.5: cannot open 
+    shared object file: No such file or directory at .../DynaLoader.pm line 230.
 
-	install_driver(Pg) failed: Can't load './blib/arch/auto/DBD/Pg/Pg.so' 
-	for module DBD::Pg: File not found at
+This means that the libraries are not installed in a place where the system 
+can find them when it tries to load the Pg.so file. On some systems, you 
+can run /sbin/ldconfig -v to see a list of shared modules, or just search 
+the system for the file with "locate libpq.so". If it exists but is not being 
+loaded, you may need to add the directory it is in to /etc/ld.so.conf file 
+and run the ldconfig command. Otherwise, you may need to add the path to 
+the environment variable LD_LIBRARY_PATH.
 
 If you get an error message like:
 
@@ -186,9 +190,7 @@ If you get an error message like:
 
 when you call DBI->connect, then your libpq.so was probably not seen at
 build-time.  This should have caused 'make test' to fail; did you really
-run it and look at the output? Check the setting of POSTGRES_LIB and
-recompile DBD-Pg.
- 
+run it and look at the output? 
 
 * Perl issues:
 

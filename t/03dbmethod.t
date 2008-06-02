@@ -25,7 +25,7 @@ my $dbh = connect_database();
 if (! defined $dbh) {
 	plan skip_all => 'Connection to database failed, cannot continue testing';
 }
-plan tests => 222;
+plan tests => 224;
 
 isnt( $dbh, undef, 'Connect to database for database handle method testing');
 
@@ -382,6 +382,14 @@ like( $odbcversion, qr{^([1-9]\d|\d[1-9])\.\d\d\.\d\d00$}, q{DB handle method "g
 # Testing max connections is good as this info is dynamic
 my $maxcon = $dbh->get_info(0);
 like( $maxcon, qr{^\d+$}, q{DB handle method "get_info" returns a number for SQL_MAX_DRIVER_CONNECTIONS});
+
+$t=q{DB handle method "get_info" returns correct string for SQL_DATA_SOURCE_READ_ONLY when "on"};
+$dbh->do(q{SET transaction_read_only = 'on'});
+is($dbh->get_info(25), 'Y', $t);
+
+$t=q{DB handle method "get_info" returns correct string for SQL_DATA_SOURCE_READ_ONLY when "off"};
+$dbh->do(q{SET transaction_read_only = 'off'});
+is($dbh->get_info(25), 'N', $t);
 
 #
 # Test of the "table_info" database handle method
@@ -1169,13 +1177,13 @@ $dbh->do("LISTEN $notify_name");
 $dbh->do("NOTIFY $notify_name");
 $dbh->commit();
 $info = $dbh->func('pg_notifies');
-is_deeply($info, [$notify_name, $pid], $t);
+is_deeply($info, [$notify_name, $pid, ''], $t);
 
 $t=q{DB handle method "pg_notifies" returns the correct values};
 $dbh->do("NOTIFY $notify_name");
 $dbh->commit();
 $info = $dbh->pg_notifies;;
-is_deeply($info, [$notify_name, $pid], $t);
+is_deeply($info, [$notify_name, $pid, ''], $t);
 
 #
 # Test of the "getfd" database handle method

@@ -1,4 +1,4 @@
-# $Id: Makefile.PL 11267 2008-05-14 13:09:18Z turnstep $
+# $Id: Makefile.PL 11360 2008-06-01 20:12:07Z turnstep $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -7,7 +7,7 @@ use warnings;
 use 5.006001;
 
 ## No version.pm for this one, as the prereqs are not loaded yet.
-my $VERSION = '2.7.2';
+my $VERSION = '2.8.0';
 
 my $lib;
 BEGIN {
@@ -109,7 +109,7 @@ print "OS: $os\n";
 
 my $baddir;
 for my $d (qw/HOME INCLUDE/) {
-	next if ! exists $ENV{"POSTGRES_$d"};
+	next if ! exists $ENV{"POSTGRES_$d"} or ! length $ENV{"POSTGRES_$d"};
 	if (! -d $ENV{"POSTGRES_$d"}) {
 		printf "The environment variable %s points to a non-existent directory: %s\n",
 			"POSTGRES_$d", $ENV{"POSTGRES_$d"};
@@ -267,6 +267,8 @@ SPLINTFLAGS =            \
   -predboolint           \
   -nullpass              \
   +charint               \
+  +boolint               \
+  +allglobals            \
 
 SPLINTFLAGS_TEST = 
 

@@ -1,5 +1,5 @@
 /*
-  $Id: Pg.xs 11220 2008-05-09 02:14:39Z turnstep $
+  $Id: Pg.xs 11357 2008-06-01 02:32:53Z turnstep $
 
   Copyright (c) 2000-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 1997-2000 Edmund Mergl
@@ -290,7 +290,7 @@ void do(dbh, statement, attr=Nullsv, ...)
 		if (attr && SvROK(attr) && SvTYPE(SvRV(attr)) == SVt_PVHV) {
 			SV **svp;
 			if ((svp = hv_fetch((HV*)SvRV(attr),"pg_async", 8, 0)) != NULL) {
-			   asyncflag = SvIV(*svp);
+			   asyncflag = (int)SvIV(*svp);
 			}
 		}
 		if (items < 4) { /* No bind arguments */

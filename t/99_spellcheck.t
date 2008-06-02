@@ -561,6 +561,7 @@ nServer
 
 ## README:
 BOOTCHECK
+DynaLoader
 Eisentraut
 Gcc
 Landgren
@@ -712,6 +713,8 @@ oldfh
 pos
 printf
 qq
+slashstar
+starslash
 sqlc
 sqltype
 src
