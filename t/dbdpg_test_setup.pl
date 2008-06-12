@@ -5,6 +5,7 @@ use strict;
 use warnings;
 use Data::Dumper;
 use DBI;
+use Cwd;
 select(($|=1,select(STDERR),$|=1)[1]);
 
 my @schemas =
@@ -65,6 +66,9 @@ sub connect_database {
 	## First, check to see if we've been here before and left directions
 	my ($testdsn,$testuser,$helpconnect,$su,$testdir,$pg_ctl) = get_test_settings();
 
+	## For debugging purposes, we'll be storing this in README.testdatabase as well
+	my $initdb = 'default';
+
 	## Did we fail last time? Fail this time too, but quicker!
 	if ($testdsn =~ /FAIL!/) {
 		return $helpconnect, 'Previous failure', undef;
@@ -100,20 +104,32 @@ sub connect_database {
 				warn "Test directory $testdir has been removed, will recreate from scratch\n";
 			}
 			else {
-				warn "Restarting test database $testdsn at $testdir\n";
+				if (-e "$test_database_dir/data/postmaster.pid") {
+					## Assume it's up, and move on
+				}
+				else {
 
-				my $COM = qq{$pg_ctl -l $testdir/dbdpg_test.logfile -D $testdir start};
-				if ($su) {
-					$COM = qq{su -m $su -c "$COM"};
+					warn "Restarting test database $testdsn at $testdir\n";
+					my $option = '';
+					if ($^O !~ /Win32/) {
+						if (! -e "$test_database_dir/data/socket") {
+							mkdir "$test_database_dir/data/socket";
+						}
+						$option = q{-o '-k socket'};
+					}
+					my $COM = qq{$pg_ctl $option -l $testdir/dbdpg_test.logfile -D $testdir start};
+					if ($su) {
+						$COM = qq{su -m $su -c "$COM"};
+					}
+					$info = '';
+					eval { $info = qx{$COM}; };
+					if ($@ or $info !~ /\w/) {
+						$@ = "Could not startup new database ($@) ($info)";
+						return $helpconnect, $@, undef;
+					}
+					## Wait for it to startup and verify the connection
+					sleep 1;
 				}
-				$info = '';
-				eval { $info = qx{$COM}; };
-				if ($@ or $info !~ /\w/) {
-					$@ = "Could not startup new database ($@) ($info)";
-					return $helpconnect, $@, undef;
-				}
-				## Wait for it to startup and verify the connection
-				sleep 1;
 				my $loop = 1;
 			  STARTUP: {
 					eval {
@@ -201,7 +217,7 @@ sub connect_database {
 		$helpconnect = 16;
 
 		## Use the initdb found by App::Info
-		my $initdb = $ENV{PGINITDB} || '';
+		$initdb = $ENV{PGINITDB} || '';
 		if (!$initdb or ! -e $initdb) {
 			$initdb = 'initdb';
 		}
@@ -255,7 +271,7 @@ sub connect_database {
 			## Start with whoever owns this file, unless it's us
 			my @userlist = (qw/postgres postgresql pgsql/);
 			my $username = getpwuid ((stat($0))[4]);
-			unshift @userlist, $username if $username ne getpwent;
+			unshift @userlist, $username if defined $username and $username ne getpwent;
 			my %doneuser;
 			for my $user (@userlist) {
 				next if $doneuser{$user}++;
@@ -335,7 +351,7 @@ sub connect_database {
 			$@ = qq{Could not open "$conf": $!};
 			last GETHANDLE;
 		}
-		print $cfh "\n\n## DBD::Pg testing parameters\nport=$testport\nmax_connections=3\n";
+		print $cfh "\n\n## DBD::Pg testing parameters\nport=$testport\nmax_connections=4\n";
 		print $cfh "listen_addresses='localhost'\n" if $^O =~ /Win32/;
 		print $cfh "\n";
 		close $cfh or die qq{Could not close "$conf": $!\n};
@@ -346,7 +362,14 @@ sub connect_database {
 		}
 		else {
 			$info = '';
-			my $COM = qq{$pg_ctl -l $test_database_dir/data/dbdpg_test.logfile -D $test_database_dir/data start};
+			my $option = '';
+			if ($^O !~ /Win32/) {
+				if (! -e "$test_database_dir/data/socket") {
+					mkdir "$test_database_dir/data/socket";
+				}
+				$option = q{-o '-k socket'};
+			}
+			my $COM = qq{$pg_ctl $option -l $test_database_dir/dbdpg_test.logfile -D $test_database_dir/data start};
 			if ($su) {
 				$COM = qq{su -m $su -c "$COM"};
 			}
@@ -364,6 +387,11 @@ sub connect_database {
 		$testdsn = "dbi:Pg:dbname=postgres;port=$testport";
 		if ($^O =~ /Win32/) {
 			$testdsn .= ';host=localhost';
+		}
+		else {
+			my $dir = getcwd;
+			my $socketdir = "$dir/$test_database_dir/data/socket";
+			$testdsn .= ";host=$socketdir";
 		}
 		my $loop = 1;
 	  STARTUP: {
@@ -391,6 +419,7 @@ sub connect_database {
 		print $fh "## Feel free to remove it!\n";
 		print $fh "## Helpconnect: $helpconnect\n";
 		print $fh "## pg_ctl: $pg_ctl\n";
+		print $fh "## initdb: $initdb\n";
 		if ($@) {
 			print $fh "## DSN: FAIL!\n";
 			print $fh "## ERROR: $@\n";

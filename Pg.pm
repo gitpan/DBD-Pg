@@ -1,5 +1,5 @@
 #  -*-cperl-*-
-#  $Id: Pg.pm 11364 2008-06-02 01:20:45Z turnstep $
+#  $Id: Pg.pm 11412 2008-06-11 23:12:10Z turnstep $
 #
 #  Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.8.0');
+	use version; our $VERSION = qv('2.8.1');
 
 	use DBI ();
 	use DynaLoader ();
@@ -1688,7 +1688,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.8.0 of the DBD::Pg module
+This documents version 2.8.1 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
@@ -2976,7 +2976,8 @@ backend server process handling the connection.
 =item B<pg_standard_conforming_strings> (boolean, read-only)
 
 DBD::Pg specific attribute.  Returns if the server is currently using 
-standard conforming strings or not.
+standard conforming strings or not. Only available if the target 
+server is version 8.2 or better.
 
 =item B<pg_async_status> (integer, read-only)
 
