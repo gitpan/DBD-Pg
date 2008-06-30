@@ -1,5 +1,5 @@
 #  -*-cperl-*-
-#  $Id: Pg.pm 11412 2008-06-11 23:12:10Z turnstep $
+#  $Id: Pg.pm 11463 2008-06-30 00:36:43Z turnstep $
 #
 #  Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.8.1');
+	use version; our $VERSION = qv('2.8.2');
 
 	use DBI ();
 	use DynaLoader ();
@@ -1688,7 +1688,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.8.1 of the DBD::Pg module
+This documents version 2.8.2 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
@@ -2467,12 +2467,18 @@ the prepare to happen immediately via the C<pg_prepare_now> attribute.
 
   $rv  = $dbh->do($statement, \%attr, @bind_values);
 
-Prepare and execute a single statement. Note that an empty statement 
-(string with no length) will not be passed to the server; if you 
-want a simple test, use "SELECT 123" or the ping() function. If 
-neither attr nor bind_values is given, the query will be sent directly 
-to the server without the overhead of creating a statement handle and 
+Prepare and execute a single statement. Returns the number of rows affected if the 
+query was successful, returns undef if an error occurred, and returns -1 if the 
+number of rows is unknown or not available. Note that this method will return '0E0' instead
+of 0 for 'no rows were affected', in order to always return a true value if no error.
+
+If neither attr nor bind_values is given, the query will be sent directly
+to the server without the overhead of creating a statement handle and
 running prepare and execute.
+
+Note that an empty statement (a string with no length) will not be passed to
+the server; if you want a simple test, use "SELECT 123" or the ping()
+function.
 
 =item B<last_insert_id>
 

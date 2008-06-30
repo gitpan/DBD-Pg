@@ -1,4 +1,4 @@
-# $Id: Makefile.PL 11400 2008-06-10 17:42:07Z turnstep $
+# $Id: Makefile.PL 11444 2008-06-23 14:05:01Z turnstep $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -7,7 +7,7 @@ use warnings;
 use 5.006001;
 
 ## No version.pm for this one, as the prereqs are not loaded yet.
-my $VERSION = '2.8.1';
+my $VERSION = '2.8.2';
 
 my $lib;
 BEGIN {
@@ -290,6 +290,7 @@ MAKE_SPLINT
 my $output = WriteMakefile(%opts);
 
 if (!exists $output->{EXTRALIBS} or
+
 	($output->{EXTRALIBS} !~ /\-lpq/ and $output->{EXTRALIBS} !~ /libpq/)) {
 
 	my $makefile = exists $output->{MAKEFILE}
