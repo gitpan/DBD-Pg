@@ -1,6 +1,6 @@
 /*
 
-   $Id: types.c 11309 2008-05-25 03:12:20Z turnstep $
+   $Id: types.c 11492 2008-07-07 01:38:30Z turnstep $
 
    Copyright (c) 2003-2008 Greg Sabino Mullane and others: see the Changes file
    
@@ -541,7 +541,7 @@ while (<$oldfh>) {
 	if (0 == $step) {
 		if (/^is/) {
 			for (sort { $pgtype{$a}{define} cmp $pgtype{$b}{define} } keys %pgtype) {
-				printf $newfh qq{is(%-*s, %5s, '%s returns correct value');\n},
+				printf $newfh qq{is (%-*s, %5s, '%s returns correct value');\n},
 					3+$maxlen, $pgtype{$_}{define}, $pgtype{$_}{oid}, $pgtype{$_}{define};
 			}
 			print $newfh "\n";

@@ -14,7 +14,7 @@ select(($|=1,select(STDERR),$|=1)[1]);
 
 ## Define this here in case we get to the END block before a connection is made.
 BEGIN {
-	use vars qw/$pgversion $pglibversion $pgvstring $pgdefport $helpconnect $dbh $connerror %set/;
+	use vars qw/$t $pgversion $pglibversion $pgvstring $pgdefport $helpconnect $dbh $connerror %set/;
 	($pgversion,$pglibversion,$pgvstring,$pgdefport) = ('?','?','?','?');
 }
 
@@ -25,21 +25,19 @@ if (! defined $dbh or $connerror) {
 }
 plan tests => 13;
 
-my ($t);
-
-pass('Established a connection to the database');
+pass ('Established a connection to the database');
 
 $pgversion    = $dbh->{pg_server_version};
 $pglibversion = $dbh->{pg_lib_version};
 $pgdefport    = $dbh->{pg_default_port};
 $pgvstring    = $dbh->selectall_arrayref('SELECT VERSION()')->[0][0];
 
-ok( $dbh->disconnect(), 'Disconnect from the database');
+ok ($dbh->disconnect(), 'Disconnect from the database');
 
 # Connect two times. From this point onward, do a simpler connection check
 $dbh = connect_database();
 
-pass('Connected with first database handle');
+pass ('Connected with first database handle');
 
 ## Grab some important values used for debugging
 my @vals = qw/array_nulls backslash_quote server_encoding client_encoding standard_conforming_strings/;
@@ -51,24 +49,24 @@ for (@{$dbh->selectall_arrayref($SQL)}) {
 
 my $dbh2 = connect_database();
 
-pass('Connected with second database handle');
+pass ('Connected with second database handle');
 
 my $sth = $dbh->prepare('SELECT 123');
-ok ( $dbh->disconnect(), 'Disconnect with first database handle');
-ok ( $dbh2->disconnect(), 'Disconnect with second database handle');
-ok ( $dbh2->disconnect(), 'Disconnect again with second database handle');
+ok ($dbh->disconnect(), 'Disconnect with first database handle');
+ok ($dbh2->disconnect(), 'Disconnect with second database handle');
+ok ($dbh2->disconnect(), 'Disconnect again with second database handle');
 
 eval {
  $sth->execute();
 };
-ok( $@, 'Execute fails on a disconnected statement');
+ok ($@, 'Execute fails on a disconnected statement');
 
 # Try out various connection options
 $ENV{DBI_DSN} ||= '';
 SKIP: {
 	my $alias = qr{(database|db|dbname)};
 	if ($ENV{DBI_DSN} !~ /$alias\s*=\s*\S+/) {
-		skip 'DBI_DSN contains no database option, so skipping connection tests', 5;
+		skip ('DBI_DSN contains no database option, so skipping connection tests', 5);
 	}
 
 	$t=q{Connect with invalid option fails};
@@ -80,18 +78,18 @@ SKIP: {
 		$t=qq{Connect using string '$opt' works};
 		$dbh and $dbh->disconnect();
 		(undef,$err,$dbh) = connect_database({dbreplace => $opt});
-		is($err, '', $t);
+		is ($err, '', $t);
 	}
 
 	if ($ENV{DBI_DSN} =~ /$alias\s*=\s*\"/) {
-		skip 'DBI_DSN already contains quoted database, no need for explicit test', 1;
+		skip ('DBI_DSN already contains quoted database, no need for explicit test', 1);
 	}
 	$t=q{Connect using a quoted database argument};
 	eval {
 		$dbh and $dbh->disconnect();
 		(undef,$err,$dbh) = connect_database({dbquotes => 1});
 	};
-	is($@, q{}, $t);
+	is ($@, q{}, $t);
 }
 
 END {
