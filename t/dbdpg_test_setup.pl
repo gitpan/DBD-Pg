@@ -6,6 +6,7 @@ use warnings;
 use Data::Dumper;
 use DBI;
 use Cwd;
+use 5.006;
 select(($|=1,select(STDERR),$|=1)[1]);
 
 my @schemas =
@@ -85,12 +86,11 @@ sub connect_database {
 			$testdsn =~ s/$alias\s*=(\w+)/'db="'.lc $2.'"'/e;
 		}
 
-		eval {
+		goto GOTDBH if eval {
 			$dbh = DBI->connect($testdsn, $testuser, '',
 								{RaiseError => 1, PrintError => 0, AutoCommit => 1});
+			1;
 		};
-
-		goto GOTDBH unless $@;
 
 		if ($@ =~ /invalid connection option/) {
 			return $helpconnect, $@, undef;
@@ -229,7 +229,12 @@ sub connect_database {
 		last GETHANDLE if $@;
 		if (!defined $info or ($info !~ /\@postgresql\.org/ and $info !~ /run as root/)) {
 			if (defined $info) {
-				$@ = "Bad initdb output: $info";
+				if ($info !~ /\w/) {
+					$@ = 'initdb not found: cannot run full tests without a Postgres database';
+				}
+				else {
+					$@ = "Bad initdb output: $info";
+				}
 			}
 			else {
 				my $msg = 'Failed to run initdb.';
