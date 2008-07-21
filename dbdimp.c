@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 11526 2008-07-13 03:25:21Z turnstep $
+  $Id: dbdimp.c 11545 2008-07-20 14:23:46Z turnstep $
 
   Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -291,18 +291,19 @@ static void pg_warn (void * arg, const char * message)
 	if (!SvROK(SvMAGIC(SvRV(newRV((SV*)arg)))->mg_obj)) {
 		return;
 	}
+	else {
+		D_imp_dbh( sv_2mortal(newRV((SV*)arg)) );
 
-	D_imp_dbh( sv_2mortal(newRV((SV*)arg)) );
+		if (TSTART) TRC(DBILOGFP, "%sBegin pg_warn (message: %s DBIc_WARN: %d PrintWarn: %d)\n",
+						THEADER,
+						message, DBIc_WARN(imp_dbh) ? 1 : 0,
+						DBIc_is(imp_dbh, DBIcf_PrintWarn) ? 1 : 0);
 
-	if (TSTART) TRC(DBILOGFP, "%sBegin pg_warn (message: %s DBIc_WARN: %d PrintWarn: %d)\n",
-							 THEADER,
-							 message, DBIc_WARN(imp_dbh) ? 1 : 0,
-							 DBIc_is(imp_dbh, DBIcf_PrintWarn) ? 1 : 0);
+		if (DBIc_WARN(imp_dbh) && DBIc_is(imp_dbh, DBIcf_PrintWarn))
+			warn(message);
 
-	if (DBIc_WARN(imp_dbh) && DBIc_is(imp_dbh, DBIcf_PrintWarn))
-		warn(message);
-
-	if (TEND) TRC(DBILOGFP, "%sEnd pg_warn\n", THEADER);
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_warn\n", THEADER);
+	}
 
 } /* end of pg_warn */
 

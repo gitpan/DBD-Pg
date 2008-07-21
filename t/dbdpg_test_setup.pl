@@ -40,10 +40,6 @@ my $S = 'dbd_pg_testschema';
 ## File written so we don't have to retry connections:
 my $helpfile = 'README.testdatabase';
 
-## If we create our own cluster, store it here:
-my $test_database_dir = 'dbdpg_test_database';
-## TODO: Handle Win32 better with slashes and user change
-
 use vars qw/$fh/;
 
 sub connect_database {
@@ -61,18 +57,21 @@ sub connect_database {
 	my $dbh = $arg->{dbh} || '';
 	my $alias = qr{(database|db|dbname)};
 	my $info;
+	my $olddir = getcwd;
 
 	## We'll try various ways to get to a database to test with
 
 	## First, check to see if we've been here before and left directions
-	my ($testdsn,$testuser,$helpconnect,$su,$testdir,$pg_ctl,$error) = get_test_settings();
-
-	## For debugging purposes, we'll be storing this in README.testdatabase as well
-	my $initdb = 'default';
+	my ($testdsn,$testuser,$helpconnect,$su,$uid,$testdir,$pg_ctl,$initdb,$error) = get_test_settings();
 
 	## Did we fail last time? Fail this time too, but quicker!
 	if ($testdsn =~ /FAIL!/) {
 		return $helpconnect, "Previous failure ($error)", undef;
+	}
+
+	## We may want to force an initdb call
+	if (!$helpconnect and $ENV{DBDPG_TESTINITDB}) {
+		goto INITDB;
 	}
 
 	## Got a working DSN? Give it an attempt
@@ -96,36 +95,52 @@ sub connect_database {
 			return $helpconnect, $@, undef;
 		}
 
+		if ($arg->{nocreate}) {
+			return $helpconnect, '', undef;
+		}
+
 		## If this was created by us, try and restart it
 		if (16 == $helpconnect) {
 
 			## Bypass if the testdir has been removed
 			if (! -e $testdir) {
-				warn "Test directory $testdir has been removed, will recreate from scratch\n";
+				$arg->{nocreate} and return $helpconnect, '', undef;
+				warn "Test directory $testdir has been removed, will create a new one\n";
 			}
 			else {
-				if (-e "$test_database_dir/data/postmaster.pid") {
+				if (-e "$testdir/data/postmaster.pid") {
 					## Assume it's up, and move on
 				}
 				else {
 
+					if ($arg->{norestart}) {
+						return $helpconnect, '', undef;
+					}
+
 					warn "Restarting test database $testdsn at $testdir\n";
 					my $option = '';
 					if ($^O !~ /Win32/) {
-						if (! -e "$test_database_dir/data/socket") {
-							mkdir "$test_database_dir/data/socket";
+						my $sockdir = "$testdir/data/socket";
+						if (! -e $sockdir) {
+							mkdir $sockdir;
+							if (! chown $uid, -1, $sockdir) {
+								warn "chown of $sockdir failed!\n";
+							}
 						}
 						$option = q{-o '-k socket'};
 					}
-					my $COM = qq{$pg_ctl $option -l $testdir/dbdpg_test.logfile -D $testdir start};
+					my $COM = qq{$pg_ctl $option -l $testdir/dbdpg_test.logfile -D $testdir/data start};
 					if ($su) {
 						$COM = qq{su -m $su -c "$COM"};
+						chdir $testdir;
 					}
 					$info = '';
 					eval { $info = qx{$COM}; };
-					if ($@ or $info !~ /\w/) {
-						$@ = "Could not startup new database ($@) ($info)";
-						return $helpconnect, $@, undef;
+					my $err = $@;
+					$su and chdir $olddir;
+					if ($err or $info !~ /\w/) {
+						$err = "Could not startup new database ($err) ($info)";
+						return $helpconnect, $err, undef;
 					}
 					## Wait for it to startup and verify the connection
 					sleep 1;
@@ -157,7 +172,7 @@ sub connect_database {
 
 	} ## end got testdsn and testuser
 
-	## No previous info (or failed attempt), so start new connection attempt from scratch
+	## No previous info (or failed attempt), so try to connect and possible create our own cluster
 
 	$testdsn ||= $ENV{DBI_DSN};
 	$testuser ||= $ENV{DBI_USER};
@@ -176,7 +191,7 @@ sub connect_database {
 			$dbh = DBI->connect($testdsn, $testuser, $ENV{DBI_PASS},
 								{RaiseError => 1, PrintError => 0, AutoCommit => 1});
 		};
-		last GETHANDLE if ! $@;
+		last GETHANDLE if ! $@; ## Made it!
 
 		## If the error was because of the user, try a few others
 		if ($@ =~ /postgres/) {
@@ -194,7 +209,7 @@ sub connect_database {
 				$dbh = DBI->connect($testdsn, $testuser, $ENV{DBI_PASS},
 									{RaiseError => 1, PrintError => 0, AutoCommit => 1});
 			};
-			last GETHANDLE if ! $@;
+			last GETHANDLE if ! $@; ## Made it!
 
 			## Final user tweak: set to postgres for Beastie
 			if ($testuser ne 'postgres') {
@@ -204,7 +219,7 @@ sub connect_database {
 					$dbh = DBI->connect($testdsn, $testuser, $ENV{DBI_PASS},
 										{RaiseError => 1, PrintError => 0, AutoCommit => 1});
 				};
-				last GETHANDLE if ! $@;
+				last GETHANDLE if ! $@; ## Made it!
 			}
 		}
 
@@ -222,11 +237,13 @@ sub connect_database {
 		if (!$initdb or ! -e $initdb) {
 			$initdb = 'initdb';
 		}
+
+		## Make sure initdb exists and is working properly
 		$info = '';
 		eval {
 			$info = qx{$initdb --help 2>&1};
 		};
-		last GETHANDLE if $@;
+		last GETHANDLE if $@; ## Fail - initdb bad
 		if (!defined $info or ($info !~ /\@postgresql\.org/ and $info !~ /run as root/)) {
 			if (defined $info) {
 				if ($info !~ /\w/) {
@@ -237,12 +254,12 @@ sub connect_database {
 				}
 			}
 			else {
-				my $msg = 'Failed to run initdb.';
+				my $msg = 'Failed to run initdb (executable probably not available)';
 				exists $ENV{PGINITDB} and $msg .= " ENV was: $ENV{PGINITDB}";
 				$msg .= " Final call was: $initdb";
 				$@ = $msg;
 			}
-			last GETHANDLE;
+			last GETHANDLE; ## Fail - initdb bad
 		}
 
 		## Make sure pg_ctl is available as well before we go further
@@ -253,52 +270,66 @@ sub connect_database {
 		eval {
 			$info = qx{$pg_ctl --help};
 		};
-		last GETHANDLE if $@;
+		last GETHANDLE if $@; ## Fail - pg_ctl bad
 		if (!defined $info or $info !~ /\@postgresql\.org/) {
 			$@ = defined $initdb ? "Bad pg_ctl output: $info" : 'Bad pg_ctl output';
-			last GETHANDLE;
+			last GETHANDLE; ## Fail - pg_ctl bad
 		}
 
-		## initdb and pg_ctl seems to be available, let's use it to test a new cluster
+		## initdb and pg_ctl seems to be available, let's use them to fire up a cluster
 		warn "Please wait, creating new database for testing\n";
 		$info = '';
 		eval {
-			$info = qx{$initdb --locale=C -E UTF8 -D $test_database_dir/data 2>&1};
+			$info = qx{$initdb --locale=C -E UTF8 -D $testdir/data 2>&1};
 		};
-		last GETHANDLE if $@;
+		last GETHANDLE if $@; ## Fail - initdb bad
 
 		## initdb and pg_ctl cannot be run as root, so let's handle that
 		if ($info =~ /run as root/ or $info =~ /unprivilegierte/) {
-			if (! -e $test_database_dir) {
-				mkdir $test_database_dir;
+
+			my $founduser = 0;
+			$su = $testuser = '';
+
+			## Figure out a valid directory - returns empty if nothing available
+			$testdir = find_tempdir();
+			if (!$testdir) {
+				return $helpconnect, 'Unable to create a temp directory', undef;
 			}
-			my $readme = "$test_database_dir/README";
+
+			my $readme = "$testdir/README";
 			if (open $fh, '>', $readme) {
 				print $fh "This is a test directory for DBD::Pg and may be removed\n";
 				print $fh "You may want to ensure the postmaster has been stopped first.\n";
 				print $fh "Check the port in the postgresql.conf file\n";
 				close $fh or die qq{Could not close "$readme": $!\n};
 			}
-			my $founduser = 0;
-			$su = $testuser = '';
+
+			## Likely candidates for running this
+			my @userlist = (qw/postgres postgresql pgsql _postgres/);
 
 			## Start with whoever owns this file, unless it's us
-			my @userlist = (qw/postgres postgresql pgsql/);
 			my $username = getpwuid ((stat($0))[4]);
 			unshift @userlist, $username if defined $username and $username ne getpwent;
+
 			my %doneuser;
 			for my $user (@userlist) {
 				next if $doneuser{$user}++;
-				my $uid = (getpwnam $user)[2];
+				$uid = (getpwnam $user)[2];
 				next if !defined $uid;
-				next unless chown $uid, -1, $test_database_dir;
+
+				next unless chown $uid, -1, $testdir;
+				next unless chown $uid, -1, $readme;
 				$su = $user;
 				$founduser++;
 				$info = '';
+				my $olddir = getcwd;
 				eval {
-					$info = qx{su -m $user -c "$initdb --locale=C -E UTF8 -D $test_database_dir/data" 2>&1};
+					chdir $testdir;
+					$info = qx{su -m $user -c "$initdb --locale=C -E UTF8 -D $testdir/data 2>&1"};
 				};
-				if (!$@ and $info =~ /owned by user "$user"/) {
+				my $err = $@;
+				chdir $olddir;
+				if (!$err and $info =~ /owned by user "$user"/) {
 					$testuser = $user;
 					last;
 				}
@@ -309,6 +340,10 @@ sub connect_database {
 			}
 			if (!$testuser) {
 				$@ = "Failed to run initdb as user $su: $@";
+				last GETHANDLE;
+			}
+			if (! -e "$testdir/data") {
+				$@ = 'Could not create a test database via initdb';
 				last GETHANDLE;
 			}
 			## At this point, both $su and $testuser are set
@@ -353,13 +388,13 @@ sub connect_database {
 				redo;
 			}
 			if ($testport >= $maxport) {
-				$@ = "No free ports found for testing: tried 5442 to $maxport\n";
+				$@ = "No free ports found for testing: tried 5440 to $maxport\n";
 				last GETHANDLE;
 			}
 		}
 		$@ = '';
 		## Change to this new port and fire it up
-		my $conf = "$test_database_dir/data/postgresql.conf";
+		my $conf = "$testdir/data/postgresql.conf";
 		my $cfh;
 		if (! open $cfh, '>>', $conf) {
 			$@ = qq{Could not open "$conf": $!};
@@ -371,27 +406,37 @@ sub connect_database {
 		close $cfh or die qq{Could not close "$conf": $!\n};
 
 		## Attempt to start up the test server
-		if (-e "$test_database_dir/data/postmaster.pid") {
+		if (-e "$testdir/data/postmaster.pid") {
 			## Assume it's up, and move on
 		}
 		else {
 			$info = '';
 			my $option = '';
 			if ($^O !~ /Win32/) {
-				if (! -e "$test_database_dir/data/socket") {
-					mkdir "$test_database_dir/data/socket";
+				my $sockdir = "$testdir/data/socket";
+				if (! -e $sockdir) {
+					mkdir $sockdir;
+					if ($su) {
+						if (! chown $uid, -1, $sockdir) {
+							warn "chown of $sockdir failed!\n";
+						}
+					}
 				}
 				$option = q{-o '-k socket'};
 			}
-			my $COM = qq{$pg_ctl $option -l $test_database_dir/dbdpg_test.logfile -D $test_database_dir/data start};
+			my $COM = qq{$pg_ctl $option -l $testdir/dbdpg_test.logfile -D $testdir/data start};
+			my $olddir = getcwd;
 			if ($su) {
+				chdir $testdir;
 				$COM = qq{su -m $su -c "$COM"};
 			}
 			eval {
 				$info = qx{$COM};
 			};
-			if ($@ or $info !~ /\w/) {
-				$@ = "Could not startup new database ($COM) ($@) ($info)";
+			my $err = $@;
+			$su and chdir $olddir;
+			if ($err or $info !~ /\w/) {
+				$@ = "Could not startup new database ($COM) ($err) ($info)";
 				last GETHANDLE;
 			}
 			sleep 1;
@@ -403,9 +448,7 @@ sub connect_database {
 			$testdsn .= ';host=localhost';
 		}
 		else {
-			my $dir = getcwd;
-			my $socketdir = "$dir/$test_database_dir/data/socket";
-			$testdsn .= ";host=$socketdir";
+			$testdsn .= ";host=$testdir/data/socket";
 		}
 		my $loop = 1;
 	  STARTUP: {
@@ -442,8 +485,9 @@ sub connect_database {
 		else {
 			print $fh "## DSN: $testdsn\n";
 			print $fh "## User: $testuser\n";
-			print $fh "## Testdir: $test_database_dir/data\n" if 16 == $helpconnect;
+			print $fh "## Testdir: $testdir\n" if 16 == $helpconnect;
 			print $fh "## Testowner: $su\n" if $su;
+			print $fh "## Testowneruid: $uid\n" if $uid;
 		}
 		close $fh or die qq{Could not close "$helpfile": $!\n};
 	}
@@ -510,6 +554,25 @@ return $helpconnect, '', $dbh;
 } ## end of connect_database
 
 
+sub find_tempdir {
+
+	if (eval { require File::Temp; 1; }) {
+		return File::Temp::tempdir('dbdpg_testdatabase_XXXXXX', TMPDIR => 1, CLEANUP => 0);
+	}
+
+	## Who doesn't have File::Temp?! :)
+	my $found = 0;
+	for my $num (1..100) {
+		my $tempdir = "/tmp/dbdpg_testdatabase_ABCDEF$num";
+		next if -e $tempdir;
+		mkdir $tempdir or return '';
+		return $tempdir;
+	}
+	return '';
+
+} ## end of find_tempdir
+
+
 sub get_test_settings {
 
 	## Returns test databae information from the testfile if it exists
@@ -521,23 +584,31 @@ sub get_test_settings {
 		($pg_ctl = $ENV{PGINITDB}) =~ s/initdb/pg_ctl/;
 	}
 	my ($testdsn, $testuser, $testdir, $error) = ('','','','?');
-	my ($helpconnect, $su) = (0,'');
+	my ($helpconnect, $su, $uid, $initdb) = (0,'','','default');
 	if (-e $helpfile) {
 		open $fh, '<', $helpfile or die qq{Could not open "$helpfile": $!\n};
 		while (<$fh>) {
-			/DSN: (.+)/          and $testdsn = $1;
-			/User: (\w+)/        and $testuser = $1;
-			/Helpconnect: (\d+)/ and $helpconnect = $1;
-			/Testowner: (\w+)/   and $su = $1;
-			/Testdir: (.+)/      and $testdir = $1;
-			/pg_ctl: (.+)/       and $pg_ctl = $1;
-			/ERROR: (.+)/        and $error = $1;
+			/DSN: (.+)/           and $testdsn = $1;
+			/User: (\w+)/         and $testuser = $1;
+			/Helpconnect: (\d+)/  and $helpconnect = $1;
+			/Testowner: (\w+)/    and $su = $1;
+			/Testowneruid: (\d+)/ and $uid = $1;
+			/Testdir: (.+)/       and $testdir = $1;
+			/pg_ctl: (.+)/        and $pg_ctl = $1;
+			/initdb: (.+)/        and $initdb = $1;
+			/ERROR: (.+)/         and $error = $1;
 		}
 		close $fh or die qq{Could not close "$helpfile": $!\n};
 	}
 
-	return $testdsn, $testuser, $helpconnect, $su, $testdir, $pg_ctl, $error;
-}
+	if (!$testdir) {
+		my $dir = getcwd();
+		$testdir = "$dir/dbdpg_test_database";
+	}
+
+	return $testdsn, $testuser, $helpconnect, $su, $uid, $testdir, $pg_ctl, $initdb, $error;
+
+} ## end of get_test_settings
 
 
 sub schema_exists {
@@ -549,7 +620,7 @@ sub schema_exists {
 	$sth->finish();
 	return $count < 1 ? 0 : 1;
 
-}
+} ## end of schema_exists
 
 
 sub relation_exists {
@@ -562,7 +633,8 @@ sub relation_exists {
 	$sth->finish();
 	return $count < 1 ? 0 : 1;
 
-}
+} ## end of relation_exists
+
 
 sub cleanup_database {
 
@@ -597,24 +669,33 @@ sub cleanup_database {
 
 	return;
 
-}
+} ## end of cleanup_database
+
 
 sub shutdown_test_database {
 
-	my ($testdsn,$testuser,$helpconnect,$su,$testdir,$pg_ctl) = get_test_settings();
+	my ($testdsn,$testuser,$helpconnect,$su,$uid,$testdir,$pg_ctl,$initdb) = get_test_settings();
 
-	if (-e $test_database_dir and -e "$test_database_dir/data/postmaster.pid") {
-		warn "Shutting down the test database\n";
-		my $COM = qq{$pg_ctl -D $test_database_dir/data --silent -m fast stop};
+	if (-e $testdir and -e "$testdir/data/postmaster.pid") {
+		my $COM = qq{$pg_ctl -D $testdir/data --silent -m fast stop};
+		my $olddir = getcwd;
 		if ($su) {
 			$COM = qq{su $su -m -c "$COM"};
+			chdir $testdir;
 		}
 		eval {
 			qx{$COM};
 		};
-		return $@;
+		$su and chdir $olddir;
 	}
 
-}
+	## Remove the test directory entirely
+	return if $ENV{DBDPG_TESTINITDB};
+	return if ! eval { require File::Path; 1; };
+	warn "Removing test database directory\n";
+	File::Path::rmtree($testdir);
+	return;
+
+} ## end of shutdown_test_database
 
 1;

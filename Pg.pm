@@ -1,5 +1,5 @@
 #  -*-cperl-*-
-#  $Id: Pg.pm 11527 2008-07-13 14:12:22Z turnstep $
+#  $Id: Pg.pm 11555 2008-07-21 14:44:48Z turnstep $
 #
 #  Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.8.5');
+	use version; our $VERSION = qv('2.8.6');
 
 	use DBI ();
 	use DynaLoader ();
@@ -1694,7 +1694,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.8.5 of the DBD::Pg module
+This documents version 2.8.6 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
@@ -1705,7 +1705,7 @@ PostgreSQL databases.
 
 This documentation describes driver specific behavior and restrictions. It is
 not supposed to be used as the only reference for the user. In any case
-consult the L<DBI|DBI> documentation first!
+consult the L<DBI> documentation first!
 
 =head1 THE DBI CLASS
 
@@ -2142,7 +2142,9 @@ Same as L</Kids>, but only returns those that are L</Active>.
 
 =item B<CachedKids> (hash ref)
 
-Implemented by DBI, no driver-specific impact.
+Returns a hashref of handles. If called on a database handle, returns all statement handles created by use of the 
+C<prepare_cached> method. If called on a driver handle, returns all database handles created by the C<connect_cached> 
+method.
 
 =item B<Executed> (boolean, read-only)
 
@@ -2242,41 +2244,29 @@ Not used by this driver.
 
 =over 4
 
-=item B<selectrow_array>
-
-  @row_ary = $dbh->selectrow_array($statement, \%attr, @bind_values);
-
-Implemented by DBI, no driver-specific impact.
-
-=item B<selectrow_arrayref>
-
-  $ary_ref = $dbh->selectrow_arrayref($statement, \%attr, @bind_values);
-
-Implemented by DBI, no driver-specific impact.
-
-=item B<selectrow_hashref>
-
-  $hash_ref = $dbh->selectrow_hashref($statement, \%attr, @bind_values);
-
-Implemented by DBI, no driver-specific impact.
-
 =item B<selectall_arrayref>
 
-  $ary_ref = $dbh->selectall_arrayref($statement, \%attr, @bind_values);
+  $ary_ref = $dbh->selectall_arrayref($sql);
+  $ary_ref = $dbh->selectall_arrayref($sql, \%attr);
+  $ary_ref = $dbh->selectall_arrayref($sql, \%attr, @bind_values);
 
-Implemented by DBI, no driver-specific impact.
+See the DBI documentation for full details. Returns a reference to an array containing the rows returned 
+by preparing and executing the SQL string.
 
 =item B<selectall_hashref>
 
-  $hash_ref = $dbh->selectall_hashref($statement, $key_field);
+  $hash_ref = $dbh->selectall_hashref($sql, $key_field);
 
-Implemented by DBI, no driver-specific impact.
+See the DBI documentation for full details. Returns a reference to a hash containing the rows 
+returned by preparing and executing the SQL string.
 
 =item B<selectcol_arrayref>
 
-  $ary_ref = $dbh->selectcol_arrayref($statement, \%attr, @bind_values);
+  $ary_ref = $dbh->selectcol_arrayref($sql, \%attr, @bind_values);
 
-Implemented by DBI, no driver-specific impact.
+See the DBI documentation for full details. Returns a reference to an array containing the first column 
+from each rows returned by preparing and executing the SQL string. It is possible to specify exactly 
+which columns to return.
 
 =item B<prepare>
 
@@ -2514,10 +2504,10 @@ function.
 
 Attempts to return the id of the last value to be inserted into a table.
 You can either provide a sequence name (preferred) or provide a table
-name with optional schema. The $catalog and $field arguments are always ignored.
-The current value of the sequence is returned by a call to the
-C<CURRVAL()> PostgreSQL function. This will fail if the sequence has not yet
-been used in the current database connection.
+name with optional schema, and DBD::Pg will attempt to find the sequence itself. 
+The $catalog and $field arguments are always ignored. The current value of the 
+sequence is returned by a call to the C<CURRVAL()> PostgreSQL function. This will 
+fail if the sequence has not yet been used in the current database connection.
 
 If you do not know the name of the sequence, you can provide a table name and
 DBD::Pg will attempt to return the correct value. To do this, there must be at
@@ -2532,7 +2522,9 @@ attribute.
 Please keep in mind that this method is far from foolproof, so make your
 script use it properly. Specifically, make sure that it is called
 immediately after the insert, and that the insert does not add a value
-to the column that is using the sequence as a default value.
+to the column that is using the sequence as a default value. However, because 
+we are using sequences, you can be sure that the value you got back has not 
+been used by any other process.
 
 Some examples:
 
@@ -2692,26 +2684,57 @@ recommended by DBI.
 
   $sth = $dbh->table_info( $catalog, $schema, $table, $type );
 
-Supported by this driver as proposed by DBI. This method returns all tables
-and views visible to the current user. The $catalog argument is currently
-unused. The schema and table arguments will do a C<LIKE> search if a percent
-sign (C<%>) or an underscore (C<_>) is detected in the argument. The $type
-argument accepts a value of either "TABLE" or "VIEW" (using both is the
-default action).
+Returns all tables and views visible to the current user. The $catalog argument is currently 
+unused. The schema and table arguments will do a C<LIKE> search if a percent sign (C<%>) or an 
+underscore (C<_>) is detected in the argument. The $type argument accepts a value of either 
+"TABLE" or "VIEW" (using both is the default action). Note that a statement handle is returned, 
+and not a direct list of tables. See the examples below for ways to handle this.
 
-The TABLE_CAT field will always return NULL (C<undef>).
+The following fields are returned:
+
+B<TABLE_CAT>: Always NULL, as Postgres does not have the concept of catalogs.
+
+B<TABLE_SCHEM>: The name of the schema that the table or view is in.
+
+B<TABLE_NAME>: The name of the table or view.
+
+B<TABLE_TYPE>: The type of object returned. Will be one of "TABLE", "VIEW", 
+or "SYSTEM TABLE".
+
+The TABLE_SCHEM and TABLE_NAME will be quoted via C<quote_ident()>.
+
+Two additional fields specific to DBD::Pg are returned:
+
+B<pg_schema>: the unquoted name of the schema
+
+B<pg_table>: the unquoted name of the table
 
 If your database supports tablespaces (version 8.0 or greater), two additional
-columns are returned, "pg_tablespace_name" and "pg_tablespace_location",
-that contain the name and location of the tablespace associated with
-this table. Tables that have not been assigned to a particular tablespace
-will return NULL (C<undef>) for both of these columns.
+DBD::Pg specific fields are returned:
 
-Three additional fields are returned:
+B<pg_tablespace_name>: the name of the tablespace the table is in
 
-  pg_schema - the unquoted name of the schema
-  pg_table - the unquoted name of the table
-  pg_column - the unquoted name of the column
+B<pg_tablespace_location>: the location of the tablespace the table is in
+
+Tables that have not been assigned to a particular tablespace (or views) 
+will return NULL (C<undef>) for both of the above field.
+
+Rows are returned alphabetically, with all tables first, and then all views.
+
+Examples of use:
+
+  ## Display all tables and views in the public schema:
+  $sth = $dbh->table_info('', 'public', undef, undef);
+  for my $rel ({@$sth->fetchall_arrayref({})}) {
+    print "$rel->{TABLE_TYPE} name is $rel->{TABLE_NAME}\n";
+  }
+
+
+  # Display the schema of all tables named 'foo':
+  $sth = $dbh->table_info('', undef, 'foo', 'TABLE');
+  for my $rel (@{$sth->fetchall_arrayref({})}) {
+    print "Table name is $rel->{TABLE_SCHEM}.$rel->{TABLE_NAME}\n";
+  }
 
 =item B<column_info>
 
@@ -2730,12 +2753,17 @@ These fields are currently always returned with NULL (C<undef>) values:
 
 Also, six additional non-standard fields are returned:
 
-  pg_type - data type with additional info i.e. "character varying(20)"
-  pg_constraint - holds column constraint definition
-  pg_schema - the unquoted name of the schema
-  pg_table - the unquoted name of the table
-  pg_column - the unquoted name of the column
-  pg_enum_values - an array reference of allowed values for an enum column
+B<pg_type>: data type with additional info i.e. "character varying(20)"
+
+B<pg_constraint>: holds column constraint definition
+
+B<pg_schema>: the unquoted name of the schema
+
+B<pg_table>: the unquoted name of the table
+
+B<pg_column>: the unquoted name of the column
+
+B<pg_enum_values>: an array reference of allowed values for an enum column
 
 Note that the TABLE_SCHEM, TABLE_NAME, and COLUMN_NAME fields all return 
 output wrapped in quote_ident(). If you need the unquoted version, use 
@@ -2756,11 +2784,15 @@ tablespaces. See the C<table_info> entry for more information.
 
 The five additional custom fields returned are:
 
-  pg_tablespace_name - Name of the tablespace, if any
-  pg_tablespace_location - Location of the tablespace
-  pg_schema - the unquoted name of the schema
-  pg_table - the unquoted name of the table
-  pg_column - the unquoted name of the column
+B<pg_tablespace_name>: name of the tablespace, if any
+
+B<pg_tablespace_location>: location of the tablespace
+
+B<pg_schema>: the unquoted name of the schema
+
+B<pg_table>: the unquoted name of the table
+
+B<pg_column>: the unquoted name of the column
 
 In addition to the standard format of returning one row for each column
 found for the primary key, you can pass the C<pg_onerow> attribute to force
@@ -2915,6 +2947,35 @@ a filename. Example:
   $dbh->pg_server_untrace
 
 Stop server logging to a previously opened file.
+
+=item B<selectrow_array>
+
+  @row_ary = $dbh->selectrow_array($sql);
+  @row_ary = $dbh->selectrow_array($sql, \%attr);
+  @row_ary = $dbh->selectrow_array($sql, \%attr, @bind_values);
+
+Returns an array of row information after preparing and executing the provided SQL string. The rows are returned 
+by calling L</fetchrow_array>. The string can also be a statement handle generated by a previous prepare. Note that 
+only the first row of data is returned. If called in a scalar context, only the first column of the first row is 
+returned. Because this is not portable, it is not recommended that you use this method in that way.
+
+=item B<selectrow_arrayref>
+
+  $ary_ref = $dbh->selectrow_arrayref($statement);
+  $ary_ref = $dbh->selectrow_arrayref($statement, \%attr);
+  $ary_ref = $dbh->selectrow_arrayref($statement, \%attr, @bind_values);
+
+Exactly the same as L</selectrow_array>, except that it returns a reference to an array, by internal use of 
+the L</fetchrow_arrayref> method.
+
+=item B<selectrow_hashref>
+
+  $hash_ref = $dbh->selectrow_hashref($sql);
+  $hash_ref = $dbh->selectrow_hashref($sql, \%attr);
+  $hash_ref = $dbh->selectrow_hashref($sql, \%attr, @bind_values);
+
+Exactly the same as L</selectrow_array>, except that it returns a reference to an hash, by internal use of 
+the L</fetchrow_hashref> method.
 
 =back
 
@@ -3407,7 +3468,7 @@ document.
 
 =item C<Database>  (dbh, read-only)
 
-Implemented by DBI, no driver-specific impact.
+Returns the database handle this statement handle was created from.
 
 =item C<ParamValues>  (hash ref, read-only)
 
@@ -3423,7 +3484,9 @@ have not yet been bound will return undef as the value.
 
 =item B<Statement>  (string, read-only)
 
-Supported by this driver as proposed by DBI.
+Returns the statement string passed to the most recent "prepare" method called in this database handle, even if that method
+failed. This is especially useful where "RaiseError" is enabled and the exception handler checks $@ and sees that a ’prepare’
+method call failed.
 
 =item B<RowCache>  (integer, read-only)
 
