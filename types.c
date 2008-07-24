@@ -1,6 +1,6 @@
 /*
 
-   $Id: types.c 11492 2008-07-07 01:38:30Z turnstep $
+   $Id: types.c 11572 2008-07-23 03:57:59Z turnstep $
 
    Copyright (c) 2003-2008 Greg Sabino Mullane and others: see the Changes file
    
@@ -514,7 +514,7 @@ while (<$oldfh>) {
 			print $newfh $_;
 			$step = 0;
 			for (sort { $pgtype{$a}{define} cmp $pgtype{$b}{define} } keys %pgtype) {
-				printf $newfh "%s$pgtype{$_}{define}", !($step++ % 6) ? "\n" : ' ';
+				printf $newfh "%s$pgtype{$_}{define}", !($step++ % 6) ? "\n " : ' ';
 			}
 			print $newfh "\n\n";
 			$step = 3;

@@ -36,9 +36,9 @@ $pgvstring    = $dbh->selectall_arrayref('SELECT VERSION()')->[0][0];
 ok ($dbh->disconnect(), 'Disconnect from the database');
 
 # Connect two times. From this point onward, do a simpler connection check
-$dbh = connect_database();
-
-pass ('Connected with first database handle');
+$t=q{Second database connection attempt worked};
+(undef,$connerror,$dbh) = connect_database();
+is ($connerror, '', $t);
 
 ## Grab some important values used for debugging
 my @vals = qw/array_nulls backslash_quote server_encoding client_encoding standard_conforming_strings/;
@@ -79,6 +79,7 @@ SKIP: {
 		$t=qq{Connect using string '$opt' works};
 		$dbh and $dbh->disconnect();
 		(undef,$err,$dbh) = connect_database({dbreplace => $opt});
+		$err =~ s/(Previous failure).*/$1/;
 		is ($err, '', $t);
 	}
 
@@ -133,13 +134,16 @@ END {
 		if ($helpconnect & 4) {
 			$extra .= 'DBI_USER';
 		}
+		if ($helpconnect & 8) {
+			$extra .= 'DBI_USERx2';
+		}
 		if ($helpconnect & 16) {
 			$extra .= 'initdb';
 		}
 	}
 
 	if (defined $connerror and length $connerror) {
-		$connerror =~ s/.+?failed: //;
+		$connerror =~ s/.+?failed: ([^\n]+).*/$1/s;
 		$connerror =~ s{\n at t/dbdpg.*}{}m;
 		if ($connerror =~ /create semaphores/) {
 			$connerror =~ s/.*(FATAL.*?)HINT.*/$1/sm;
