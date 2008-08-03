@@ -1,5 +1,5 @@
 #  -*-cperl-*-
-#  $Id: Pg.pm 11581 2008-07-24 05:18:05Z turnstep $
+#  $Id: Pg.pm 11621 2008-08-03 01:11:02Z turnstep $
 #
 #  Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.8.7');
+	use version; our $VERSION = qv('2.9.0');
 
 	use DBI ();
 	use DynaLoader ();
@@ -1277,7 +1277,7 @@ use 5.006001;
              SQL_VARBINARY,                                                                $UN, $UN, $UN ],
 ['bpchar',   SQL_CHAR,          $GIG, q{'},q{'}, $LEN, 1,1,3, $UN,0,0, 'CHARACTER', $UN,$UN,
              SQL_CHAR,                                                                     $UN, $UN, $UN ],
-['numeric',  SQL_DECIMAL,       1000, $UN,$UN,   $PS,  1,0,2, 0,0,0, '  FLOAT',     0,1000,
+['numeric',  SQL_DECIMAL,       1000, $UN,$UN,   $PS,  1,0,2, 0,0,0,   'FLOAT',     0,1000,
              SQL_DECIMAL,                                                                  $UN, $UN, $UN ],
 ['numeric',  SQL_NUMERIC,       1000, $UN,$UN,   $PS,  1,0,2, 0,0,0,   'FLOAT',     0,1000,
              SQL_NUMERIC,                                                                  $UN, $UN, $UN ],
@@ -1696,7 +1696,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.8.7 of the DBD::Pg module
+This documents version 2.9.0 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
@@ -1831,7 +1831,7 @@ an alternate port and host:
   @data_sources = $dbh->data_sources('port=5824;host=example.com');
 
 
-=head1 METHODS COMMON TO ALL HANDLES
+=head2 Methods Common To All Handles
 
 For all of the methods below, B<$h> can be either a database handle (B<$dbh>) 
 or a statement handle (B<$sth>). Note that I<$dbh> and I<$sth> can be replaced with 
@@ -2128,6 +2128,11 @@ Forces database errors to also generate warnings, which can then be filtered wit
 locally redefining I<$SIG{__WARN__}> or using modules such as C<CGI::Carp>. This attribute is on 
 by default.
 
+=head3 B<ShowErrorStatement> (boolean, inherited)
+
+Appends information about the current statement to error messages. If placeholder information 
+is available, adds that as well. Defaults to false.
+
 =head3 B<Warn> (boolean, inherited)
 
 Enables warnings. This is on by default, and should only be turned off in a local block 
@@ -2189,10 +2194,6 @@ Implemented by DBI, no driver-specific impact.
 Implemented by DBI, no driver-specific impact.
 
 =head3 B<ErrCount> (unsigned integer)
-
-Implemented by DBI, no driver-specific impact.
-
-=head3 B<ShowErrorStatement> (boolean, inherited)
 
 Implemented by DBI, no driver-specific impact.
 
@@ -3007,6 +3008,24 @@ elsewhere in this document.
 DBD::Pg specific attribute. If true, boolean values will be returned
 as the characters 't' and 'f' instead of '1' and '0'.
 
+=head3 B<ReadOnly> (boolean)
+
+$dbh->{ReadOnly} = 1;
+
+Specifies if the current database connection should be in read-only mode or not. 
+In this mode, changes that change the database are not allowed and will throw 
+an error. Note: this method will B<not> work if L</AutoCommit> is true. The 
+read-only effect is accomplished by sending a SET TRANSACTION READ ONLY after 
+every begin. For more details, please see:
+
+http://www.postgresql.org/docs/current/interactive/sql-set-transaction.html
+
+Please not that this method is not foolproof: there are still ways to update the 
+database. Consider this a safety net to catch applications that should not be 
+issuing commands such as INSERT, UPDATE, or DELETE.
+
+This method method requires DBI version 1.55 or better.
+
 =head3 B<Name> (string, read-only)
 
 Returns the name of the current database.
@@ -3493,55 +3512,68 @@ L<http://www.postgresql.org/docs/current/static/largeobjects.html>.
 
 =head3 B<NUM_OF_FIELDS> (integer, read-only)
 
-Implemented by DBI, no driver-specific impact.
+Returns the number of columns returned by the current statement. A number will only be returned for 
+SELECT statements, for SHOW statements (which always return C<1>), and for INSERT, 
+UPDATE, and DELETE statements which contain a RETURNING clause.
+This method returns undef if called before C<execute()>.
 
 =head3 B<NUM_OF_PARAMS> (integer, read-only)
 
-Implemented by DBI, no driver-specific impact.
+Returns the number of placeholders in the current statement.
 
 =head3 B<NAME> (arrayref, read-only)
 
-Supported by this driver as proposed by DBI.
+Returns an arrayref of column names for the current statement. This 
+method will only work for SELECT statements, for SHOW statements, and for 
+INSERT, UPDATE, and DELETE statements which contain a RETURNING clause.
+This method returns undef if called before C<execute()>.
 
 =head3 B<NAME_lc> (arrayref, read-only)
 
-Implemented by DBI, no driver-specific impact.
+The same as the C<NAME> attribute, except that all column names are forced to lower case.
 
 =head3 B<NAME_uc>  (arrayref, read-only)
 
-Implemented by DBI, no driver-specific impact.
+The same as the C<NAME> attribute, except that all column names are forced to upper case.
 
 =head3 B<NAME_hash> (hashref, read-only)
 
-Implemented by DBI, no driver-specific impact.
+Similar to the C<NAME> attribute, but returns a hashref of column names instead of an arrayref. The names of the columns 
+are the keys of the hash, and the values represent the order in which the columns are returned, starting at 0.
+This method returns undef if called before C<execute()>.
 
 =head3 B<NAME_lc_hash> (hashref, read-only)
 
-Implemented by DBI, no driver-specific impact.
+The same as the C<NAME_hash> attribute, except that all column names are forced to lower case.
 
 =head3 B<NAME_uc_hash> (hashref, read-only)
 
-Implemented by DBI, no driver-specific impact.
+The same as the C<NAME_hash> attribute, except that all column names are forced to lower case.
 
 =head3 B<TYPE> (arrayref, read-only)
 
-Supported by this driver as proposed by DBI
+Returns an arrayref indicating the data type for each column in the statement. 
+This method returns undef if called before C<execute()>.
 
 =head3 B<PRECISION> (arrayref, read-only)
 
-Returns a reference to an array of integer values of each column. 
-C<NUMERIC> types will return the precision. Types of C<CHAR> and C<VARCHAR> 
-will return their size (number of characters). Other types will return the number 
-of I<bytes>.
+Returns an arrayref of integer values for each column returned by the statement. 
+The number indicates the precision for C<NUMERIC> columns, the size in number of 
+characters for C<CHAR> and C<VARCHAR> columns, and for all other types of columns 
+it returns the number of I<bytes>.
+This method returns undef if called before C<execute()>.
 
 =head3 B<SCALE> (arrayref, read-only)
 
-Returns a reference to an array of integer values of each column. 
-The only type that will return a value currently is C<NUMERIC>.
+Returns an arrayref of integer values for each column returned by the statement. The number 
+indicates the scale of the that column. The only type that will return a value is C<NUMERIC>.
+This method returns undef if called before C<execute()>.
 
 =head3 B<NULLABLE> (arrayref, read-only)
 
-Supported by this driver as proposed by DBI.
+Returns an arrayref of integer values for each column returned by the statement. The number 
+indicates if the column is nullable or not. 0 = not nullable, 1 = nullable, 2 = unknown. 
+This method returns undef if called before C<execute()>.
 
 =head3 B<CursorName> (string, read-only)
 

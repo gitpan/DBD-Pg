@@ -331,6 +331,7 @@ noprefix
 noreturn
 nosetup
 notused
+nullable
 NULLABLE
 num
 numbound
@@ -371,6 +372,8 @@ php
 pid
 PID
 PlanetPostgresql
+Postgres
+POSTGRES
 postgres
 postgresql
 PostgreSQL
@@ -405,6 +408,7 @@ qw
 RaiseError
 RDBMS
 README
+ReadOnly
 realclean
 RedHat
 relcheck
@@ -489,7 +493,6 @@ UTC
 utf
 UTF
 Util
-valgind
 valgrind
 varchar
 VARCHAR
@@ -552,9 +555,16 @@ yml
 
 ## TODO:
 struct
-
+hashrefs
 
 ## README.dev:
+DProf
+NYTProf
+dprofpp
+nytprofhtml
+profiler
+spellcheck
+testfile
 leaktester
 mak
 mathinline
@@ -563,11 +573,13 @@ nServer
 
 ## README:
 BOOTCHECK
+CentOS
 DynaLoader
 Eisentraut
 Gcc
 Landgren
 Lauterbach
+Ubuntu
 cabrion
 conf
 danla
@@ -618,6 +630,7 @@ ExecStatusType
 INV
 NULLs
 Oid
+PQoids
 PGRES
 ROK
 StartTransactionCommand
@@ -676,6 +689,7 @@ versa
 xPID
 
 ## dbdimp.h:
+PQ
 SSP
 funcs
 implementor

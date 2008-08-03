@@ -1,5 +1,5 @@
 /*
-	$Id: dbdimp.h 11312 2008-05-25 13:20:28Z turnstep $
+	$Id: dbdimp.h 11596 2008-07-27 03:01:22Z turnstep $
 	
     Copyright (c) 2000-2008 Greg Sabino Mullane and others: see the Changes file
 	Portions Copyright (c) 1997-2000 Edmund Mergl
@@ -24,6 +24,7 @@ struct imp_dbh_st {
 	bool    done_begin;        /* have we done a begin? (e.g. are we in a transaction?) */
 	bool    dollaronly;        /* only consider $1, $2 ... as valid placeholders */
 	bool    expand_array;      /* transform arrays from the db into Perl arrays? Default is 1 */
+	bool    txn_read_only;     /* are we in read-only mode? Set with $dbh->{ReadOnly} */
 
 	int     pg_protocol;       /* value of PQprotocolVersion, usually 3 (could also be 0) */
 	int     pg_server_version; /* server version e.g. 80100 */
@@ -70,7 +71,7 @@ typedef struct ph_st ph_t;
 
 /* Define sth implementor data structure */
 struct imp_sth_st {
-	dbih_stc_t com;         /* MUST be first element in structure */
+	dbih_stc_t com;          /* MUST be first element in structure */
 
 	int    server_prepare;   /* inherited from dbh. 3 states: 0=no 1=yes 2=smart */
 	int    placeholder_type; /* which style is being used 1=? 2=$1 3=:foo */
@@ -84,6 +85,10 @@ struct imp_sth_st {
 
 	STRLEN totalsize;        /* total string length of the statement (with no placeholders)*/
 
+	const char ** PQvals;    /* List of values to pass to PQ* */
+	int         * PQlens;    /* List of lengths to pass to PQ* */
+	int         * PQfmts;    /* List of formats to pass to PQ* */
+	Oid         * PQoids;    /* List of types to pass to PQ* */
 	char   *prepare_name;    /* name of the prepared query; NULL if not prepared */
 	char   *firstword;       /* first word of the statement */
 

@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 11545 2008-07-20 14:23:46Z turnstep $
+  $Id: dbdimp.c 11596 2008-07-27 03:01:22Z turnstep $
 
   Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -222,6 +222,7 @@ int dbd_db_login (SV * dbh, imp_dbh_t * imp_dbh, char * dbname, char * uid, char
 	imp_dbh->done_begin      = DBDPG_FALSE;
 	imp_dbh->dollaronly      = DBDPG_FALSE;
 	imp_dbh->expand_array    = DBDPG_TRUE;
+	imp_dbh->txn_read_only   = DBDPG_FALSE;
 	imp_dbh->pid_number      = getpid();
 	imp_dbh->prepare_number  = 1;
 	imp_dbh->copystate       = 0;
@@ -771,9 +772,20 @@ int dbd_db_STORE_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv, SV * valuesv
 	unsigned int newval = SvTRUE(valuesv);
 	int          retval = 0;
 
-	if (TSTART) TRC(DBILOGFP, "%sBegin dbd_db_STORE (key: %s newval: %d)\n", THEADER, key, newval);
+	if (TSTART) TRC(DBILOGFP, "%sBegin dbd_db_STORE (key: %s newval: %d kl:%d)\n", THEADER, key, newval);
 	
 	switch (kl) {
+
+	case 8: /* ReadOnly */
+
+		if (strEQ("ReadOnly", key)) {
+			if (DBIc_has(imp_dbh, DBIcf_AutoCommit)) {
+				warn("Setting ReadOnly in AutoCommit mode has no effect");
+			}
+			imp_dbh->txn_read_only = newval ? DBDPG_TRUE : DBDPG_FALSE;
+			retval = 1;
+		}
+		break;
 
 	case 10: /* AutoCommit  pg_bool_tf */
 
@@ -1365,6 +1377,10 @@ int dbd_st_prepare (SV * sth, imp_sth_t * imp_sth, char * statement, SV * attrib
 	imp_sth->type_info        = NULL;
 	imp_sth->seg              = NULL;
 	imp_sth->ph               = NULL;
+	imp_sth->PQvals           = NULL;
+	imp_sth->PQlens           = NULL;
+	imp_sth->PQfmts           = NULL;
+	imp_sth->PQoids           = NULL;
 	imp_sth->prepared_by_us   = DBDPG_FALSE; /* Set to 1 when actually done preparing */
 	imp_sth->onetime          = DBDPG_FALSE; /* Allow internal shortcut */
 	imp_sth->direct           = DBDPG_FALSE;
@@ -1958,7 +1974,6 @@ static int pg_st_prepare_statement (pTHX_ SV * sth, imp_sth_t * imp_sth)
 	int          status = -1;
 	seg_t *      currseg;
 	bool         oldprepare = DBDPG_TRUE;
-	Oid *        paramTypes = NULL;
 	ph_t *       currph;
 
 	if (TSTART) TRC(DBILOGFP, "%sBegin pg_st_prepare_statement\n", THEADER);
@@ -2053,17 +2068,18 @@ static int pg_st_prepare_statement (pTHX_ SV * sth, imp_sth_t * imp_sth)
 		int params = 0;
 		if (imp_sth->numbound!=0) {
 			params = imp_sth->numphs;
-			Newz(0, paramTypes, imp_sth->numphs, Oid);
+			if (NULL == imp_sth->PQoids) {
+				Newz(0, imp_sth->PQoids, imp_sth->numphs, Oid);
+			}
 			for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph) {
-				paramTypes[x++] = (currph->defaultval) ? 0 : (Oid)currph->bind_type->type_id;
+				imp_sth->PQoids[x++] = (currph->defaultval) ? 0 : (Oid)currph->bind_type->type_id;
 			}
 		}
 		if (TSQL)
 			TRC(DBILOGFP, "PREPARE %s AS %s;\n\n", imp_sth->prepare_name, statement);
 
 		TRACE_PQPREPARE;
-		result = PQprepare(imp_dbh->conn, imp_sth->prepare_name, statement, params, paramTypes);
-		Safefree(paramTypes);
+		result = PQprepare(imp_dbh->conn, imp_sth->prepare_name, statement, params, imp_sth->PQoids);
 		if (result) {
 			TRACE_PQRESULTSTATUS;
 			status = PQresultStatus(result);
@@ -2620,7 +2636,22 @@ int pg_quickexec (SV * dbh, const char * sql, const int asyncflag)
 			return -2;
 		}
 		imp_dbh->done_begin = DBDPG_TRUE;
+		/* If read-only mode, make it so */
+		if (imp_dbh->txn_read_only) {
+			status = _result(aTHX_ imp_dbh, "set transaction read only");
+			if (PGRES_COMMAND_OK != status) {
+				TRACE_PQERRORMESSAGE;
+				pg_error(aTHX_ dbh, status, PQerrorMessage(imp_dbh->conn));
+				if (TEND) TRC(DBILOGFP, "%sEnd pg_quickexec (error: set transaction read only failed)\n", THEADER);
+				return -2;
+			}
+		}
 	}
+
+	/*
+	  We want txn mode if AutoCommit
+	 */
+
 
 	/* Asynchronous commands get kicked off and return undef */
 	if (asyncflag & PG_ASYNC) {
@@ -2732,10 +2763,6 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 	ph_t *        currph;
 	int           status = -1;
 	STRLEN        execsize, x;
-	const char ** paramValues = NULL;
-	int *         paramLengths = NULL;
-	int *         paramFormats = NULL;
-	Oid *         paramTypes = NULL;
 	seg_t *       currseg;
 	char *        statement = NULL;
 	int           num_fields;
@@ -2788,6 +2815,16 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 			return -2;
 		}
 		imp_dbh->done_begin = DBDPG_TRUE;
+		/* If read-only mode, make it so */
+		if (imp_dbh->txn_read_only) {
+			status = _result(aTHX_ imp_dbh, "set transaction read only");
+			if (PGRES_COMMAND_OK != status) {
+				TRACE_PQERRORMESSAGE;
+				pg_error(aTHX_ sth, status, PQerrorMessage(imp_dbh->conn));
+				if (TEND) TRC(DBILOGFP, "%sEnd pg_quickexec (error: set transaction read only failed)\n", THEADER);
+				return -2;
+			}
+		}
 	}
 
 	/* clear old result (if any) */
@@ -2847,24 +2884,28 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 	}
 	else { /* We are using a server that can handle PQexecParams/PQexecPrepared */
 		/* Put all values into an array to pass to PQexecPrepared */
-		Newz(0, paramValues, imp_sth->numphs, const char *); /* freed below */
+		if (NULL == imp_sth->PQvals) {
+			Newz(0, imp_sth->PQvals, imp_sth->numphs, const char *); /* freed in dbd_st_destroy */
+		}
 		for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph) {
-			paramValues[x++] = currph->value;
+			imp_sth->PQvals[x++] = currph->value;
 		}
 
 		/* Binary or regular? */
 
 		if (imp_sth->has_binary) {
-			Newz(0, paramLengths, imp_sth->numphs, int); /* freed below */
-			Newz(0, paramFormats, imp_sth->numphs, int); /* freed below */
+			if (NULL == imp_sth->PQlens) {
+				Newz(0, imp_sth->PQlens, imp_sth->numphs, int); /* freed in dbd_st_destroy */
+				Newz(0, imp_sth->PQfmts, imp_sth->numphs, int); /* freed below */
+			}
 			for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,x++) {
 				if (PG_BYTEA==currph->bind_type->type_id) {
-					paramLengths[x] = (int)currph->valuelen;
-					paramFormats[x] = 1;
+					imp_sth->PQlens[x] = (int)currph->valuelen;
+					imp_sth->PQfmts[x] = 1;
 				}
 				else {
-					paramLengths[x] = 0;
-					paramFormats[x] = 0;
+					imp_sth->PQlens[x] = 0;
+					imp_sth->PQfmts[x] = 0;
 				}
 			}
 		}
@@ -2908,9 +2949,6 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 				if (TRACE5) TRC(DBILOGFP, "%sRe-preparing statement\n", THEADER);
 			}
 			if (pg_st_prepare_statement(aTHX_ sth, imp_sth)!=0) {
-				Safefree(paramValues);
-				Safefree(paramLengths);
-				Safefree(paramFormats);
 				if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_execute (error)\n", THEADER);
 				return -2;
 			}
@@ -2924,10 +2962,10 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 			for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,x++) {
 				TRC(DBILOGFP, "%sPQexecPrepared item #%d\n", THEADER, x);
 				TRC(DBILOGFP, "%s-> Value: (%s)\n",
-					THEADER, (paramFormats && paramFormats[x]==1) ? "(binary, not shown)" 
-									: paramValues[x]);
-				TRC(DBILOGFP, "%s-> Length: (%d)\n", THEADER, paramLengths ? paramLengths[x] : 0);
-				TRC(DBILOGFP, "%s-> Format: (%d)\n", THEADER, paramFormats ? paramFormats[x] : 0);
+					THEADER, (imp_sth->PQfmts && imp_sth->PQfmts[x]==1) ? "(binary, not shown)" 
+									: imp_sth->PQvals[x]);
+				TRC(DBILOGFP, "%s-> Length: (%d)\n", THEADER, imp_sth->PQlens ? imp_sth->PQlens[x] : 0);
+				TRC(DBILOGFP, "%s-> Format: (%d)\n", THEADER, imp_sth->PQfmts ? imp_sth->PQfmts[x] : 0);
 			}
 		}
 		
@@ -2936,7 +2974,7 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 		if (TSQL) {
 			TRC(DBILOGFP, "EXECUTE %s (\n", imp_sth->prepare_name);
 			for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,x++) {
-				TRC(DBILOGFP, "$%d: %s\n", x+1, paramValues[x]);
+				TRC(DBILOGFP, "$%d: %s\n", x+1, imp_sth->PQvals[x]);
 			}
 			TRC(DBILOGFP, ");\n\n");
 		}
@@ -2944,12 +2982,12 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 		if (imp_sth->async_flag & PG_ASYNC) {
 			TRACE_PQSENDQUERYPREPARED;
 			ret = PQsendQueryPrepared
-				(imp_dbh->conn, imp_sth->prepare_name, imp_sth->numphs, paramValues, paramLengths, paramFormats, 0);
+				(imp_dbh->conn, imp_sth->prepare_name, imp_sth->numphs, imp_sth->PQvals, imp_sth->PQlens, imp_sth->PQfmts, 0);
 		}
 		else {
 			TRACE_PQEXECPREPARED;
 			imp_sth->result = PQexecPrepared
-				(imp_dbh->conn, imp_sth->prepare_name, imp_sth->numphs, paramValues, paramLengths, paramFormats, 0);
+				(imp_dbh->conn, imp_sth->prepare_name, imp_sth->numphs, imp_sth->PQvals, imp_sth->PQlens, imp_sth->PQfmts, 0);
 		}
 	} /* end new-style prepare */
 	else {
@@ -2992,26 +3030,28 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 			}
 			statement[execsize] = '\0';
 			
-			/* Populate paramTypes */
-			Newz(0, paramTypes, imp_sth->numphs, Oid);
+			/* Populate PQoids */
+			if (NULL == imp_sth->PQoids) {
+				Newz(0, imp_sth->PQoids, imp_sth->numphs, Oid);
+			}
 			for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph) {
-				paramTypes[x++] = (currph->defaultval) ? 0 : (Oid)currph->bind_type->type_id;
+				imp_sth->PQoids[x++] = (currph->defaultval) ? 0 : (Oid)currph->bind_type->type_id;
 			}
 		
 			if (TRACE7) {
 				for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,x++) {
 					TRC(DBILOGFP, "%sPQexecParams item #%d\n", THEADER, x);
-					TRC(DBILOGFP, "%s-> Type: (%d)\n", THEADER, paramTypes[x]);
-					TRC(DBILOGFP, "%s-> Value: (%s)\n", THEADER, paramValues[x]);
-					TRC(DBILOGFP, "%s-> Length: (%d)\n", THEADER, paramLengths ? paramLengths[x] : 0);
-					TRC(DBILOGFP, "%s-> Format: (%d)\n", THEADER, paramFormats ? paramFormats[x] : 0);
+					TRC(DBILOGFP, "%s-> Type: (%d)\n", THEADER, imp_sth->PQoids[x]);
+					TRC(DBILOGFP, "%s-> Value: (%s)\n", THEADER, imp_sth->PQvals[x]);
+					TRC(DBILOGFP, "%s-> Length: (%d)\n", THEADER, imp_sth->PQlens ? imp_sth->PQlens[x] : 0);
+					TRC(DBILOGFP, "%s-> Format: (%d)\n", THEADER, imp_sth->PQfmts ? imp_sth->PQfmts[x] : 0);
 				}
 			}
 
 			if (TSQL) {
 				TRC(DBILOGFP, "EXECUTE %s (\n", statement);
 				for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,x++) {
-					TRC(DBILOGFP, "$%d: %s\n", x+1, paramValues[x]);
+					TRC(DBILOGFP, "$%d: %s\n", x+1, imp_sth->PQvals[x]);
 				}
 				TRC(DBILOGFP, ");\n\n");
 			}
@@ -3020,14 +3060,13 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 			if (imp_sth->async_flag & PG_ASYNC) {
 				TRACE_PQSENDQUERYPARAMS;
 				ret = PQsendQueryParams
-					(imp_dbh->conn, statement, imp_sth->numphs, paramTypes, paramValues, paramLengths, paramFormats, 0);
+					(imp_dbh->conn, statement, imp_sth->numphs, imp_sth->PQoids, imp_sth->PQvals, imp_sth->PQlens, imp_sth->PQfmts, 0);
 			}
 			else {
 				TRACE_PQEXECPARAMS;
 				imp_sth->result = PQexecParams
-					(imp_dbh->conn, statement, imp_sth->numphs, paramTypes, paramValues, paramLengths, paramFormats, 0);
+					(imp_dbh->conn, statement, imp_sth->numphs, imp_sth->PQoids, imp_sth->PQvals, imp_sth->PQlens, imp_sth->PQfmts, 0);
 			}
-			Safefree(paramTypes);
 		}
 		
 		/* PQexec */
@@ -3073,10 +3112,6 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 	} /* end non-prepared exec */
 
 	/* Some form of PQexec/PQsendQuery has been run at this point */
-
-	Safefree(paramValues);
-	Safefree(paramLengths);
-	Safefree(paramFormats);			
 
 	/* If running asynchronously, we don't stick around for the result */
 	if (imp_sth->async_flag & PG_ASYNC) {
@@ -3519,6 +3554,10 @@ void dbd_st_destroy (SV * sth, imp_sth_t * imp_sth)
 	Safefree(imp_sth->prepare_name);
 	Safefree(imp_sth->type_info);
 	Safefree(imp_sth->firstword);
+	Safefree(imp_sth->PQvals);
+	Safefree(imp_sth->PQlens);
+	Safefree(imp_sth->PQfmts);
+	Safefree(imp_sth->PQoids);
 
 	if (imp_sth->result) {
 		TRACE_PQCLEAR;

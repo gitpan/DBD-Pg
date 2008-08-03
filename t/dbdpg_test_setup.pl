@@ -300,7 +300,7 @@ sub connect_database {
 			if (open $fh, '>', $readme) {
 				print $fh "This is a test directory for DBD::Pg and may be removed\n";
 				print $fh "You may want to ensure the postmaster has been stopped first.\n";
-				print $fh "Check the port in the postgresql.conf file\n";
+				print $fh "Check the data/postmaster.pid file\n";
 				close $fh or die qq{Could not close "$readme": $!\n};
 			}
 
@@ -312,7 +312,8 @@ sub connect_database {
 			unshift @userlist, $username if defined $username and $username ne getpwent;
 
 			my %doneuser;
-			for $testuser (@userlist) {
+			for (@userlist) {
+				$testuser = $_;
 				next if $doneuser{$testuser}++;
 				$uid = (getpwnam $testuser)[2];
 				next if !defined $uid;
@@ -492,6 +493,10 @@ sub connect_database {
 	$ENV{DBI_DSN} = $testdsn;
 	$ENV{DBI_USER} = $testuser;
 
+	if ($arg->{quickreturn}) {
+		return $helpconnect, '', $dbh;
+	}
+
 	if ($arg->{nosetup}) {
 		return $helpconnect, '', $dbh unless schema_exists($dbh, $S);
 		$dbh->do("SET search_path TO $S");
@@ -523,6 +528,7 @@ CREATE TABLE dbd_pg_test (
   testarray  text[][],
   testarray2 int[],
   "CaseTest" boolean,
+  expo       numeric(6,2),
   bytetest   bytea
 )
 };

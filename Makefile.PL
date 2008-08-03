@@ -1,4 +1,4 @@
-# $Id: Makefile.PL 11578 2008-07-23 17:17:05Z turnstep $
+# $Id: Makefile.PL 11607 2008-07-29 03:51:23Z turnstep $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -7,7 +7,7 @@ use warnings;
 use 5.006001;
 
 ## No version.pm for this one, as the prereqs are not loaded yet.
-my $VERSION = '2.8.7';
+my $VERSION = '2.9.0';
 
 my $lib;
 BEGIN {
@@ -210,7 +210,7 @@ if ($os eq 'hpux') {
 elsif ($os =~ /Win32/) {
 	my $msdir = $POSTGRES_LIB;
 	$msdir =~ s{"$}{/ms"};
-	$opts{LIBS}[0] .= " -L$msdir";
+	$opts{LIBS}[0] .= " -L$msdir -lsecur32";
 }
 
 if ($Config{dlsrc} =~ /dl_none/) {
