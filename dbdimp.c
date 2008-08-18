@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 11656 2008-08-18 03:05:07Z turnstep $
+  $Id: dbdimp.c 11661 2008-08-18 13:42:05Z turnstep $
 
   Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -2531,8 +2531,10 @@ static SV * pg_destringify_array(pTHX_ imp_dbh_t *imp_dbh, unsigned char * input
 
 		if ('}' == *input || (coltype->array_delimeter == *input && '}' != *(input-1))) {
 			string[section_size] = '\0';
-			if ((0 == section_size && !seen_quotes) || 
-				((4 == section_size && 0 == strncmp(string, "NULL", 4) && '"' != *(input-1)))) {
+			if (0 == section_size && !seen_quotes) {
+				/* Just an empty array */
+			}
+			else if (4 == section_size && 0 == strncmp(string, "NULL", 4) && '"' != *(input-1)) {
 				av_push(currentav, &PL_sv_undef);
 			}
 			else {
