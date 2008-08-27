@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 11661 2008-08-18 13:42:05Z turnstep $
+  $Id: dbdimp.c 11673 2008-08-23 22:11:15Z turnstep $
 
   Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -2919,8 +2919,8 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 	   1. The statement is DML
 	   2. The attribute "pg_direct" is false
 	   3. The attribute "pg_server_prepare" is not 0
-	   4. There is one or more placeholders
-	   5. There are no DEFAULT values
+	   4. There is one or more placeholders (but "onetime" has not been set)
+	   5. There are no DEFAULT or CURRENT values
 	   6a. The attribute "pg_server_prepare" is 1
 	   OR
 	   6b. All placeholders are bound (and "pg_server_prepare" is 2)

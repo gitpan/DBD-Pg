@@ -1,5 +1,5 @@
 /*
-  $Id: Pg.xs 11357 2008-06-01 02:32:53Z turnstep $
+  $Id: Pg.xs 11673 2008-08-23 22:11:15Z turnstep $
 
   Copyright (c) 2000-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 1997-2000 Edmund Mergl
@@ -305,8 +305,7 @@ void do(dbh, statement, attr=Nullsv, ...)
 			imp_sth = (imp_sth_t*)(DBIh_COM(sth));
 			if (!dbdxst_bind_params(sth, imp_sth, items-2, ax+2))
 				XSRETURN_UNDEF;
-			imp_sth->server_prepare = 1;
-			imp_sth->onetime = 1; /* Overrides the above at actual PQexec* decision time */
+			imp_sth->onetime = 1; /* Tells dbdimp.c not to bother preparing this */
 			imp_sth->async_flag = asyncflag;
 			retval = dbd_st_execute(sth, imp_sth);
 		}

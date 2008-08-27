@@ -1,5 +1,5 @@
 #  -*-cperl-*-
-#  $Id: Pg.pm 11663 2008-08-18 13:56:12Z turnstep $
+#  $Id: Pg.pm 11671 2008-08-22 21:25:40Z turnstep $
 #
 #  Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.9.2');
+	use version; our $VERSION = qv('2.10.0');
 
 	use DBI ();
 	use DynaLoader ();
@@ -80,6 +80,7 @@ use 5.006001;
 	## These two methods are here to allow calling before connect()
 	sub parse_trace_flag {
 		my ($class, $flag) = @_;
+		return (0x7FFFFF00 - 0x08000000) if $flag eq 'DBD'; ## all but the prefix
 		return 0x01000000 if $flag eq 'pglibpq';
 		return 0x02000000 if $flag eq 'pgstart';
 		return 0x04000000 if $flag eq 'pgend';
@@ -184,7 +185,7 @@ use 5.006001;
 
 
 	sub connect { ## no critic (ProhibitBuiltinHomonyms)
-		my ($drh, $dbname, $user, $pass)= @_;
+		my ($drh, $dbname, $user, $pass, $attr) = @_;
 
 		## Allow "db" and "database" as synonyms for "dbname"
 		$dbname =~ s/\b(?:db|database)\s*=/dbname=/;
@@ -212,6 +213,12 @@ use 5.006001;
 
 		my $version = $dbh->{pg_server_version};
 		$dbh->{private_dbdpg}{version} = $version;
+
+		if ($attr) {
+			if ($attr->{dbd_verbose}) {
+				$dbh->trace('DBD');
+			}
+		}
 
 		return $dbh;
 	}
@@ -1696,7 +1703,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.9.2 of the DBD::Pg module
+This documents version 2.10.0 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
@@ -1804,6 +1811,11 @@ host, like this:
     $username,
     $password,
     {AutoCommit => 0, RaiseError => 1});
+
+The attribute hash can also contain a key named C<dbd_verbose>, which 
+simply calls C<$dbh->trace('DBD')> after the handle is created. This attribute 
+is not recommended, as it is clearer to simply explicitly call C<trace> explicitly 
+in your script.
 
 =head3 B<connect_cached>
 
@@ -1921,6 +1933,10 @@ the C<$min_level>.
   $h->trace($h->parse_trace_flags('SQL|pglibpq'));
   $h->trace($h->parse_trace_flags('1|pgstart'));
 
+  ## Simpler:
+  $h->trace('SQL|pglibpq');
+  $h->trace('1|pgstart');
+
   my $value = DBD::Pg->parse_trace_flag('pglibpq');
   DBI->trace($value);
 
@@ -1949,6 +1965,11 @@ necessarily be in a form suitable to passing directly to Postgres,
 as server-side prepared statements are used extensively by DBD::Pg.
 For maximum portability of output (but with a potential performance 
 hit), use with C<$dbh->{pg_server_prepare} = 0>
+
+=item DBD
+
+Turns on all non-DBI flags, in other words, only the ones that are specific 
+to DBD::Pg (all those below which start with the letters 'pg').
 
 =item pglibpq
 
