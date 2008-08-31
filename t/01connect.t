@@ -72,7 +72,7 @@ SKIP: {
 
 	$t=q{Connect with invalid option fails};
 	my $err;
-	(undef,$err,$dbh) = connect_database({ dbreplace => 'dbbarf' });
+	(undef,$err,$dbh) = connect_database({ dbreplace => 'dbbarf', nocreate => 1 });
 	like ($err, qr{DBI connect.+failed:}, $t);
 
 	for my $opt (qw/db dbname database/) {
@@ -115,7 +115,7 @@ END {
 			$extra .= sprintf "\n%-*s $ENV{$name}", $offset, $name;
 		}
 	}
-	for my $name (qw/DBI_DRIVER DBI_AUTOPROXY/) {
+	for my $name (qw/DBI_DRIVER DBI_AUTOPROXY LANG/) {
 		if (exists $ENV{$name} and defined $ENV{$name}) {
 			$extra .= sprintf "\n%-*s $ENV{$name}", $offset, $name;
 		}
