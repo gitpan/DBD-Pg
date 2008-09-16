@@ -1,5 +1,5 @@
 #  -*-cperl-*-
-#  $Id: Pg.pm 11794 2008-09-16 14:28:00Z turnstep $
+#  $Id: Pg.pm 11798 2008-09-16 15:38:17Z turnstep $
 #
 #  Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.10.4');
+	use version; our $VERSION = qv('2.10.5');
 
 	use DBI ();
 	use DynaLoader ();
@@ -1703,7 +1703,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.10.3 of the DBD::Pg module
+This documents version 2.10.5 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
