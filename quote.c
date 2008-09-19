@@ -1,6 +1,6 @@
 /*
 
-   $Id: quote.c 11220 2008-05-09 02:14:39Z turnstep $
+   $Id: quote.c 11819 2008-09-18 19:10:52Z turnstep $
 
    Copyright (c) 2003-2008 Greg Sabino Mullane and others: see the Changes file
 
@@ -205,7 +205,7 @@ char * quote_bytea(char *string, STRLEN len, STRLEN *retlen, int estring)
 			*result++ = '\\';
 		}
 		else if (*string < 0x20 || *string > 0x7e) {
-			(void) snprintf((char *)result, 6, "\\\\%03o", *string++);
+			(void) snprintf((char *)result, 6, "\\\\%03o", (unsigned char)*string++);
 			result += 5;
 		}
 		else {
