@@ -1,6 +1,6 @@
 /*
 
-   $Id: types.c 11572 2008-07-23 03:57:59Z turnstep $
+   $Id: types.c 11867 2008-09-23 02:32:59Z turnstep $
 
    Copyright (c) 2003-2008 Greg Sabino Mullane and others: see the Changes file
    
@@ -376,7 +376,7 @@ my $thisname = 0;
 while(<$fh>) {
 	s/FLOAT8PASSBYVAL/t/;
 	s/FLOAT4PASSBYVAL/t/;
-	if (/^DATA\(insert OID\s+=\s+(\d+)\s+\(\s+(\S+)\s+\S+ \S+\s+\S+\s+[t|f]\s+. ([tf]) \\(\d+) (\d+)\s+(\d+) (\d+) (\S+) (\S+) (\S+) (\S+)/o) {
+	if (/^DATA\(insert OID\s+=\s+(\d+)\s+\(\s+(\S+)\s+\S+ \S+\s+\S+\s+[t|f]\s+. . [tf] ([tf]) \\(\d+) (\d+)\s+(\d+) (\d+) (\S+) (\S+) (\S+) (\S+)/o) {
 		my ($oid,$name,$typedef,$delim,$typrelid,$typelem,$typarray,$tin,$tout,$bin,$bout) =
 			($1,$2,$3,chr(oct($4)),$5,$6,$7,$8,$9,$10,$11);
 		die "Duplicated OID $oid!: $_\n" if exists $pgtype{$oid};
