@@ -1,6 +1,6 @@
 /*
 
-   $Id: types.c 11867 2008-09-23 02:32:59Z turnstep $
+   $Id: types.c 11872 2008-09-23 13:33:46Z turnstep $
 
    Copyright (c) 2003-2008 Greg Sabino Mullane and others: see the Changes file
    
@@ -394,6 +394,12 @@ while(<$fh>) {
 			sqlc    => 0,
 			svtype  => 0,
 		};
+		if ($name =~ /_/) {
+			(my $basename = $name) =~ s/_//;
+			if (exists $pgtype{$basename}) {
+				$pgtype{$name}{delim} = $pgtype{$basename}{delim};
+			}
+		}
 		length($name) > $maxlen and $maxlen = length($name);
 		$thisname = $name;
 		## Special hack for array types

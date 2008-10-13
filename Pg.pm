@@ -1,5 +1,5 @@
 #  -*-cperl-*-
-#  $Id: Pg.pm 11864 2008-09-22 23:07:24Z turnstep $
+#  $Id: Pg.pm 11974 2008-10-13 11:43:11Z turnstep $
 #
 #  Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.10.7');
+	use version; our $VERSION = qv('2.11.0');
 
 	use DBI ();
 	use DynaLoader ();
@@ -1703,7 +1703,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.10.7 of the DBD::Pg module
+This documents version 2.11.0 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
@@ -2038,11 +2038,9 @@ reference to an array of hashes, each of which contains the following keys:
   $lobjId = $dbh->func($mode, 'lo_creat');
 
 Creates a new large object and returns the object-id. C<$mode> is a bitmask
-describing different attributes of the new object. Use the following
-constants:
-
-  $dbh->{pg_INV_WRITE}
-  $dbh->{pg_INV_READ}
+describing read and write access to the new object. This setting is ignored
+since Postgres version 8.1. For backwards compatibility, however, you should 
+set a valid mode anyway (see L</lo_open> for a list of valid modes).
 
 Upon failure it returns C<undef>.
 
@@ -2051,8 +2049,23 @@ Upon failure it returns C<undef>.
   $lobj_fd = $dbh->func($lobjId, $mode, 'lo_open');
 
 Opens an existing large object and returns an object-descriptor for use in
-subsequent C<lo_*> calls. For the mode bits see L</lo_creat>. Returns C<undef>
-upon failure. Note that 0 is a perfectly correct (and common) object descriptor!
+subsequent C<lo_*> calls. C<$mode> is a bitmask describing read and write
+access to the opened object. It may be one of: 
+
+  $dbh->{pg_INV_READ}
+  $dbh->{pg_INV_WRITE}
+  $dbh->{pg_INV_READ} | $dbh->{pg_INV_WRITE}
+
+C<pg_INV_WRITE> and C<pg_INV_WRITE | pg_INV_READ> modes are identical; in
+both modes, the large object can be read from or written to.
+Reading from the object will provide the object as written in other committed
+transactions, along with any writes performed by the current transaction.
+Objects opened with C<pg_INV_READ> cannot be written to. Reading from this
+object will provide the stored data at the time of the transaction snapshot
+which was active when C<lo_write> was called.
+
+Returns C<undef> upon failure. Note that 0 is a perfectly correct (and common)
+object descriptor!
 
 =item lo_write
 
@@ -3224,7 +3237,7 @@ modify your "use DBI" statement at the top of your script as follows:
   use DBI qw(:sql_types);
 
 This will import some constants into your script. You can plug those
-directly into the C<bind_param> call. Some common ones that you will
+directly into the L</bind_param> call. Some common ones that you will
 encounter are:
 
   SQL_INTEGER
@@ -3234,7 +3247,7 @@ To use PostgreSQL data types, import the list of values like this:
   use DBD::Pg qw(:pg_types);
 
 You can then set the data types by setting the value of the C<pg_type>
-key in the hash passed to C<bind_param>. 
+key in the hash passed to L</bind_param>.
 The current list of Postgres data types exported is:
 
  PG_ABSTIME PG_ABSTIMEARRAY PG_ACLITEM PG_ACLITEMARRAY PG_ANY PG_ANYARRAY
@@ -3615,8 +3628,10 @@ L</execute>, then the quoted versions of the values are returned.
 =head3 B<ParamTypes> (hash ref, read-only)
 
 Returns a reference to a hash containing the type names currently bound to placeholders. The keys 
-are the same as returned by the ParamValues method. Placeholders that have not yet been bound will return 
-undef as the value.
+are the same as returned by the ParamValues method. The values are hashrefs containing a single key value 
+pair, in which the key is always 'pg_type' and the value is the internal number corresponding to the 
+type originally passed in. (Placeholders that have not yet been bound will return undef as the value). This 
+allows the output of ParamTypes to be passed back to the L</bind_param> method.
 
 =head3 B<Statement> (string, read-only)
 
@@ -3978,7 +3993,7 @@ For example:
 
   $dbh->do("COPY foobar FROM STDIN");
 
-This would tell the server to enter a COPY OUT state. It is now ready to 
+This would tell the server to enter a COPY IN state. It is now ready to 
 receive information via the L</pg_putcopydata> method. The complete syntax of the 
 COPY command is more complex and not documented here: the canonical 
 PostgreSQL documentation for COPY can be found at:
@@ -4000,14 +4015,14 @@ mode by calling "COPY tablename TO STDOUT". Data is always returned
 one data row at a time. The first argument to pg_getcopydata 
 is the variable into which the data will be stored (this variable should not 
 be undefined, or it may throw a warning, although it may be a reference). This 
-argument returns a number greater than 1 indicating the new size of the variable, 
+method returns a number greater than 1 indicating the new size of the variable, 
 or a -1 when the COPY has finished. Once a -1 has been returned, no other action is 
 necessary, as COPY mode will have already terminated. Example:
 
   $dbh->do("COPY mytable TO STDOUT");
   my @data;
   my $x=0;
-  1 while $dbh->pg_getcopydata($data[$x++]) > 0;
+  1 while $dbh->pg_getcopydata($data[$x++]) >= 0;
 
 There is also a variation of this method called B<pg_getcopydata_async>, which, 
 as the name suggests, returns immediately. The only difference from the original 

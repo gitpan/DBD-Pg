@@ -1,4 +1,4 @@
-# $Id: Makefile.PL 11866 2008-09-22 23:13:10Z turnstep $
+# $Id: Makefile.PL 11974 2008-10-13 11:43:11Z turnstep $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -7,7 +7,7 @@ use warnings;
 use 5.006001;
 
 ## No version.pm for this one, as the prereqs are not loaded yet.
-my $VERSION = '2.10.7';
+my $VERSION = '2.11.0';
 
 my $lib;
 BEGIN {
@@ -224,6 +224,22 @@ if ($Config{dlsrc} =~ /dl_none/) {
 		$string =~ s/(PERL_DL_NONLAZY=1)/PGINITDB="$initdb" $1/g;
 		return $string;
 	}
+}
+
+sub constants {
+	my $self = shift;
+
+	my $old_constants = $self->SUPER::constants();
+	my $new_constants = '';
+	for my $line (split /\n/ => $old_constants) {
+		if ($line =~ /^INC = .*strawberry.*/ ) {
+			print qq(Strawberry Perl found; adjusting the INC variable;\n);
+			$line . ' -I ' . DBI::DBD::dbd_dbi_arch_dir();
+			print qq(INC is now $line\n);
+		}
+		$new_constants .= "$line\n";
+	}
+	return $new_constants;
 }
 
 sub MY::postamble { ## no critic ProhibitQualifiedSubDeclarations

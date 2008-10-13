@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 11818 2008-09-18 19:10:13Z turnstep $
+  $Id: dbdimp.c 11972 2008-10-13 00:13:00Z turnstep $
 
   Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -921,9 +921,11 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 						 newSV(0), 0);
 				}
 				else {
+					HV *pvhv2 = newHV();
+					(void)hv_store(pvhv2, "pg_type", 7, newSViv(currph->bind_type->type_id), 0);
 					(void)hv_store_ent
 						(pvhv, (3==imp_sth->placeholder_type ? newSVpv(currph->fooname,0) : newSViv(i+1)),
-						 newSVpv(currph->bind_type->type_name,0),0);
+						 newRV_noinc((SV*)pvhv2), 0);
 				}
 			}
 			retsv = newRV_noinc((SV*)pvhv);
@@ -2684,6 +2686,7 @@ int pg_quickexec (SV * dbh, const char * sql, const int asyncflag)
 
 	imp_dbh->copystate = 0; /* Assume not in copy mode until told otherwise */
 
+	if (TRACE4) TRC(DBILOGFP, "%sGot a status of %d\n", THEADER, status);
 	switch (status) {
 	case PGRES_TUPLES_OK:
 		TRACE_PQNTUPLES;
@@ -3696,7 +3699,7 @@ pg_db_getcopydata (SV * dbh, SV * dataline, int async)
 
 	/* We must be in COPY OUT state */
 	if (PGRES_COPY_OUT != imp_dbh->copystate)
-		croak("pg_getcopydata can only be called directly after issuing a COPY command\n");
+		croak("pg_getcopydata can only be called directly after issuing a COPY FROM command\n");
 
 	tempbuf = NULL;
 
@@ -3755,7 +3758,7 @@ pg_db_putcopydata (SV * dbh, SV * dataline)
 
 	/* We must be in COPY IN state */
 	if (PGRES_COPY_IN != imp_dbh->copystate)
-		croak("pg_putcopydata can only be called directly after issuing a COPY command\n");
+		croak("pg_putcopydata can only be called directly after issuing a COPY TO command\n");
 
 	TRACE_PQPUTCOPYDATA;
 	copystatus = PQputCopyData
