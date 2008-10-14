@@ -1,5 +1,5 @@
 #  -*-cperl-*-
-#  $Id: Pg.pm 11974 2008-10-13 11:43:11Z turnstep $
+#  $Id: Pg.pm 11979 2008-10-14 04:13:29Z turnstep $
 #
 #  Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.11.0');
+	use version; our $VERSION = qv('2.11.1');
 
 	use DBI ();
 	use DynaLoader ();
@@ -1703,7 +1703,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.11.0 of the DBD::Pg module
+This documents version 2.11.1 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
@@ -3629,9 +3629,10 @@ L</execute>, then the quoted versions of the values are returned.
 
 Returns a reference to a hash containing the type names currently bound to placeholders. The keys 
 are the same as returned by the ParamValues method. The values are hashrefs containing a single key value 
-pair, in which the key is always 'pg_type' and the value is the internal number corresponding to the 
-type originally passed in. (Placeholders that have not yet been bound will return undef as the value). This 
-allows the output of ParamTypes to be passed back to the L</bind_param> method.
+pair, in which the key is either 'TYPE' if the type has a generic SQL equivalent, and 'pg_type' if the type can 
+only be expressed by a Postgres type. The value is the internal number corresponding to the type originally 
+passed in. (Placeholders that have not yet been bound will return undef as the value). This allows the output of 
+ParamTypes to be passed back to the L</bind_param> method.
 
 =head3 B<Statement> (string, read-only)
 

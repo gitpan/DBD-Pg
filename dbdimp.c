@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 11972 2008-10-13 00:13:00Z turnstep $
+  $Id: dbdimp.c 11978 2008-10-14 04:05:28Z turnstep $
 
   Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -922,7 +922,12 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 				}
 				else {
 					HV *pvhv2 = newHV();
-					(void)hv_store(pvhv2, "pg_type", 7, newSViv(currph->bind_type->type_id), 0);
+					if (currph->bind_type->type.sql) {
+						(void)hv_store(pvhv2, "TYPE", 4, newSViv(currph->bind_type->type.sql), 0);
+					}
+					else {
+						(void)hv_store(pvhv2, "pg_type", 7, newSViv(currph->bind_type->type_id), 0);
+					}
 					(void)hv_store_ent
 						(pvhv, (3==imp_sth->placeholder_type ? newSVpv(currph->fooname,0) : newSViv(i+1)),
 						 newRV_noinc((SV*)pvhv2), 0);
