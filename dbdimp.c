@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 11978 2008-10-14 04:05:28Z turnstep $
+  $Id: dbdimp.c 11981 2008-10-16 00:49:02Z turnstep $
 
   Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -3037,7 +3037,8 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 			New(0, statement, execsize+1, char); /* freed below */
 			statement[0] = '\0';
 			for (currseg=imp_sth->seg; NULL != currseg; currseg=currseg->nextseg) {
-				strcat(statement, currseg->segment);
+				if (currseg->segment != NULL)
+					strcat(statement, currseg->segment);
 				if (currseg->placeholder!=0)
 					sprintf(strchr(statement, '\0'), "$%d", currseg->placeholder);
 			}
@@ -3097,7 +3098,8 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 			New(0, statement, execsize+1, char); /* freed below */
 			statement[0] = '\0';
 			for (currseg=imp_sth->seg; NULL != currseg; currseg=currseg->nextseg) {
-				strcat(statement, currseg->segment);
+				if (currseg->segment != NULL)
+					strcat(statement, currseg->segment);
 				if (currseg->placeholder!=0)
 					strcat(statement, currseg->ph->quoted);
 			}
