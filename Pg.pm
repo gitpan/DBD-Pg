@@ -1,5 +1,5 @@
 #  -*-cperl-*-
-#  $Id: Pg.pm 11982 2008-10-16 00:50:36Z turnstep $
+#  $Id: Pg.pm 12030 2008-11-03 13:33:12Z turnstep $
 #
 #  Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.11.2');
+	use version; our $VERSION = qv('2.11.3');
 
 	use DBI ();
 	use DynaLoader ();
@@ -1703,7 +1703,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.11.2 of the DBD::Pg module
+This documents version 2.11.3 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
@@ -3466,7 +3466,7 @@ If C<$slice> is a hash reference, fetchall_arrayref uses L</fetchrow_hashref> to
 
 See the DBI documentation for a complete discussion.
 
-=head3 B<fetchall_arrayref>
+=head3 B<fetchall_hashref>
 
   $hash_ref = $sth->fetchall_hashref( $key_field );
 
@@ -3637,7 +3637,7 @@ ParamTypes to be passed back to the L</bind_param> method.
 =head3 B<Statement> (string, read-only)
 
 Returns the statement string passed to the most recent "prepare" method called in this database handle, even if that method
-failed. This is especially useful where "RaiseError" is enabled and the exception handler checks $@ and sees that a ’prepare’
+failed. This is especially useful where "RaiseError" is enabled and the exception handler checks $@ and sees that a C<prepare>
 method call failed.
 
 =head3 B<pg_current_row> (integer, read-only)

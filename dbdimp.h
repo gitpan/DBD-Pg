@@ -1,5 +1,5 @@
 /*
-	$Id: dbdimp.h 11596 2008-07-27 03:01:22Z turnstep $
+	$Id: dbdimp.h 12022 2008-11-01 19:19:55Z turnstep $
 	
     Copyright (c) 2000-2008 Greg Sabino Mullane and others: see the Changes file
 	Portions Copyright (c) 1997-2000 Edmund Mergl
@@ -18,14 +18,6 @@ struct imp_drh_st {
 struct imp_dbh_st {
 	dbih_dbc_t com;            /* MUST be first element in structure */
 
-	bool    pg_bool_tf;        /* do bools return 't'/'f'? Set by user, default is 0 */
-	bool    pg_enable_utf8;    /* should we attempt to make utf8 strings? Set by user, default is 0 */
-	bool    prepare_now;       /* force immediate prepares, even with placeholders. Set by user, default is 0 */
-	bool    done_begin;        /* have we done a begin? (e.g. are we in a transaction?) */
-	bool    dollaronly;        /* only consider $1, $2 ... as valid placeholders */
-	bool    expand_array;      /* transform arrays from the db into Perl arrays? Default is 1 */
-	bool    txn_read_only;     /* are we in read-only mode? Set with $dbh->{ReadOnly} */
-
 	int     pg_protocol;       /* value of PQprotocolVersion, usually 3 (could also be 0) */
 	int     pg_server_version; /* server version e.g. 80100 */
 	int     pid_number;        /* prefixed before prepare_number */
@@ -39,6 +31,14 @@ struct imp_dbh_st {
 	AV      *savepoints;       /* list of savepoints */
 	PGconn  *conn;             /* connection structure */
 	char    *sqlstate;         /* from the last result */
+
+	bool    pg_bool_tf;        /* do bools return 't'/'f'? Set by user, default is 0 */
+	bool    pg_enable_utf8;    /* should we attempt to make utf8 strings? Set by user, default is 0 */
+	bool    prepare_now;       /* force immediate prepares, even with placeholders. Set by user, default is 0 */
+	bool    done_begin;        /* have we done a begin? (e.g. are we in a transaction?) */
+	bool    dollaronly;        /* only consider $1, $2 ... as valid placeholders */
+	bool    expand_array;      /* transform arrays from the db into Perl arrays? Default is 1 */
+	bool    txn_read_only;     /* are we in read-only mode? Set with $dbh->{ReadOnly} */
 };
 
 
@@ -183,7 +183,7 @@ int dbd_st_blob_read (SV * sth, imp_sth_t * imp_sth, int lobjId, long offset, lo
 
 /* Custom PG functions, in order they appear in dbdimp.c */
 
-int pg_db_getfd (SV *dbh, imp_dbh_t * imp_dbh);
+int pg_db_getfd (imp_dbh_t * imp_dbh);
 
 SV * pg_db_pg_notifies (SV *dbh, imp_dbh_t *imp_dbh);
 

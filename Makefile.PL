@@ -1,4 +1,4 @@
-# $Id: Makefile.PL 11982 2008-10-16 00:50:36Z turnstep $
+# $Id: Makefile.PL 12030 2008-11-03 13:33:12Z turnstep $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -7,7 +7,7 @@ use warnings;
 use 5.006001;
 
 ## No version.pm for this one, as the prereqs are not loaded yet.
-my $VERSION = '2.11.2';
+my $VERSION = '2.11.3';
 
 my $lib;
 BEGIN {
@@ -174,8 +174,14 @@ if ($ENV{DBDPG_GCCDEBUG}) {
 	$comp_opts .= ' -Wextra -Wdeclaration-after-statement -Wendif-labels -Wpointer-arith';
 	$comp_opts .= ' -Wbad-function-cast -Wcast-qual -Wcast-align -Wsign-compare -Waggregate-return';
 	$comp_opts .= ' -Wmissing-prototypes -Wmissing-declarations -Wmissing-format-attribute -Wpacked -Winline -Winvalid-pch';
-	$comp_opts .= ' -Wdisabled-optimization'; ## Not terribly useful
-	$comp_opts .= ' -Wnested-externs'; ## Does not like Perl__notused (from DBIXS;)
+	$comp_opts .= ' -Wdisabled-optimization';
+	$comp_opts .= ' -Wnested-externs';
+    $comp_opts .= " -Wstrict-prototypes"; ## Still hits a couple places in types.h
+	$comp_opts .= " -Wswitch-default";
+	$comp_opts .= " -Wsystem-headers";
+	$comp_opts .= " -Wmissing-noreturn";
+	$comp_opts .= " -Wfloat-equal"; ## Does not like SvTRUE() calls
+	$comp_opts .= " -Wpadded"; ## Use when adding/changing our structs
 }
 
 my %opts =

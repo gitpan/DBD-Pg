@@ -1,7 +1,13 @@
 ('GSM' is Greg Sabino Mullane, greg@turnstep.com)
 
+2.11.3 Released November 3, 2008
 
-2.11.2 Released October 15, 2008
+	- Force LC_MESSAGES to 'C' inside tests (CPAN bug #40604)
+	- Minor compiler tweaks.
+	- Fix small POD error (CPAN bug #40209)
+	- Tweak Perl::Critic policy list (CPAN bug #40130)
+
+2.11.2 Released October 15, 2008 (subversion r11983)
 
 	- Fix core dump when invalid placeholders used. (CPAN bug #40075) [GSM]
 

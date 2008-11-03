@@ -1,5 +1,5 @@
 /*
-  $Id: Pg.xs 11673 2008-08-23 22:11:15Z turnstep $
+  $Id: Pg.xs 12015 2008-10-31 04:13:55Z turnstep $
 
   Copyright (c) 2000-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 1997-2000 Edmund Mergl
@@ -332,7 +332,7 @@ getfd(dbh)
 	CODE:
 		int ret;
 		D_imp_dbh(dbh);
-		ret = pg_db_getfd(dbh, imp_dbh);
+		ret = pg_db_getfd(imp_dbh);
 		ST(0) = sv_2mortal( newSViv( ret ) );
 
 

@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 11981 2008-10-16 00:49:02Z turnstep $
+  $Id: dbdimp.c 12020 2008-11-01 19:18:51Z turnstep $
 
   Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -69,7 +69,7 @@ static void pg_error(pTHX_ SV *h, int error_num, const char *error_msg);
 static void pg_warn (void * arg, const char * message);
 static ExecStatusType _result(pTHX_ imp_dbh_t *imp_dbh, const char *sql);
 static ExecStatusType _sqlstate(pTHX_ imp_dbh_t *imp_dbh, PGresult *result);
-static int pg_db_rollback_commit (pTHX_ SV *dbh, imp_dbh_t *imp_dbh, char * action);
+static int pg_db_rollback_commit (pTHX_ SV *dbh, imp_dbh_t *imp_dbh, int action);
 static void pg_st_split_statement (pTHX_ imp_sth_t *imp_sth, int version, char *statement);
 static int pg_st_prepare_statement (pTHX_ SV *sth, imp_sth_t *imp_sth);
 static int is_high_bit_set(pTHX_ const unsigned char *val, STRLEN size);
@@ -454,14 +454,14 @@ static PGTransactionStatusType pg_db_txn_status (pTHX_ imp_dbh_t * imp_dbh)
 /* rollback and commit share so much code they get one function: */
 
 /* ================================================================== */
-static int pg_db_rollback_commit (pTHX_ SV * dbh, imp_dbh_t * imp_dbh, char * action)
+static int pg_db_rollback_commit (pTHX_ SV * dbh, imp_dbh_t * imp_dbh, int action)
 {
 	PGTransactionStatusType tstatus;
 	ExecStatusType          status;
 
 	if (TSTART) TRC(DBILOGFP, "%sBegin pg_db_rollback_commit (action: %s AutoCommit: %d BegunWork: %d)\n",
 					THEADER,
-					action,
+					action ? "commit" : "rollback",
 					DBIc_is(imp_dbh, DBIcf_AutoCommit) ? 1 : 0,
 					DBIc_is(imp_dbh, DBIcf_BegunWork) ? 1 : 0);
 	
@@ -475,7 +475,7 @@ static int pg_db_rollback_commit (pTHX_ SV * dbh, imp_dbh_t * imp_dbh, char * ac
 	   ask it for the status directly and double-check things */
 
 	tstatus = pg_db_txn_status(aTHX_ imp_dbh);
-	if (TRACE4) TRC(DBILOGFP, "%sdbd_db_%s txn_status is %d\n", THEADER, action, tstatus);
+	if (TRACE4) TRC(DBILOGFP, "%sdbd_db_%s txn_status is %d\n", THEADER, action ? "commit" : "rollback", tstatus);
 
 	if (PQTRANS_IDLE == tstatus) { /* Not in a transaction */
 		if (imp_dbh->done_begin) {
@@ -513,7 +513,7 @@ static int pg_db_rollback_commit (pTHX_ SV * dbh, imp_dbh_t * imp_dbh, char * ac
 		return 1;
 	}
 
-	status = _result(aTHX_ imp_dbh, action);
+	status = _result(aTHX_ imp_dbh, action ? "commit" : "rollback");
 		
 	/* Set this early, for scripts that continue despite the error below */
 	imp_dbh->done_begin = DBDPG_FALSE;
@@ -539,7 +539,7 @@ int dbd_db_commit (SV * dbh, imp_dbh_t * imp_dbh)
 {
 	dTHX;
 	if (TSTART) TRC(DBILOGFP, "%sBegin dbd_db_commit\n", THEADER);
-	return pg_db_rollback_commit(aTHX_ dbh, imp_dbh, "commit");
+	return pg_db_rollback_commit(aTHX_ dbh, imp_dbh, 1);
 }
 
 /* ================================================================== */
@@ -547,7 +547,7 @@ int dbd_db_rollback (SV * dbh, imp_dbh_t * imp_dbh)
 {
 	dTHX;
 	if (TSTART) TRC(DBILOGFP, "%sBegin dbd_db_rollback\n", THEADER);
-	return pg_db_rollback_commit(aTHX_ dbh, imp_dbh, "rollback");
+	return pg_db_rollback_commit(aTHX_ dbh, imp_dbh, 0);
 }
 
 
@@ -1299,7 +1299,7 @@ int dbd_discon_all (SV * drh, imp_drh_t * imp_drh)
 
 /* Deprecated in favor of $dbh->{pg_socket} */
 /* ================================================================== */
-int pg_db_getfd (SV * dbh, imp_dbh_t * imp_dbh)
+int pg_db_getfd (imp_dbh_t * imp_dbh)
 {
 	dTHX;
 
@@ -2077,7 +2077,7 @@ static int pg_st_prepare_statement (pTHX_ SV * sth, imp_sth_t * imp_sth)
 		if (imp_sth->numbound!=0) {
 			params = imp_sth->numphs;
 			if (NULL == imp_sth->PQoids) {
-				Newz(0, imp_sth->PQoids, imp_sth->numphs, Oid);
+				Newz(0, imp_sth->PQoids, (unsigned int)imp_sth->numphs, Oid);
 			}
 			for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph) {
 				imp_sth->PQoids[x++] = (currph->defaultval) ? 0 : (Oid)currph->bind_type->type_id;
@@ -2898,7 +2898,7 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 	else { /* We are using a server that can handle PQexecParams/PQexecPrepared */
 		/* Put all values into an array to pass to PQexecPrepared */
 		if (NULL == imp_sth->PQvals) {
-			Newz(0, imp_sth->PQvals, imp_sth->numphs, const char *); /* freed in dbd_st_destroy */
+			Newz(0, imp_sth->PQvals, (unsigned int)imp_sth->numphs, const char *); /* freed in dbd_st_destroy */
 		}
 		for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph) {
 			imp_sth->PQvals[x++] = currph->value;
@@ -2908,8 +2908,8 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 
 		if (imp_sth->has_binary) {
 			if (NULL == imp_sth->PQlens) {
-				Newz(0, imp_sth->PQlens, imp_sth->numphs, int); /* freed in dbd_st_destroy */
-				Newz(0, imp_sth->PQfmts, imp_sth->numphs, int); /* freed below */
+				Newz(0, imp_sth->PQlens, (unsigned int)imp_sth->numphs, int); /* freed in dbd_st_destroy */
+				Newz(0, imp_sth->PQfmts, (unsigned int)imp_sth->numphs, int); /* freed below */
 			}
 			for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,x++) {
 				if (PG_BYTEA==currph->bind_type->type_id) {
@@ -3046,7 +3046,7 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 			
 			/* Populate PQoids */
 			if (NULL == imp_sth->PQoids) {
-				Newz(0, imp_sth->PQoids, imp_sth->numphs, Oid);
+				Newz(0, imp_sth->PQoids, (unsigned int)imp_sth->numphs, Oid);
 			}
 			for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph) {
 				imp_sth->PQoids[x++] = (currph->defaultval) ? 0 : (Oid)currph->bind_type->type_id;
@@ -3274,7 +3274,7 @@ AV * dbd_st_fetch (SV * sth, imp_sth_t * imp_sth)
 
 	/* Set up the type_info array if we have not seen it yet */
 	if (NULL == imp_sth->type_info) {
-		Newz(0, imp_sth->type_info, num_fields, sql_type_info_t*); /* freed in dbd_st_destroy */
+		Newz(0, imp_sth->type_info, (unsigned int)num_fields, sql_type_info_t*); /* freed in dbd_st_destroy */
 		for (i = 0; i < num_fields; ++i) {
 			TRACE_PQFTYPE;
 			imp_sth->type_info[i] = pg_type_data((int)PQftype(imp_sth->result, i));
