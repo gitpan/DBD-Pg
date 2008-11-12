@@ -239,6 +239,7 @@ sub connect_database {
 		}
 
 		## Make sure initdb exists and is working properly
+		$ENV{LANG} = 'C';
 		$info = '';
 		eval {
 			$info = qx{$initdb --help 2>&1};
@@ -450,7 +451,9 @@ sub connect_database {
 				$dbh = DBI->connect($testdsn, $testuser, '',
 									{RaiseError => 1, PrintError => 0, AutoCommit => 1});
 			};
-			if ($@ =~ /starting up/ or $@ =~ /PGSQL\.$testport/) {
+			## Regardless of the error, try again.
+			## We used to check the message, but LANG problems may complicate that.
+			if ($@) {
 				if ($loop++ < 5) {
 					sleep 1;
 					redo STARTUP;
@@ -497,7 +500,11 @@ sub connect_database {
 		return $helpconnect, '', $dbh;
 	}
 
-	$dbh->do(q{SET LC_MESSAGES = 'C'});
+	my $SQL = 'SELECT usesuper FROM pg_user WHERE usename = current_user';
+	my $bga = $dbh->selectall_arrayref($SQL)->[0][0];
+	if ($bga) {
+		$dbh->do(q{SET LC_MESSAGES = 'C'});
+	}
 
 	if ($arg->{nosetup}) {
 		return $helpconnect, '', $dbh unless schema_exists($dbh, $S);
