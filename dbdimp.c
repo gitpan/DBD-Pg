@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 12020 2008-11-01 19:18:51Z turnstep $
+  $Id: dbdimp.c 12099 2008-11-22 16:01:31Z turnstep $
 
   Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -2100,6 +2100,8 @@ static int pg_st_prepare_statement (pTHX_ SV * sth, imp_sth_t * imp_sth)
 	Safefree(statement);
 	if (PGRES_COMMAND_OK != status) {
 		TRACE_PQERRORMESSAGE;
+		Safefree(imp_sth->prepare_name);
+		imp_sth->prepare_name = NULL;
 		pg_error(aTHX_ sth, status, PQerrorMessage(imp_dbh->conn));
 		if (TEND) TRC(DBILOGFP, "%sEnd pg_st_prepare_statement (error)\n", THEADER);
 		return -2;
