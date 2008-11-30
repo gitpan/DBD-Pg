@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 12099 2008-11-22 16:01:31Z turnstep $
+  $Id: dbdimp.c 12119 2008-11-30 22:06:55Z turnstep $
 
   Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -2211,7 +2211,7 @@ int dbd_bind_ph (SV * sth, imp_sth_t * imp_sth, SV * ph_name, SV * newvalue, IV 
 			quotedval = pg_stringify_array(newvalue,",",imp_dbh->pg_server_version);
 			currph->valuelen = sv_len(quotedval);
 			Renew(currph->value, currph->valuelen+1, char); /* freed in dbd_st_destroy */
-			currph->value = SvPVutf8_nolen(quotedval);
+			currph->value = SvUTF8(quotedval) ? SvPVutf8_nolen(quotedval) : SvPV_nolen(quotedval);
 			currph->bind_type = pg_type_data(PG_CSTRINGARRAY);
 			is_array = DBDPG_TRUE;
 		}
