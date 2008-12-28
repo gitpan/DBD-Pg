@@ -271,6 +271,8 @@ for my $char (qw{0 9 A Z a z}) {
 }
 
 $t='Backslash quoting inside double quotes is parsed correctly';
+$dbh->do(q{SET backslash_quote = 'on'});
+$dbh->commit();
 eval {
 	$sth = $dbh->prepare(q{SELECT * FROM "\" WHERE a=?});
 	$sth->execute(1);
@@ -280,7 +282,7 @@ like ($@, qr{relation ".*" does not exist}, $t);
 $dbh->rollback();
 
 SKIP: {
-	skip 'Setting standard_conforming_strings not available', 2 if ! defined $scs;
+	skip 'Cannot adjust standard_conforming_strings for testing on this version of Postgres', 2 if $pgversion < 80200;
 	$t='Backslash quoting inside single quotes is parsed correctly with standard_conforming_strings off';
 	eval {
 		$dbh->do(q{SET standard_conforming_strings = 'off'});
