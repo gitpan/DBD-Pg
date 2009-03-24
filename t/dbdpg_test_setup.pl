@@ -123,8 +123,10 @@ sub connect_database {
 						my $sockdir = "$testdir/data/socket";
 						if (! -e $sockdir) {
 							mkdir $sockdir;
-							if (! chown $uid, -1, $sockdir) {
-								warn "chown of $sockdir failed!\n";
+							if ($uid) {
+								if (! chown $uid, -1, $sockdir) {
+									warn "chown of $sockdir failed!\n";
+								}
 							}
 						}
 						$option = q{-o '-k socket'};
@@ -536,6 +538,7 @@ CREATE TABLE dbd_pg_test (
   pdate      timestamp default now(),
   testarray  text[][],
   testarray2 int[],
+  testarray3 bool[],
   "CaseTest" boolean,
   expo       numeric(6,2),
   bytetest   bytea

@@ -18,7 +18,7 @@ my $dbh = connect_database();
 if (! defined $dbh) {
 	plan skip_all => 'Connection to database failed, cannot continue testing';
 }
-plan tests => 242;
+plan tests => 250;
 
 isnt ($dbh, undef, 'Connect to database for array testing');
 
@@ -39,11 +39,17 @@ my $addarray = $dbh->prepare($SQL);
 $SQL = q{INSERT INTO dbd_pg_test(id,pname,testarray2) VALUES (99,'Array Testing',?)};
 my $addarray_int = $dbh->prepare($SQL);
 
+$SQL = q{INSERT INTO dbd_pg_test(id,pname,testarray3) VALUES (99,'Array Testing',?)};
+my $addarray_bool = $dbh->prepare($SQL);
+
 $SQL = q{SELECT testarray FROM dbd_pg_test WHERE pname= 'Array Testing'};
 my $getarray = $dbh->prepare($SQL);
 
 $SQL = q{SELECT testarray2 FROM dbd_pg_test WHERE pname= 'Array Testing'};
 my $getarray_int = $dbh->prepare($SQL);
+
+$SQL = q{SELECT testarray3 FROM dbd_pg_test WHERE pname= 'Array Testing'};
+my $getarray_bool = $dbh->prepare($SQL);
 
 my $array_tests =
 q!['']
@@ -310,12 +316,52 @@ $getarray->execute();
 $result = $getarray->fetchall_arrayref();
 is_deeply ($result, [[['']]], $t);
 
+## Test non-string array variants
+
 $t=q{Integer array with no items returns empty array};
 $cleararray->execute();
 $addarray_int->execute('{}');
 $getarray_int->execute();
 $result = $getarray_int->fetchall_arrayref();
 is_deeply ($result, [[[]]], $t);
+
+$t=q{Boolean array with no items returns empty array};
+$cleararray->execute();
+$addarray_bool->execute('{}');
+$getarray_bool->execute();
+$result = $getarray_bool->fetchall_arrayref();
+is_deeply ($result, [[[]]], $t);
+
+$t=q{Boolean array gets created and returned correctly};
+$cleararray->execute();
+$addarray_bool->execute('{1}');
+$getarray_bool->execute();
+$result = $getarray_bool->fetchall_arrayref();
+is_deeply ($result, [[[1]]], $t);
+
+$cleararray->execute();
+$addarray_bool->execute('{0}');
+$getarray_bool->execute();
+$result = $getarray_bool->fetchall_arrayref();
+is_deeply ($result, [[[0]]], $t);
+
+$cleararray->execute();
+$addarray_bool->execute('{t}');
+$getarray_bool->execute();
+$result = $getarray_bool->fetchall_arrayref();
+is_deeply ($result, [[[1]]], $t);
+
+$cleararray->execute();
+$addarray_bool->execute('{f}');
+$getarray_bool->execute();
+$result = $getarray_bool->fetchall_arrayref();
+is_deeply ($result, [[[0]]], $t);
+
+$cleararray->execute();
+$addarray_bool->execute('{f,t,f,0,1,1}');
+$getarray_bool->execute();
+$result = $getarray_bool->fetchall_arrayref();
+is_deeply ($result, [[[0,1,0,0,1,1]]], $t);
 
 ## Pure string to array conversion testing
 
@@ -421,11 +467,11 @@ Deep nesting
 Deep nesting
 
 1::bool
-['t']
+[1]
 Test of boolean type
 
 1::bool,0::bool,'true'::boolean
-['t','f','t']
+[1,0,1]
 Test of boolean types
 
 1::oid
@@ -584,6 +630,18 @@ SKIP: {
 	ok (!Encode::is_utf8($result), $t);
 	$sth->finish();
 }
+
+
+## Quick test of empty arrays
+my $expected = $pgversion >= 80300 ? [[[]]] : [[undef]];
+
+$t=q{Empty int array is returned properly};
+$result = $dbh->selectall_arrayref(q{SELECT array(SELECT 12345::int WHERE 1=0)::int[]});
+is_deeply ($result, $expected, $t);
+
+$t=q{Empty text array is returned properly};
+$result = $dbh->selectall_arrayref(q{SELECT array(SELECT 'empty'::text WHERE 1=0)::text[]});
+is_deeply ($result, $expected, $t);
 
 cleanup_database($dbh,'test');
 $dbh->disconnect;

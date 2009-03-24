@@ -1,7 +1,7 @@
 #  -*-cperl-*-
-#  $Id: Pg.pm 12161 2008-12-15 18:26:52Z turnstep $
+#  $Id: Pg.pm 12627 2009-03-24 01:00:58Z turnstep $
 #
-#  Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
+#  Copyright (c) 2002-2009 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
 #  Portions Copyright (c) 1997-2001 Edmund Mergl
 #  Portions Copyright (c) 1994-1997 Tim Bunce
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.11.8');
+	use version; our $VERSION = qv('2.11.8_1');
 
 	use DBI ();
 	use DynaLoader ();
@@ -45,18 +45,18 @@ use 5.006001;
 			PG_NAMEARRAY PG_NUMERIC PG_NUMERICARRAY PG_OID PG_OIDARRAY
 			PG_OIDVECTOR PG_OIDVECTORARRAY PG_OPAQUE PG_PATH PG_PATHARRAY
 			PG_PG_ATTRIBUTE PG_PG_CLASS PG_PG_PROC PG_PG_TYPE PG_POINT
-			PG_POINTARRAY PG_POLYGON PG_POLYGONARRAY PG_RECORD PG_REFCURSOR
-			PG_REFCURSORARRAY PG_REGCLASS PG_REGCLASSARRAY PG_REGCONFIG PG_REGCONFIGARRAY
-			PG_REGDICTIONARY PG_REGDICTIONARYARRAY PG_REGOPER PG_REGOPERARRAY PG_REGOPERATOR
-			PG_REGOPERATORARRAY PG_REGPROC PG_REGPROCARRAY PG_REGPROCEDURE PG_REGPROCEDUREARRAY
-			PG_REGTYPE PG_REGTYPEARRAY PG_RELTIME PG_RELTIMEARRAY PG_SMGR
-			PG_TEXT PG_TEXTARRAY PG_TID PG_TIDARRAY PG_TIME
-			PG_TIMEARRAY PG_TIMESTAMP PG_TIMESTAMPARRAY PG_TIMESTAMPTZ PG_TIMESTAMPTZARRAY
-			PG_TIMETZ PG_TIMETZARRAY PG_TINTERVAL PG_TINTERVALARRAY PG_TRIGGER
-			PG_TSQUERY PG_TSQUERYARRAY PG_TSVECTOR PG_TSVECTORARRAY PG_TXID_SNAPSHOT
-			PG_TXID_SNAPSHOTARRAY PG_UNKNOWN PG_UUID PG_UUIDARRAY PG_VARBIT
-			PG_VARBITARRAY PG_VARCHAR PG_VARCHARARRAY PG_VOID PG_XID
-			PG_XIDARRAY PG_XML PG_XMLARRAY
+			PG_POINTARRAY PG_POLYGON PG_POLYGONARRAY PG_RECORD PG_RECORDARRAY
+			PG_REFCURSOR PG_REFCURSORARRAY PG_REGCLASS PG_REGCLASSARRAY PG_REGCONFIG
+			PG_REGCONFIGARRAY PG_REGDICTIONARY PG_REGDICTIONARYARRAY PG_REGOPER PG_REGOPERARRAY
+			PG_REGOPERATOR PG_REGOPERATORARRAY PG_REGPROC PG_REGPROCARRAY PG_REGPROCEDURE
+			PG_REGPROCEDUREARRAY PG_REGTYPE PG_REGTYPEARRAY PG_RELTIME PG_RELTIMEARRAY
+			PG_SMGR PG_TEXT PG_TEXTARRAY PG_TID PG_TIDARRAY
+			PG_TIME PG_TIMEARRAY PG_TIMESTAMP PG_TIMESTAMPARRAY PG_TIMESTAMPTZ
+			PG_TIMESTAMPTZARRAY PG_TIMETZ PG_TIMETZARRAY PG_TINTERVAL PG_TINTERVALARRAY
+			PG_TRIGGER PG_TSQUERY PG_TSQUERYARRAY PG_TSVECTOR PG_TSVECTORARRAY
+			PG_TXID_SNAPSHOT PG_TXID_SNAPSHOTARRAY PG_UNKNOWN PG_UUID PG_UUIDARRAY
+			PG_VARBIT PG_VARBITARRAY PG_VARCHAR PG_VARCHARARRAY PG_VOID
+			PG_XID PG_XIDARRAY PG_XML PG_XMLARRAY
 		)]
 	);
 
@@ -142,6 +142,17 @@ use 5.006001;
 		DBD::Pg::st->install_method('pg_cancel');
 		DBD::Pg::st->install_method('pg_result');
 		DBD::Pg::st->install_method('pg_ready');
+
+		DBD::Pg::db->install_method('pg_lo_creat');
+		DBD::Pg::db->install_method('pg_lo_open');
+		DBD::Pg::db->install_method('pg_lo_write');
+		DBD::Pg::db->install_method('pg_lo_read');
+		DBD::Pg::db->install_method('pg_lo_lseek');
+		DBD::Pg::db->install_method('pg_lo_tell');
+		DBD::Pg::db->install_method('pg_lo_close');
+		DBD::Pg::db->install_method('pg_lo_unlink');
+		DBD::Pg::db->install_method('pg_lo_import');
+		DBD::Pg::db->install_method('pg_lo_export');
 
 		return $drh;
 
@@ -1703,7 +1714,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.11.8 of the DBD::Pg module
+This documents version 2.11.8_1 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
@@ -2033,20 +2044,20 @@ reference to an array of hashes, each of which contains the following keys:
   PRIMARY_KEY flag is_primary_key
   REMARKS     attribute description
 
-=item lo_creat
+=item pg_lo_creat
 
-  $lobjId = $dbh->func($mode, 'lo_creat');
+  $lobjId = $dbh->pg_lo_creat($mode);
 
 Creates a new large object and returns the object-id. C<$mode> is a bitmask
 describing read and write access to the new object. This setting is ignored
 since Postgres version 8.1. For backwards compatibility, however, you should 
-set a valid mode anyway (see L</lo_open> for a list of valid modes).
+set a valid mode anyway (see L</pg_lo_open> for a list of valid modes).
 
-Upon failure it returns C<undef>.
+Upon failure it returns C<undef>. This function cannot be used if AutoCommit is enabled.
 
 =item lo_open
 
-  $lobj_fd = $dbh->func($lobjId, $mode, 'lo_open');
+  $lobj_fd = $dbh->pg_lo_open($lobjId, $mode);
 
 Opens an existing large object and returns an object-descriptor for use in
 subsequent C<lo_*> calls. C<$mode> is a bitmask describing read and write
@@ -2065,58 +2076,62 @@ object will provide the stored data at the time of the transaction snapshot
 which was active when C<lo_write> was called.
 
 Returns C<undef> upon failure. Note that 0 is a perfectly correct (and common)
-object descriptor!
+object descriptor! This function cannot be used if AutoCommit is enabled.
 
 =item lo_write
 
-  $nbytes = $dbh->func($lobj_fd, $buffer, $len, 'lo_write');
+  $nbytes = $dbh->pg_lo_write($lobj_fd, $buffer, $len);
 
 Writes C<$len> bytes of c<$buffer> into the large object C<$lobj_fd>. Returns the number
-of bytes written and C<undef> upon failure.
+of bytes written and C<undef> upon failure. This function cannot be used if AutoCommit is enabled.
 
 =item lo_read
 
-  $nbytes = $dbh->func($lobj_fd, $buffer, $len, 'lo_read');
+  $nbytes = $dbh->pg_lo_read($lobj_fd, $buffer, $len);
 
 Reads C<$len> bytes into c<$buffer> from large object C<$lobj_fd>. Returns the number of
-bytes read and C<undef> upon failure.
+bytes read and C<undef> upon failure. This function cannot be used if AutoCommit is enabled.
 
 =item lo_lseek
 
-  $loc = $dbh->func($lobj_fd, $offset, $whence, 'lo_lseek');
+  $loc = $dbh->pg_lo_lseek($lobj_fd, $offset, $whence);
 
 Changes the current read or write location on the large object
 C<$obj_id>. Currently C<$whence> can only be 0 (which is L_SET). Returns the current
-location and C<undef> upon failure.
+location and C<undef> upon failure. This function cannot be used if AutoCommit is enabled.
 
 =item lo_tell
 
-  $loc = $dbh->func($lobj_fd, 'lo_tell');
+  $loc = $dbh->pg_lo_tell($lobj_fd);
 
 Returns the current read or write location on the large object C<$lobj_fd> and C<undef> upon failure.
+This function cannot be used if AutoCommit is enabled.
 
 =item lo_close
 
-  $lobj_fd = $dbh->func($lobj_fd, 'lo_close');
+  $lobj_fd = $dbh->pg_lo_close($lobj_fd);
 
 Closes an existing large object. Returns true upon success and false upon failure.
+This function cannot be used if AutoCommit is enabled.
 
 =item lo_unlink
 
-  $ret = $dbh->func($lobjId, 'lo_unlink');
+  $ret = $dbh->pg_lo_unlink($lobjId);
 
 Deletes an existing large object. Returns true upon success and false upon failure.
+This function cannot be used if AutoCommit is enabled.
 
 =item lo_import
 
-  $lobjId = $dbh->func($filename, 'lo_import');
+
+  $lobjId = $dbh->pg_lo_import($filename);
 
 Imports a Unix file as a large object and returns the object id of the new
 object or C<undef> upon failure.
 
 =item lo_export
 
-  $ret = $dbh->func($lobjId, $filename, 'lo_export');
+  $ret = $dbh->pg_lo_export($lobjId, $filename);
 
 Exports a large object into a Unix file. Returns false upon failure, true otherwise.
 
@@ -2565,7 +2580,7 @@ Some examples:
   $sth = $dbh->prepare($SQL);
   for (qw(uno dos tres cuatro)) {
     $sth->execute($_);
-    my $newid = $dbh->last_insert_id(C<undef>,undef,undef,undef,{sequence=>'lii_seq'});
+    my $newid = $dbh->last_insert_id(undef,undef,undef,undef,{sequence=>'lii_seq'});
     print "Last insert id was $newid\n";
   }
 
@@ -2795,7 +2810,7 @@ Examples of use:
 
   ## Display all tables and views in the public schema:
   $sth = $dbh->table_info('', 'public', undef, undef);
-  for my $rel ({@$sth->fetchall_arrayref({})}) {
+  for my $rel (@{$sth->fetchall_arrayref({})}) {
     print "$rel->{TABLE_TYPE} name is $rel->{TABLE_NAME}\n";
   }
 
@@ -3070,7 +3085,7 @@ be used whenever possible. See the section on the L</prepare> method for more in
 =head3 B<pg_placeholder_dollaronly> (boolean)
 
 DBD::Pg specific attribute. Defaults to false. When true, question marks inside of statements 
-are not treated as L</placeholders>. Useful for statements that contain unquoted question 
+are not treated as L<placeholders|/Placeholders>. Useful for statements that contain unquoted question 
 marks, such as geometric operators.
 
 =head3 B<pg_enable_utf8> (boolean)
@@ -3164,7 +3179,7 @@ immediately prepare commands, rather than waiting until the first execute.
 
 =head3 B<pg_expand_array> (boolean)
 
-DBD::Pg specific attribute. Defaults to false. If false, arrays returned from the server will 
+DBD::Pg specific attribute. Defaults to true. If false, arrays returned from the server will 
 not be changed into a Perl arrayref, but remain as a string.
 
 =head3 B<pg_async_status> (integer, read-only)
@@ -3263,16 +3278,16 @@ The current list of Postgres data types exported is:
  PG_NAMEARRAY PG_NUMERIC PG_NUMERICARRAY PG_OID PG_OIDARRAY PG_OIDVECTOR
  PG_OIDVECTORARRAY PG_OPAQUE PG_PATH PG_PATHARRAY PG_PG_ATTRIBUTE PG_PG_CLASS
  PG_PG_PROC PG_PG_TYPE PG_POINT PG_POINTARRAY PG_POLYGON PG_POLYGONARRAY
- PG_RECORD PG_REFCURSOR PG_REFCURSORARRAY PG_REGCLASS PG_REGCLASSARRAY PG_REGCONFIG
- PG_REGCONFIGARRAY PG_REGDICTIONARY PG_REGDICTIONARYARRAY PG_REGOPER PG_REGOPERARRAY PG_REGOPERATOR
- PG_REGOPERATORARRAY PG_REGPROC PG_REGPROCARRAY PG_REGPROCEDURE PG_REGPROCEDUREARRAY PG_REGTYPE
- PG_REGTYPEARRAY PG_RELTIME PG_RELTIMEARRAY PG_SMGR PG_TEXT PG_TEXTARRAY
- PG_TID PG_TIDARRAY PG_TIME PG_TIMEARRAY PG_TIMESTAMP PG_TIMESTAMPARRAY
- PG_TIMESTAMPTZ PG_TIMESTAMPTZARRAY PG_TIMETZ PG_TIMETZARRAY PG_TINTERVAL PG_TINTERVALARRAY
- PG_TRIGGER PG_TSQUERY PG_TSQUERYARRAY PG_TSVECTOR PG_TSVECTORARRAY PG_TXID_SNAPSHOT
- PG_TXID_SNAPSHOTARRAY PG_UNKNOWN PG_UUID PG_UUIDARRAY PG_VARBIT PG_VARBITARRAY
- PG_VARCHAR PG_VARCHARARRAY PG_VOID PG_XID PG_XIDARRAY PG_XML
- PG_XMLARRAY
+ PG_RECORD PG_RECORDARRAY PG_REFCURSOR PG_REFCURSORARRAY PG_REGCLASS PG_REGCLASSARRAY
+ PG_REGCONFIG PG_REGCONFIGARRAY PG_REGDICTIONARY PG_REGDICTIONARYARRAY PG_REGOPER PG_REGOPERARRAY
+ PG_REGOPERATOR PG_REGOPERATORARRAY PG_REGPROC PG_REGPROCARRAY PG_REGPROCEDURE PG_REGPROCEDUREARRAY
+ PG_REGTYPE PG_REGTYPEARRAY PG_RELTIME PG_RELTIMEARRAY PG_SMGR PG_TEXT
+ PG_TEXTARRAY PG_TID PG_TIDARRAY PG_TIME PG_TIMEARRAY PG_TIMESTAMP
+ PG_TIMESTAMPARRAY PG_TIMESTAMPTZ PG_TIMESTAMPTZARRAY PG_TIMETZ PG_TIMETZARRAY PG_TINTERVAL
+ PG_TINTERVALARRAY PG_TRIGGER PG_TSQUERY PG_TSQUERYARRAY PG_TSVECTOR PG_TSVECTORARRAY
+ PG_TXID_SNAPSHOT PG_TXID_SNAPSHOTARRAY PG_UNKNOWN PG_UUID PG_UUIDARRAY PG_VARBIT
+ PG_VARBITARRAY PG_VARCHAR PG_VARCHARARRAY PG_VOID PG_XID PG_XIDARRAY
+ PG_XML PG_XMLARRAY
 
 Data types are "sticky," in that once a data type is set to a certain placeholder,
 it will remain for that placeholder, unless it is explicitly set to something
@@ -3976,7 +3991,7 @@ When fetching rows from a table that contains a column with an
 array type, the result will be passed back to your script as an arrayref.
 
 To turn off the automatic parsing of returned arrays into arrayrefs, 
-you can set the attribute L<pg_expand_array|/pg_expand_array__boolean__read_only_>, which is true by default.
+you can set the attribute L<pg_expand_array|/pg_expand_array_(boolean)>, which is true by default.
 
   $dbh->{pg_expand_array} = 0;
 
@@ -4103,7 +4118,7 @@ choice. DBD::Pg therefore translates the result for the C<BOOL> data type in a
 Perlish manner: 'f' becomes the number C<0> and 't' becomes the number C<1>. This way 
 the application does not have to check the database-specific returned values for 
 the data-type C<BOOL> because Perl treats C<0> as false and C<1> as true. You may 
-set the L<pg_bool_tf|/pg_bool_tf__boolean_> attribute to a true value to change the values back to 't' and
+set the L<pg_bool_tf|/pg_bool_tf_(boolean)> attribute to a true value to change the values back to 't' and
 'f' if you wish.
 
 Boolean values can be passed to PostgreSQL as TRUE, 't', 'true', 'y', 'yes' or

@@ -1,5 +1,19 @@
 ('GSM' is Greg Sabino Mullane, greg@turnstep.com)
 
+2.12.0
+
+  - Change large object interface from lo_* to pg_lo_* and make them accessible 
+    via direct $dbh calls (e.g. $dbh->pg_lo_import instead of $dbh->func(..,'pg_lo_import').
+    The use of $dbh->func(... 'lo_*') is deprecated. [GSM] (CPAN bug #44467)
+  - Throw an exception for large_object functions called when AutoCommit is on, 
+    but allow pg_lo_import and pg_lo_export to work. Reported by Kynn Jones.
+    [GSM] (CPAN bug #44461)
+  - Fix a memory leak when parsing returned arrays. Reported by Bálint Szilakszi.
+    [GSM] (CPAN bug #44225)
+  - Do proper dequoting of boolean arrays [Armando Santos, GSM] (CPAN bug #43768)
+  - Fix minor bugs in POD docs. [Frank Wiegand] (CPAN bug #44242)
+  - Fix minor bug in POD docs. [Tim Mattison]
+
 2.11.8 Released December 28, 2008
 
   - Fix minor bug in t/12placeholders.t test (CPAN bug #41723)

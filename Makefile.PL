@@ -1,4 +1,4 @@
-# $Id: Makefile.PL 12161 2008-12-15 18:26:52Z turnstep $
+# $Id: Makefile.PL 12627 2009-03-24 01:00:58Z turnstep $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -7,7 +7,7 @@ use warnings;
 use 5.006001;
 
 ## No version.pm for this one, as the prereqs are not loaded yet.
-my $VERSION = '2.11.8';
+my $VERSION = '2.11.8_1';
 
 my $lib;
 BEGIN {
@@ -181,7 +181,7 @@ if ($ENV{DBDPG_GCCDEBUG}) {
 	$comp_opts .= ' -Wmissing-prototypes -Wmissing-declarations -Wmissing-format-attribute -Wpacked -Winline -Winvalid-pch';
 	$comp_opts .= ' -Wdisabled-optimization';
 	$comp_opts .= ' -Wnested-externs';
-    $comp_opts .= " -Wstrict-prototypes"; ## Still hits a couple places in types.h
+	$comp_opts .= " -Wstrict-prototypes"; ## Still hits a couple places in types.h
 	$comp_opts .= " -Wswitch-default";
 	$comp_opts .= " -Wsystem-headers";
 	$comp_opts .= " -Wmissing-noreturn";

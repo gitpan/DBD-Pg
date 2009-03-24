@@ -1,12 +1,21 @@
+===================================================
+WARNING!!
+
+THIS IS A TEST VERSION (2.11.8_1) AND SHOULD BE USED 
+FOR TESTING PURPOSES ONLY. PLEASE USE A STABLE 
+VERSION (no underscore) BY VISITING:
+
+http://search.cpan.org/dist/DBD-Pg/
+===================================================
 
 DBD::Pg  --  the DBI PostgreSQL interface for Perl
 
-# $Id: README 12161 2008-12-15 18:26:52Z turnstep $
+# $Id: README 12627 2009-03-24 01:00:58Z turnstep $
 
 DESCRIPTION:
 ------------
 
-This is version 2.11.8 of DBD::Pg, the Perl interface to Postgres using DBI. 
+This is version 2.11.8_1 of DBD::Pg, the Perl interface to Postgres using DBI. 
 The web site for this interface, and the latest version, can be found at:
 
 	http://search.cpan.org/dist/DBD-Pg/
@@ -24,6 +33,22 @@ For information about PostgreSQL, visit:
 	http://www.postgresql.org/
 
 For information on what has changed for each version, see the Changes files.
+
+
+REQUIREMENTS:
+-------------
+
+	build, test, and install Perl 5         (at least 5.6.1)
+	build, test, and install the DBI module (at least 1.52)
+	build, test, and install PostgreSQL     (at least 7.4)
+	build, test, and install Test::Simple   (at least 0.47)
+
+DBD::Pg needs to know where to find the libpq libraries: this is usually done 
+by checking the output of the pg_config executable. If pg_config is not available, 
+then you may need to install the development package for PostgreSQL. To do this 
+on Debian and Ubuntu, use: apt-get install postgresql-dev; on RedHat and CentOS, 
+use: yum install postgresql-devel. Note that the development libraries are needed 
+even if you already have PostgreSQL up and running.
 
 
 IF YOU HAVE PROBLEMS OR COMMENTS:
@@ -50,21 +75,6 @@ If you feel certain you have found a bug, you can file a bug report by visiting:
 http://rt.cpan.org/Public/Dist/Display.html?Name=DBD-Pg
 and selecting the "Report a new bug" link. Please check that the bug 
 has not already been reported first.
-
-REQUIREMENTS:
--------------
-
-	build, test, and install Perl 5         (at least 5.6.1)
-	build, test, and install the DBI module (at least 1.52)
-	build, test, and install PostgreSQL     (at least 7.4)
-	build, test, and install Test::Simple   (at least 0.47)
-
-DBD::Pg needs to know where to find the libpq libraries: this is usually done 
-by checking the output of the pg_config executable. If pg_config is not available, 
-then you may need to install the development package for PostgreSQL. To do this 
-on Debian and Ubuntu, use: apt-get install postgresql-dev; on RedHat and CentOS, 
-use: yum install postgresql-devel. Note that the development libraries are needed 
-even if you already have PostgreSQL up and running.
 
 INSTALLATION:
 -------------
@@ -161,6 +171,7 @@ $dbh->{pg_server_prepare} = 0;
 This can also be set for individual queries at the statement handle level: see 
 the documentation section on "Placeholders" for more details.
 
+
 * PostgreSQL library issues:
 
 DBD::Pg uses the libpq library that comes with Postgres. If the shared libpq 
@@ -188,6 +199,7 @@ when you call DBI->connect, then your libpq.so was probably not seen at
 build-time.  This should have caused 'make test' to fail; did you really
 run it and look at the output? 
 
+
 * Perl issues:
 
 Some Linux distributions have incomplete perl installations.  If you have
@@ -204,6 +216,39 @@ to the INSTALLVENDORBIN environment variable:
 
 make install_vendor INSTALLVENDORBIN=/tmp
 (thanks to Peter Eisentraut <peter_e at gmx.net>)
+
+
+* Strawberry Perl issues:
+
+One file change only needed to make in DBD::Pg source is:
+ 
+Makefile.PL -
+add 'use DBI::DBD;'.
+comment out "unlink $output->{MAKEFILE};" at line 247
+
+set required environment:
+
+set PATH=C:\PROGRA~1\PostgreSQL\8.3\bin;%PATH%
+set DBI_DSN=dbi:Pg:dbname=testdb
+set DBI_USER=username
+set DBI_PASS=password
+set POSTGRES_HOME=C:/PROGRA~1/PostgreSQL/8.3
+set POSTGRES_INCLUDE=C:/PROGRA~1/PostgreSQL/8.3/include
+set POSTGRES_LIB=C:/PROGRA~1/PostgreSQL/8.3/lib
+
+
+perl Makefile.PL
+
+Now here's the ugly bit: edited both EXTRALIBS and LDLOADLIBS in the resulting 
+Makefile to include
+C:\PROGRA~1\PostgreSQL\8.3\lib\libpq.lib
+
+then
+
+dmake
+dmake test
+
+all works fine.
 
 
 * SGI issues:
@@ -304,7 +349,7 @@ Once this is done, 'make test' succeeds properly.
 COPYRIGHT:
 ----------
 
-	Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
+	Copyright (c) 2002-2009 Greg Sabino Mullane and others: see the Changes file
 	Portions Copyright (c) 2002 Jeffrey W. Baker
 	Portions Copyright (c) 1997-2001 Edmund Mergl
 	Portions Copyright (c) 1994-1997 Tim Bunce
