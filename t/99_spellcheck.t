@@ -612,6 +612,7 @@ Ubuntu
 ## Changes:
 boolean
 destringifying
+expr
 spellcheck
 gborg
 n's
