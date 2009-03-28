@@ -1,5 +1,5 @@
 #  -*-cperl-*-
-#  $Id: Pg.pm 12634 2009-03-26 15:29:48Z turnstep $
+#  $Id: Pg.pm 12642 2009-03-28 14:46:57Z turnstep $
 #
 #  Copyright (c) 2002-2009 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.11.8_2');
+	use version; our $VERSION = qv('2.12.0');
 
 	use DBI ();
 	use DynaLoader ();
@@ -1718,7 +1718,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.11.8_1 of the DBD::Pg module
+This documents version 2.12.0 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
@@ -2058,6 +2058,8 @@ since Postgres version 8.1. For backwards compatibility, however, you should
 set a valid mode anyway (see L</pg_lo_open> for a list of valid modes).
 
 Upon failure it returns C<undef>. This function cannot be used if AutoCommit is enabled.
+
+The old way of calling large objects functions is deprecated: $dbh->func(.., 'lo_);
 
 =item lo_open
 
