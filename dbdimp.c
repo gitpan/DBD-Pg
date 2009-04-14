@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 12635 2009-03-26 16:16:10Z turnstep $
+  $Id: dbdimp.c 12682 2009-04-09 15:52:56Z turnstep $
 
   Copyright (c) 2002-2009 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -377,6 +377,10 @@ static ExecStatusType _sqlstate(pTHX_ imp_dbh_t * imp_dbh, PGresult * result)
 			strncpy(imp_dbh->sqlstate, "01000", 6); /* WARNING */
 			break;
 		case PGRES_FATAL_ERROR:
+			if (!result) { /* libpq returned null - some sort of connection problem */
+				strncpy(imp_dbh->sqlstate, "08000", 6); /* CONNECTION EXCEPTION */
+				break;
+			}
 		default:
 			strncpy(imp_dbh->sqlstate, "22000", 6); /* DATA EXCEPTION */
 			break;
@@ -2113,9 +2117,8 @@ static int pg_st_prepare_statement (pTHX_ SV * sth, imp_sth_t * imp_sth)
 
 		TRACE_PQPREPARE;
 		result = PQprepare(imp_dbh->conn, imp_sth->prepare_name, statement, params, imp_sth->PQoids);
+		status = _sqlstate(aTHX_ imp_dbh, result);
 		if (result) {
-			TRACE_PQRESULTSTATUS;
-			status = PQresultStatus(result);
 			TRACE_PQCLEAR;
 			PQclear(result);
 		}

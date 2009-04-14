@@ -417,8 +417,8 @@ SKIP: {
 	skip ('Cannot test unicode with a LATIN1 database', 5)
 		if $server_encoding eq 'LATIN1';
 
-	my $SQL = 'SELECT id, pname FROM dbd_pg_test WHERE id = ?';
-	my $sth = $dbh->prepare($SQL);
+	$SQL = 'SELECT id, pname FROM dbd_pg_test WHERE id = ?';
+	$sth = $dbh->prepare($SQL);
 	$sth->execute(1);
 	local $dbh->{pg_enable_utf8} = 1;
 
@@ -950,7 +950,7 @@ q{DELETE FROM dbd_pg_test WHERE id=1},
 q{UPDATE dbd_pg_test SET id=2 WHERE id=2},
 q{SELECT * FROM dbd_pg_test},
 	) {
-	my $expected = substr($_,0,6);
+	$expected = substr($_,0,6);
 	$t=qq{Statement handle attribute "pg_cmd_status" works for '$expected'};
 	$sth = $dbh->prepare($_);
 	$sth->execute();
@@ -1558,7 +1558,7 @@ SKIP: {
 		if (fork) {
 			$t=qq{Parent in fork test is working properly ("InactiveDestroy" = $destroy)};
 			$sth->execute(1);
-			my $val = $sth->fetchall_arrayref()->[0][0];
+			$val = $sth->fetchall_arrayref()->[0][0];
 			is ($val, $answer, $t);
 			# Let the child exit first
 			select(undef,undef,undef,0.3);
@@ -1579,16 +1579,16 @@ SKIP: {
 
 			$t='Statement handle works after forking';
 			$sth->execute(1);
-			my $val = $sth->fetchall_arrayref()->[0][0];
+			$val = $sth->fetchall_arrayref()->[0][0];
 			is ($val, $answer, $t);
 		}
 		else {
 			$t=qq{Ping fails after the child has exited ("InactiveDestroy" = $destroy)};
 			is ( $dbh->ping(), 0, $t);
 
-			$t='Failed ping returns a SQLSTATE code of 22000';
+			$t='Failed ping returns a SQLSTATE code of 08000';
 			my $state = $dbh->state();
-			is ($state, '22000', $t);
+			is ($state, '08000', $t);
 
 			$t=qq{pg_ping gives an error code of -2 after the child has exited ("InactiveDestroy" = $destroy)};
 			is ( $dbh->pg_ping(), -2,$t);
