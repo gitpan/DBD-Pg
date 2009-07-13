@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 12711 2009-04-20 16:42:07Z turnstep $
+  $Id: dbdimp.c 13046 2009-07-13 00:37:29Z turnstep $
 
   Copyright (c) 2002-2009 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -780,7 +780,7 @@ int dbd_db_STORE_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv, SV * valuesv
 	unsigned int newval = SvTRUE(valuesv);
 	int          retval = 0;
 
-	if (TSTART) TRC(DBILOGFP, "%sBegin dbd_db_STORE (key: %s newval: %d kl:%d)\n", THEADER, key, newval);
+	if (TSTART) TRC(DBILOGFP, "%sBegin dbd_db_STORE (key: %s newval: %d kl:%d)\n", THEADER, key, newval, kl);
 	
 	switch (kl) {
 
@@ -1572,7 +1572,7 @@ static void pg_st_split_statement (pTHX_ imp_sth_t * imp_sth, int version, char 
 			imp_sth->seg->segment = NULL;
 		}
 		if (TRACE6) TRC(DBILOGFP, "%sdirect split = (%s) length=(%d)\n",
-						THEADER, imp_sth->seg->segment, imp_sth->totalsize);
+						THEADER, imp_sth->seg->segment, (int)imp_sth->totalsize);
 		if (TEND) TRC(DBILOGFP, "%sEnd pg_st_split_statement (direct)\n", THEADER);
 		return;
 	}
@@ -1990,7 +1990,7 @@ static void pg_st_split_statement (pTHX_ imp_sth_t * imp_sth, int version, char 
 		TRC(DBILOGFP, "%sPlaceholder number, fooname, id:\n", THEADER);
 		for (xlen=1,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,xlen++) {
 			TRC(DBILOGFP, "%s#%d FOONAME: (%s)\n",
-				THEADER, xlen, currph->fooname);
+				THEADER, (int)xlen, currph->fooname);
 		}
 	}
 
@@ -2363,7 +2363,7 @@ int dbd_bind_ph (SV * sth, imp_sth_t * imp_sth, SV * ph_name, SV * newvalue, IV 
 		TRC	(DBILOGFP,
 			 "%sPlaceholder (%s) bound as type (%s) (type_id=%d), length %d, value of (%s)\n",
 			 THEADER, name, currph->bind_type->type_name,
-			 currph->bind_type->type_id, currph->valuelen,
+			 currph->bind_type->type_id, (int)currph->valuelen,
 			 PG_BYTEA==currph->bind_type->type_id ? "(binary, not shown)" : value_string);
 
 	if (TEND) TRC(DBILOGFP, "%sEnd dbd_bind_ph\n", THEADER);
@@ -2467,10 +2467,13 @@ SV * pg_stringify_array(SV *input, const char * array_delim, int server_version)
 					SvUTF8_on(value);
 				string = SvPV(svitem, svlen);
 				while (svlen--) {
+
+					/* If an embedded quote, throw a backslash before it */
 					if ('\"' == *string)
 						sv_catpvn(value, "\\", 1);
+					/* If a backslash, double it up */
 					if ('\\' == *string) {
-						sv_catpvn(value, "\\\\", 2);
+						sv_catpvn(value, "\\\\\\", 3);
 					}
 					sv_catpvn(value, string, 1);
 					string++;
@@ -2523,6 +2526,14 @@ static SV * pg_destringify_array(pTHX_ imp_dbh_t *imp_dbh, unsigned char * input
 	  Note: we don't do careful balance checking here, as this is coming straight from 
 	  the Postgres backend, and we rely on it to give us a sane and balanced structure
 	*/
+
+	/* The array may start with a non 1-based beginning. If so, we'll just eat the range */
+	if ('[' == *input) {
+		while (*input != '\0') {
+			if ('=' == *input++)
+				break;
+		}
+	}
 
 	/* Eat the opening brace and perform a sanity check */
 	if ('{' != *(input++))
@@ -3008,7 +3019,7 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 		
 		if (TRACE7) {
 			for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,x++) {
-				TRC(DBILOGFP, "%sPQexecPrepared item #%d\n", THEADER, x);
+				TRC(DBILOGFP, "%sPQexecPrepared item #%d\n", THEADER, (int)x);
 				TRC(DBILOGFP, "%s-> Value: (%s)\n",
 					THEADER, (imp_sth->PQfmts && imp_sth->PQfmts[x]==1) ? "(binary, not shown)" 
 									: imp_sth->PQvals[x]);
@@ -3022,7 +3033,7 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 		if (TSQL) {
 			TRC(DBILOGFP, "EXECUTE %s (\n", imp_sth->prepare_name);
 			for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,x++) {
-				TRC(DBILOGFP, "$%d: %s\n", x+1, imp_sth->PQvals[x]);
+				TRC(DBILOGFP, "$%d: %s\n", (int)x+1, imp_sth->PQvals[x]);
 			}
 			TRC(DBILOGFP, ");\n\n");
 		}
@@ -3089,7 +3100,7 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 		
 			if (TRACE7) {
 				for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,x++) {
-					TRC(DBILOGFP, "%sPQexecParams item #%d\n", THEADER, x);
+					TRC(DBILOGFP, "%sPQexecParams item #%d\n", THEADER, (int)x);
 					TRC(DBILOGFP, "%s-> Type: (%d)\n", THEADER, imp_sth->PQoids[x]);
 					TRC(DBILOGFP, "%s-> Value: (%s)\n", THEADER, imp_sth->PQvals[x]);
 					TRC(DBILOGFP, "%s-> Length: (%d)\n", THEADER, imp_sth->PQlens ? imp_sth->PQlens[x] : 0);
@@ -3100,7 +3111,7 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 			if (TSQL) {
 				TRC(DBILOGFP, "EXECUTE %s (\n", statement);
 				for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,x++) {
-					TRC(DBILOGFP, "$%d: %s\n", x+1, imp_sth->PQvals[x]);
+					TRC(DBILOGFP, "$%d: %s\n", (int)x+1, imp_sth->PQvals[x]);
 				}
 				TRC(DBILOGFP, ");\n\n");
 			}
@@ -3350,13 +3361,32 @@ AV * dbd_st_fetch (SV * sth, imp_sth_t * imp_sth)
 			else {
 				if (type_info) {
 					type_info->dequote(value, &value_len); /* dequote in place */
-					if (PG_BOOL == type_info->type_id && imp_dbh->pg_bool_tf)
-						*value = ('1' == *value) ? 't' : 'f';
+					/* For certain types, we can cast to non-string Perlish values */
+					switch (type_info->type_id) {
+					case PG_BOOL:
+						if (imp_dbh->pg_bool_tf) {
+							*value = ('1' == *value) ? 't' : 'f';
+							sv_setpvn(sv, (char *)value, value_len);
+						}
+						else
+							sv_setiv(sv, '1' == *value ? 1 : 0);
+						break;
+					case PG_OID:
+					case PG_INT4:
+					case PG_INT2:
+						sv_setiv(sv, atol((char *)value));
+						break;
+					case PG_INT8:
+						sv_setnv(sv, atoll((char *)value));
+						break;
+					default:
+						sv_setpvn(sv, (char *)value, value_len);
+					}
 				}
-				else
+				else {
 					value_len = strlen((char *)value);
-			
-				sv_setpvn(sv, (char *)value, value_len);
+					sv_setpvn(sv, (char *)value, value_len);
+				}
 			
 				if (type_info && (PG_BPCHAR == type_info->type_id) && chopblanks) {
 					p = SvEND(sv);
@@ -4229,7 +4259,7 @@ int pg_db_lo_read (SV * dbh, int fd, char * buf, size_t len)
 	D_imp_dbh(dbh);
 
 	if (TSTART) TRC(DBILOGFP, "%sBegin pg_db_lo_read (fd: %d length: %d)\n",
-					THEADER, fd, len);
+					THEADER, fd, (int)len);
 
 	if (DBIc_has(imp_dbh, DBIcf_AutoCommit)) {
 		croak("Cannot call pg_lo_read when AutoCommit is on");
@@ -4254,7 +4284,7 @@ int pg_db_lo_write (SV * dbh, int fd, char * buf, size_t len)
 	D_imp_dbh(dbh);
 
 	if (TSTART) TRC(DBILOGFP, "%sBegin pg_db_lo_write (fd: %d length: %d)\n",
-					THEADER, fd, len);
+					THEADER, fd, (int)len);
 
 	if (DBIc_has(imp_dbh, DBIcf_AutoCommit)) {
 		croak("Cannot call pg_lo_write when AutoCommit is on");

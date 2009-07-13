@@ -1,5 +1,5 @@
 
-## $Id: README.dev 12019 2008-11-01 19:18:10Z turnstep $
+## $Id: README.dev 13048 2009-07-13 15:14:14Z turnstep $
 
 This file is for those interested in developing DBD::Pg. It is hoped that it 
 will be a good introduction as well as a continual reference. Suggestions 
@@ -360,7 +360,7 @@ Another handy tool is the module Devel::Cover. While not totally useful as it on
 direct perl modules, it is good at giving Pg.pm the once-over. To use, install it, then run:
 
 cover -delete
-HARNESS_PERL_SWITCHES=-Mdevel::Cover make test
+HARNESS_PERL_SWITCHES=-MDevel::Cover make test
 
 The tests will take much longer than usual. When done, run a simple
 

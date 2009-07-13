@@ -1,5 +1,5 @@
 #  -*-cperl-*-
-#  $Id: Pg.pm 12712 2009-04-23 16:22:51Z turnstep $
+#  $Id: Pg.pm 13051 2009-07-13 19:25:16Z turnstep $
 #
 #  Copyright (c) 2002-2009 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.13.1');
+	use version; our $VERSION = qv('2.13.1_1');
 
 	use DBI ();
 	use DynaLoader ();
@@ -649,7 +649,10 @@ use 5.006001;
 		$sth->execute(@exe_args) or return undef;
 
 		STAT_ROW:
+		#use Data::Dumper;
+		#warn Dumper $stats_sql;
 		while (my $row = $sth->fetchrow_hashref) {
+			#warn Dumper $row;
 			next if $row->{indexprs}; # We can't return these accurately via this interface ...
 			next if $unique_only and !$row->{indisunique};
 
@@ -833,6 +836,10 @@ use 5.006001;
 		my $dbh = shift;
 
 		## PK: catalog, schema, table, FK: catalog, schema, table, attr
+
+		my $oldname = $dbh->{FetchHashKeyName};
+
+		local $dbh->{FetchHashKeyName} = 'NAME_lc';
 
 		## Each of these may be undef or empty
 		my $pschema = $_[1] || '';
@@ -1060,6 +1067,20 @@ use 5.006001;
 			KEY_SEQ UPDATE_RULE DELETE_RULE FK_NAME PK_NAME
 			DEFERABILITY UNIQUE_OR_PRIMARY PK_DATA_TYPE FKDATA_TYPE
 		));
+
+		if ($oldname eq 'NAME_lc') {
+			if ($odbc) {
+				for my $col (@ODBC_cols) {
+					$col = lc $col;
+				}
+			}
+			else {
+				for my $col (@CLI_cols) {
+					$col = lc $col;
+				}
+			}
+		}
+
 		return _prepare_from_data('foreign_key_info', $fkinfo, $odbc ? \@ODBC_cols : \@CLI_cols);
 
 	}
@@ -1468,7 +1489,7 @@ use 5.006001;
       29  => ['SQL_IDENTIFIER_QUOTE_CHAR',          q{"}                      ],
      148  => ['SQL_INDEX_KEYWORDS',                 0                         ], ## not needed for Pg
      172  => ['SQL_INSERT_STATEMENT',               7                         ], ## 1+2+4 = all
-      73  => ['SQL_INTEGERITY',                     'Y'                       ], ## e.g. ON DELETE CASCADE?
+      73  => ['SQL_INTEGRITY',                      'Y'                       ], ## e.g. ON DELETE CASCADE?
       89  => ['SQL_KEYWORDS',                       'KEYWORDS'                ], ## magic word
      113  => ['SQL_LIKE_ESCAPE_CLAUSE',             'Y'                       ],
       75  => ['SQL_NON_NULLABLE_COLUMNS',           1                         ], ## NNC_NOT_NULL
@@ -1718,7 +1739,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.13.1 of the DBD::Pg module
+This documents version 2.13.1_1 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
@@ -2727,7 +2748,7 @@ new notices will not be picked up while in the middle of a transaction. An examp
   }
 
 Payloads will always be an empty string unless you are connecting to a Postgres 
-server version 8.4 or higher.
+server version 8.5 or higher.
 
 =head3 B<ping>
 

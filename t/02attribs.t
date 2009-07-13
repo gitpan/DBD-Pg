@@ -414,8 +414,8 @@ SKIP: {
 	skip ('Encode module is needed for unicode tests', 5) if $@;
 
 	my $server_encoding = $dbh->selectall_arrayref('SHOW server_encoding')->[0][0];
-	skip ('Cannot test unicode with a LATIN1 database', 5)
-		if $server_encoding eq 'LATIN1';
+	skip ('Cannot reliably test unicode without a UTF8 database', 5)
+		if $server_encoding ne 'UTF8';
 
 	$SQL = 'SELECT id, pname FROM dbd_pg_test WHERE id = ?';
 	$sth = $dbh->prepare($SQL);
@@ -1469,7 +1469,13 @@ SKIP: {
 
 	$t='Database handle attribute "ReadOnly" starts out undefined';
 	$dbh->commit();
-	$dbh4 = connect_database();
+
+	## This fails on some boxes, so we pull back all information to display why
+	my ($helpconnect2, $connerror2);
+	($helpconnect2, $connerror2, $dbh4) = connect_database();
+	if (! defined $dbh4) {
+		die "Database connection failed: helpconnect is $helpconnect2, error is $connerror2\n";
+	}
 	$dbh4->trace(0);
 	is ($dbh4->{ReadOnly}, undef, $t);
 
