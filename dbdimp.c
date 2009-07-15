@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 13046 2009-07-13 00:37:29Z turnstep $
+  $Id: dbdimp.c 13058 2009-07-14 19:04:32Z turnstep $
 
   Copyright (c) 2002-2009 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -2307,10 +2307,10 @@ int dbd_bind_ph (SV * sth, imp_sth_t * imp_sth, SV * ph_name, SV * newvalue, IV 
            the insert.
 		*/
 		if (!(currph->bind_type = sql_type_data((int)sql_type))) {
-			croak("Cannot bind param %s: unknown sql_type %ld", name, sql_type);
+			croak("Cannot bind param %s: unknown sql_type %ld", name, (long)sql_type);
 		}
 		if (!(currph->bind_type = pg_type_data(currph->bind_type->type.pg))) {
-			croak("Cannot find a pg_type for %ld", sql_type);
+			croak("Cannot find a pg_type for %ld", (long)sql_type);
 		}
  	}
 	else if (NULL == currph->bind_type) { /* "sticky" data type */

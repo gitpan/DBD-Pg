@@ -1,6 +1,6 @@
 /*
 
-   $Id: quote.c 13044 2009-07-12 18:47:09Z turnstep $
+   $Id: quote.c 13055 2009-07-14 14:35:09Z turnstep $
 
    Copyright (c) 2003-2009 Greg Sabino Mullane and others: see the Changes file
 
