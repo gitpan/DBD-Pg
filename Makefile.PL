@@ -1,4 +1,4 @@
-# $Id: Makefile.PL 13055 2009-07-14 14:35:09Z turnstep $
+# $Id: Makefile.PL 13070 2009-07-17 00:45:57Z turnstep $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -7,7 +7,7 @@ use warnings;
 use 5.006001;
 
 ## No version.pm for this one, as the prereqs are not loaded yet.
-my $VERSION = '2.13.1_3';
+my $VERSION = '2.13.1_4';
 
 my $lib;
 BEGIN {
@@ -122,7 +122,6 @@ sub does_path_exist {
 }
 
 does_path_exist('POSTGRES_HOME', $ENV{POSTGRES_HOME});
-does_path_exist('POSTGRES_LIB',  $POSTGRES_LIB);
 does_path_exist('POSTGRES_INCLUDE',  $POSTGRES_INCLUDE);
 
 if ($baddir) {

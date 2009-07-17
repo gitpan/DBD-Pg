@@ -331,7 +331,7 @@ char * quote_float(const char *string, STRLEN len, STRLEN *retlen, int estring)
 			&& 0 != strncasecmp(string, "Infinity", 9)
 			&& 0 != strncasecmp(string, "-Infinity", 10)
 			) {
-			croak("Invalid number");
+			croak("Invalid numberZ");
 		}
 	}
 
