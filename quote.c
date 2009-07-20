@@ -1,6 +1,6 @@
 /*
 
-   $Id: quote.c 13055 2009-07-14 14:35:09Z turnstep $
+   $Id: quote.c 13090 2009-07-20 18:45:16Z turnstep $
 
    Copyright (c) 2003-2009 Greg Sabino Mullane and others: see the Changes file
 
@@ -100,17 +100,23 @@ char * quote_string(const char *string, STRLEN len, STRLEN *retlen, int estring)
 }
 
 
+/* Quote a geometric constant. */
+/* Note: we only verify correct characters here, not for 100% valid input */
+/* Covers: points, lines, lsegs, boxes, polygons */
 char * quote_geom(const char *string, STRLEN len, STRLEN *retlen, int estring)
 {
 	dTHX;
 	char * result;
-        const char *tmp;
+	const char *tmp;
 
 	len = 0; /* stops compiler warnings. Remove entirely someday */
 	tmp = string;
 	(*retlen) = 2;
+
 	while (*string != '\0') {
 		if (*string !=9 && *string != 32 && *string != '(' && *string != ')'
+			&& *string != '-' && *string != '+' && *string != '.'
+			&& *string != 'e' && *string != 'E'
 			&& *string != ',' && (*string < '0' || *string > '9'))
 			croak("Invalid input for geometric type");
 		(*retlen)++;
@@ -128,6 +134,7 @@ char * quote_geom(const char *string, STRLEN len, STRLEN *retlen, int estring)
 	return result - (*retlen);
 }
 
+/* Same as quote_geom, but also allows square brackets */
 char * quote_path(const char *string, STRLEN len, STRLEN *retlen, int estring)
 {
 	dTHX;
@@ -138,9 +145,11 @@ char * quote_path(const char *string, STRLEN len, STRLEN *retlen, int estring)
 	(*retlen) = 2;
 	while (*string != '\0') {
 		if (*string !=9 && *string != 32 && *string != '(' && *string != ')'
-			&& *string != ',' && *string != '[' && *string != ']'
-			&& (*string < '0' || *string > '9'))
-				croak("Invalid input for geometric path type");
+			&& *string != '-' && *string != '+' && *string != '.'
+			&& *string != 'e' && *string != 'E'
+			&& *string != '[' && *string != ']'
+			&& *string != ',' && (*string < '0' || *string > '9'))
+			croak("Invalid input for path type");
 		(*retlen)++;
 		string++;
 	}
@@ -156,6 +165,7 @@ char * quote_path(const char *string, STRLEN len, STRLEN *retlen, int estring)
 	return result - (*retlen);
 }
 
+/* Same as quote_geom, but also allows less than / greater than signs */
 char * quote_circle(const char *string, STRLEN len, STRLEN *retlen, int estring)
 {
 	dTHX;
@@ -164,11 +174,14 @@ char * quote_circle(const char *string, STRLEN len, STRLEN *retlen, int estring)
 
 	len = 0; /* stops compiler warnings. Remove entirely someday */
 	(*retlen) = 2;
+
 	while (*string != '\0') {
 		if (*string !=9 && *string != 32 && *string != '(' && *string != ')'
-			&& *string != ',' && *string != '<' && *string != '>'
-			&& (*string < '0' || *string > '9'))
-				croak("Invalid input for geometric circle type");
+			&& *string != '-' && *string != '+' && *string != '.'
+			&& *string != 'e' && *string != 'E'
+			&& *string != '<' && *string != '>'
+			&& *string != ',' && (*string < '0' || *string > '9'))
+			croak("Invalid input for circle type");
 		(*retlen)++;
 		string++;
 	}
@@ -256,33 +269,44 @@ char * quote_sql_binary(char *string, STRLEN len, STRLEN *retlen, int estring)
 	
 }
 
+/* Return TRUE, FALSE, or throws an error */
 char * quote_bool(const char *value, STRLEN len, STRLEN *retlen, int estring) 
 {
 	dTHX;
 	char *result;
-	long int int_value;
-	STRLEN	max_len=6;
 	
-	len = 0;
-	if (isDIGIT(*(const char*)value)) {
-		/* For now -- will go away when quote* take SVs */
-		int_value = atoi(value);
-	} else {
-		int_value = 42; /* Not true, not false. Just is */
-	}
-	New(0, result, max_len, char);
-	
-	if (0 == int_value)
-		strncpy(result,"FALSE\0",6);
-	else if (1 == int_value)
+	/* Things that are true: t, T, 1, true, TRUE, 0E0, 0 but true */
+	if (
+		(1 == len && (0 == strncasecmp(value, "t", 1) || '1' == *value))
+		||
+		(4 == len && 0 == strncasecmp(value, "true", 4))
+		||
+		(3 == len && 0 == strncasecmp(value, "0e0", 3))
+		||
+		(10 == len && 0 == strncasecmp(value, "0 but true", 10))
+		) {
+		New(0, result, 5, char);
 		strncpy(result,"TRUE\0",5);
-	else
-		croak("Error: Bool must be either 1 or 0");
-	
-	*retlen = strlen(result);
-	assert(*retlen+1 <= max_len);
+		*retlen = 4;
+		return result;
+	}
 
-	return result;
+	/* Things that are false: f, F, 0, false, FALSE, 0, zero-length string */
+	if (
+		(1 == len && (0 == strncasecmp(value, "f", 1) || '0' == *value))
+		||
+		(5 == len && 0 == strncasecmp(value, "false", 5))
+		||
+		(0 == len)
+		) {
+		New(0, result, 6, char);
+		strncpy(result,"FALSE\0",6);
+		*retlen = 5;
+		return result;
+	}
+
+	croak("Invalid boolean value");
+	
 }
 
 char * quote_int(const char *string, STRLEN len, STRLEN *retlen, int estring)
@@ -331,7 +355,7 @@ char * quote_float(const char *string, STRLEN len, STRLEN *retlen, int estring)
 			&& 0 != strncasecmp(string, "Infinity", 9)
 			&& 0 != strncasecmp(string, "-Infinity", 10)
 			) {
-			croak("Invalid numberZ");
+			croak("Invalid number");
 		}
 	}
 

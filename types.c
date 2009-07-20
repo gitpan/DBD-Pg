@@ -1,6 +1,6 @@
 /*
 
-   $Id: types.c 12781 2009-05-19 01:48:10Z turnstep $
+   $Id: types.c 11297 2008-05-20 21:52:34Z turnstep $
 
    Copyright (c) 2003-2009 Greg Sabino Mullane and others: see the Changes file
    

@@ -17,7 +17,7 @@ my $dbh = connect_database();
 if (! defined $dbh) {
 	plan skip_all => 'Connection to database failed, cannot continue testing';
 }
-plan tests => 129;
+plan tests => 237;
 
 my $t='Connect to database for placeholder testing';
 isnt ($dbh, undef, $t);
@@ -26,6 +26,8 @@ my ($pglibversion,$pgversion) = ($dbh->{pg_lib_version},$dbh->{pg_server_version
 if ($pgversion >= 80100) {
   $dbh->do('SET escape_string_warning = false');
 }
+
+my ($result, $SQL, $qresult);
 
 # Make sure that quoting works properly.
 $t='Quoting works properly';
@@ -127,7 +129,7 @@ if ($old_encoding ne 'UTF8') {
 }
 
 $t='Prepare with backslashes inside quotes works';
-my $SQL = q{SELECT setting FROM pg_settings WHERE name = 'backslash_quote'};
+$SQL = q{SELECT setting FROM pg_settings WHERE name = 'backslash_quote'};
 $count = $dbh->selectall_arrayref($SQL)->[0];
 my $backslash = defined $count ? $count->[0] : 0;
 my $scs = $dbh->{pg_standard_conforming_strings};
@@ -350,17 +352,11 @@ for my $float ('123','0.00','0.234','23.31562', '1.23e04','6.54e+02','4e-3','NaN
 }
 
 $prefix = 'Invalid float value fails when quoting with SQL_FLOAT';
-## This is temporary to help track down a failing test
-use Data::Dumper;
 for my $float ('3abc','123abc','','123e+04e+34','NaNum','-infinitee') {
 	$t = "$prefix (value=$float)";
 	$val = -1;
 	eval { $val = $dbh->quote($float, SQL_FLOAT); };
-	like ($@, qr{Invalid number.*}, $t);
-	diag Dumper $@;
-	my $foo = $@;
-	$foo =~ s/(.)/"$1(".ord($1).")"/ge;
-	diag $foo;
+	like ($@, qr{Invalid number}, $t);
 	is ($val, -1, $t);
 }
 
@@ -392,6 +388,329 @@ for my $word (qw/auser userz user-user/) {
 	my $got = $dbh->quote($word, { pg_type => PG_NAME });
 	$expected = qq{$word};
 	is($got, $expected, $t);
+}
+
+## Test quoting of booleans
+
+my %booltest = (
+undef         => 'NULL',
+'t'           => 'TRUE',
+'T'           => 'TRUE',
+'true'        => 'TRUE',
+'TRUE'        => 'TRUE',
+1             => 'TRUE',
+01            => 'TRUE',
+'1'           => 'TRUE',
+'0E0'         => 'TRUE',
+'0e0'         => 'TRUE',
+'0 but true'  => 'TRUE',
+'0 BUT TRUE'  => 'TRUE',
+'f'           => 'FALSE',
+'F'           => 'FALSE',
+0             => 'FALSE',
+00            => 'FALSE',
+'0'           => 'FALSE',
+'false'       => 'FALSE',
+'FALSE'       => 'FALSE',
+12            => 'ERROR',
+'01'          => 'ERROR',
+'00'          => 'ERROR',
+' false'      => 'ERROR',
+' TRUE'       => 'ERROR',
+'FALSEY'      => 'ERROR',
+'trueish'     => 'ERROR',
+'0E0E0'       => 'ERROR', ## Jungle love...
+'0 but truez' => 'ERROR',
+);
+
+while (my ($name,$val) = each %booltest) {
+	$name = undef if $name eq 'undef';
+	$t = sprintf 'Boolean quoting of %s',
+		defined $name ? qq{"$name"} : 'undef';
+	eval { $result = $dbh->quote($name, {pg_type => PG_BOOL}); };
+	if ($@) {
+		if ($val eq 'ERROR' and $@ =~ /Invalid boolean/) {
+			pass $t;
+		}
+		else {
+			fail "Failure at $t: $@\n";
+		}
+		$dbh->rollback();
+	}
+	else {
+		is ($result, $val, $t);
+	}
+}
+
+## Test quoting of geometric types
+
+my @geotypes = qw/point line lseg box path polygon circle/;
+
+$dbh->do("SET search_path TO DEFAULT");
+eval { $dbh->do("DROP TABLE dbd_pg_test_geom"); }; $dbh->commit();
+
+$SQL = 'CREATE TABLE dbd_pg_test_geom (';
+for my $type (@geotypes) {
+	$SQL .= "x$type $type,";
+}
+$SQL =~ s/,$/)/;
+$dbh->do($SQL);
+$dbh->commit();
+
+my %typemap = (
+	point   => PG_POINT,
+	line    => PG_LINE,
+	lseg    => PG_LSEG,
+	box     => PG_BOX,
+	path    => PG_PATH,
+	polygon => PG_POLYGON,
+	circle  => PG_CIRCLE,
+);
+
+my $testdata = q{
+point datatype integers
+12,34
+'12,34'
+(12,34)
+
+point datatype floating point numbers
+1.34,667
+'1.34,667'
+(1.34,667)
+
+point datatype exponential numbers
+1e34,9E4
+'1e34,9E4'
+(1e+34,90000)
+
+point datatype plus and minus signs
+1e+34,-.45
+'1e+34,-.45'
+(1e+34,-0.45)
+
+point datatype invalid number
+123,abc
+ERROR: Invalid input for geometric type
+ERROR: any
+
+point datatype invalid format
+123
+'123'
+ERROR: any
+
+point datatype invalid format
+123,456,789
+'123,456,789'
+ERROR: any
+
+point datatype invalid format
+<(2,4),6>
+ERROR: Invalid input for geometric type
+ERROR: any
+
+point datatype invalid format
+[(1,2)]
+ERROR: Invalid input for geometric type
+ERROR: any
+
+line datatype integers
+12,34
+'12,34'
+ERROR: not yet implemented
+
+line datatype floating point numbers
+1.34,667
+'1.34,667'
+ERROR: not yet implemented
+
+line datatype exponential numbers
+1e34,9E4
+'1e34,9E4'
+ERROR: not yet implemented
+
+line datatype plus and minus signs
+1e+34,-.45
+'1e+34,-.45'
+ERROR: not yet implemented
+
+line datatype invalid number
+123,abc
+ERROR: Invalid input for geometric type
+ERROR: not yet implemented
+
+
+lseg datatype invalid format
+12,34
+'12,34'
+ERROR: any
+
+lseg datatype integers
+(12,34),(56,78)
+'(12,34),(56,78)'
+[(12,34),(56,78)]
+
+lseg datatype floating point and exponential numbers
+(1.2,3.4),(5e3,7E1)
+'(1.2,3.4),(5e3,7E1)'
+[(1.2,3.4),(5000,70)]
+
+
+box datatype invalid format
+12,34
+'12,34'
+ERROR: any
+
+box datatype integers
+(12,34),(56,78)
+'(12,34),(56,78)'
+(56,78),(12,34)
+
+box datatype floating point and exponential numbers
+(1.2,3.4),(5e3,7E1)
+'(1.2,3.4),(5e3,7E1)'
+(5000,70),(1.2,3.4)
+
+
+path datatype invalid format
+12,34
+'12,34'
+ERROR: any
+
+path datatype integers
+(12,34),(56,78)
+'(12,34),(56,78)'
+((12,34),(56,78))
+
+path datatype floating point and exponential numbers
+(1.2,3.4),(5e3,7E1)
+'(1.2,3.4),(5e3,7E1)'
+((1.2,3.4),(5000,70))
+
+path datatype alternate bracket format
+[(1.2,3.4),(5e3,7E1)]
+'[(1.2,3.4),(5e3,7E1)]'
+[(1.2,3.4),(5000,70)]
+
+path datatype many elements
+(1.2,3.4),(5,6),(7,8),(-9,10)
+'(1.2,3.4),(5,6),(7,8),(-9,10)'
+((1.2,3.4),(5,6),(7,8),(-9,10))
+
+path datatype fails with braces
+{(1,2),(3,4)}
+ERROR: Invalid input for path type
+ERROR: any
+
+
+polygon datatype invalid format
+12,34
+'12,34'
+ERROR: any
+
+polygon datatype integers
+(12,34),(56,78)
+'(12,34),(56,78)'
+((12,34),(56,78))
+
+polygon datatype floating point and exponential numbers
+(1.2,3.4),(5e3,7E1)
+'(1.2,3.4),(5e3,7E1)'
+((1.2,3.4),(5000,70))
+
+polygon datatype many elements
+(1.2,3.4),(5,6),(7,8),(-9,10)
+'(1.2,3.4),(5,6),(7,8),(-9,10)'
+((1.2,3.4),(5,6),(7,8),(-9,10))
+
+polygon datatype fails with brackets
+[(1,2),(3,4)]
+ERROR: Invalid input for geometric type
+ERROR: any
+
+
+
+circle datatype invalid format
+(12,34)
+'(12,34)'
+ERROR: any
+
+circle datatype integers
+<(12,34),5>
+'<(12,34),5>'
+<(12,34),5>
+
+circle datatype floating point and exponential numbers
+<(-1.2,2E2),3e3>
+'<(-1.2,2E2),3e3>'
+<(-1.2,200),3000>
+
+circle datatype fails with brackets
+[(1,2),(3,4)]
+ERROR: Invalid input for circle type
+ERROR: any
+
+};
+
+$testdata =~ s/^\s+//;
+my $curtype = '';
+for my $line (split /\n\n+/ => $testdata) {
+	my ($text,$input,$quoted,$rows) = split /\n/ => $line;
+	next if ! $text;
+	$t = "Geometric type test: $text";
+	(my $type) = ($text =~ m{(\w+)});
+	last if $type eq 'LAST';
+	if ($curtype ne $type) {
+		$curtype = $type;
+		eval { $dbh->do('DEALLOCATE geotest'); }; $dbh->commit();
+		$dbh->do(qq{PREPARE geotest($type) AS INSERT INTO dbd_pg_test_geom(x$type) VALUES (\$1)});
+		$sth = $dbh->prepare(qq{INSERT INTO dbd_pg_test_geom(x$type) VALUES (?)});
+		$sth->bind_param(1, '', {pg_type => $typemap{$type} });
+	}
+	$dbh->do('DELETE FROM dbd_pg_test_geom');
+	eval { $qresult = $dbh->quote($input, {pg_type => $typemap{$type}}); };
+	if ($@) {
+		if ($quoted !~ /ERROR: (.+)/) {
+			fail "$t error: $@";
+		}
+		else {
+			like ($@, qr{$1}, $t);
+		}
+	}
+	else {
+		is ($qresult, $quoted, $t);
+	}
+	$dbh->commit();
+
+	eval { $dbh->do("EXECUTE geotest('$input')"); };
+	if ($@) {
+		if ($rows !~ /ERROR: (.+)/) {
+			fail "$t error: $@";
+		}
+		else {
+			## Do any error for now: i18n worries
+			pass $t;
+		}
+	}
+	$dbh->commit();
+
+	eval { $sth->execute($input); };
+	if ($@) {
+		if ($rows !~ /ERROR: (.+)/) {
+			fail $t;
+		}
+		else {
+			## Do any error for now: i18n worries
+			pass $t;
+		}
+	}
+	$dbh->commit();
+
+	if ($rows !~ /ERROR/) {
+		$SQL = "SELECT x$type FROM dbd_pg_test_geom";
+		my $expected = [[$rows],[$rows]];
+		$result = $dbh->selectall_arrayref($SQL);
+		is_deeply($result, $expected, $t);
+	}
 }
 
 ## Begin custom type testing
