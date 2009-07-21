@@ -17,7 +17,7 @@ my $dbh = connect_database();
 if (! defined $dbh) {
 	plan skip_all => 'Connection to database failed, cannot continue testing';
 }
-plan tests => 237;
+plan tests => 235;
 
 my $t='Connect to database for placeholder testing';
 isnt ($dbh, undef, $t);
@@ -545,7 +545,7 @@ for my $char (qw{0 9 A Z a z}) {
 }
 
 SKIP: {
-	skip 'Cannot run backslash_quote tet on Postgres < 8.2', 1 if $pgversion < 80200;
+	skip 'Cannot run backslash_quote test on Postgres < 8.2', 1 if $pgversion < 80200;
 
 	$t='Backslash quoting inside double quotes is parsed correctly';
 	$dbh->do(q{SET backslash_quote = 'on'});
@@ -623,11 +623,11 @@ for my $float ('123','0.00','0.234','23.31562', '1.23e04','6.54e+02','4e-3','NaN
 }
 
 $prefix = 'Invalid float value fails when quoting with SQL_FLOAT';
-for my $float ('3abc','123abc','','123e+04e+34','NaNum','-infinitee') {
+for my $float ('3abc','123abc','','NaNum','-infinitee') {
 	$t = "$prefix (value=$float)";
 	$val = -1;
 	eval { $val = $dbh->quote($float, SQL_FLOAT); };
-	like ($@, qr{Invalid number}, $t);
+	like ($@, qr{Invalid float}, $t);
 	is ($val, -1, $t);
 }
 
