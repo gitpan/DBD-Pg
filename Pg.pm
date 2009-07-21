@@ -1,5 +1,5 @@
 #  -*-cperl-*-
-#  $Id: Pg.pm 13091 2009-07-20 21:39:55Z turnstep $
+#  $Id: Pg.pm 13095 2009-07-21 14:13:03Z turnstep $
 #
 #  Copyright (c) 2002-2009 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.13.1_5');
+	use version; our $VERSION = qv('2.13.1_6');
 
 	use DBI ();
 	use DynaLoader ();
@@ -1739,7 +1739,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.13.1_5 of the DBD::Pg module
+This documents version 2.13.1_6 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
@@ -2696,7 +2696,7 @@ The C<data_type> argument is optional and should be one of the type constants
 exported by DBD::Pg (such as PG_BYTEA). In addition to string, bytea, char, bool, 
 and other standard types, the following geometric types are supported: point, line, 
 lseg, box, path, polygon, and circle (PG_POINT, PG_LINE, PG_LSEG, PG_BOX, 
-PG_POLYGON, and PG_CIRCLE respectively).
+PG_PATH, PG_POLYGON, and PG_CIRCLE respectively).
 
 B<NOTE:> The undocumented (and invalid) support for the C<SQL_BINARY> data
 type is officially deprecated. Use C<PG_BYTEA> with C<bind_param()> instead:
