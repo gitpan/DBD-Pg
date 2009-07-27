@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 13058 2009-07-14 19:04:32Z turnstep $
+  $Id: dbdimp.c 13131 2009-07-27 22:34:09Z turnstep $
 
   Copyright (c) 2002-2009 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -388,6 +388,7 @@ static ExecStatusType _sqlstate(pTHX_ imp_dbh_t * imp_dbh, PGresult * result)
 				strncpy(imp_dbh->sqlstate, "08000", 6); /* CONNECTION EXCEPTION */
 				break;
 			}
+			/*@fallthrough@*/
 		default:
 			strncpy(imp_dbh->sqlstate, "22000", 6); /* DATA EXCEPTION */
 			break;
@@ -3695,7 +3696,7 @@ pg_db_putline (SV * dbh, const char * buffer)
 
 	/* We must be in COPY IN state */
 	if (PGRES_COPY_IN != imp_dbh->copystate)
-		croak("pg_putline can only be called directly after issuing a COPY IN command\n");
+		croak("pg_putline can only be called directly after issuing a COPY FROM command\n");
 
 	TRACE_PQPUTCOPYDATA;
 	copystatus = PQputCopyData(imp_dbh->conn, buffer, (int)strlen(buffer));
@@ -3733,7 +3734,7 @@ pg_db_getline (SV * dbh, SV * svbuf, int length)
 
 	/* We must be in COPY OUT state */
 	if (PGRES_COPY_OUT != imp_dbh->copystate)
-		croak("pg_getline can only be called directly after issuing a COPY command\n");
+		croak("pg_getline can only be called directly after issuing a COPY TO command\n");
 
 	length = 0; /* Make compilers happy */
 	TRACE_PQGETCOPYDATA;
@@ -3775,7 +3776,7 @@ pg_db_getcopydata (SV * dbh, SV * dataline, int async)
 
 	/* We must be in COPY OUT state */
 	if (PGRES_COPY_OUT != imp_dbh->copystate)
-		croak("pg_getcopydata can only be called directly after issuing a COPY FROM command\n");
+		croak("pg_getcopydata can only be called directly after issuing a COPY TO command\n");
 
 	tempbuf = NULL;
 
@@ -3834,7 +3835,7 @@ pg_db_putcopydata (SV * dbh, SV * dataline)
 
 	/* We must be in COPY IN state */
 	if (PGRES_COPY_IN != imp_dbh->copystate)
-		croak("pg_putcopydata can only be called directly after issuing a COPY TO command\n");
+		croak("pg_putcopydata can only be called directly after issuing a COPY FROM command\n");
 
 	TRACE_PQPUTCOPYDATA;
 	copystatus = PQputCopyData

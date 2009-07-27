@@ -1,6 +1,6 @@
 /*
 
-   $Id: quote.c 13101 2009-07-21 19:42:00Z turnstep $
+   $Id: quote.c 13129 2009-07-27 21:57:32Z turnstep $
 
    Copyright (c) 2003-2009 Greg Sabino Mullane and others: see the Changes file
 
@@ -313,7 +313,7 @@ char * quote_int(const char *string, STRLEN len, STRLEN *retlen, int estring)
 	while (len > 0 && *string != '\0') {
 		len--;
 		if (isdigit(*string) || ' ' == *string || '+' == *string || '-' == *string) {
-			*string++;
+			string++;
 			continue;			
 		}
 		croak("Invalid integer");
@@ -347,7 +347,7 @@ char * quote_float(const char *string, STRLEN len, STRLEN *retlen, int estring)
 				|| '-' == *string
 				|| 'e' == *string
 				|| 'E' == *string) {
-				*string++;
+				string++;
 				continue;			
 			}
 			croak("Invalid float");

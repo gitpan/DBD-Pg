@@ -1,5 +1,5 @@
 #  -*-cperl-*-
-#  $Id: Pg.pm 13102 2009-07-21 19:42:24Z turnstep $
+#  $Id: Pg.pm 13126 2009-07-27 21:51:28Z turnstep $
 #
 #  Copyright (c) 2002-2009 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.13.1_7');
+	use version; our $VERSION = qv('2.14.0');
 
 	use DBI ();
 	use DynaLoader ();
@@ -1739,7 +1739,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.13.1_7 of the DBD::Pg module
+This documents version 2.14.0 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
@@ -4029,7 +4029,7 @@ you can set the attribute L<pg_expand_array|/pg_expand_array_(boolean)>, which i
 
 =head2 COPY support
 
-DBD::Pg allows for the quick (bulk) reading and storing of data by using 
+DBD::Pg allows for quick (bulk) reading and storing of data by using 
 the B<COPY> command. The basic process is to use C<$dbh-E<gt>do> to issue a 
 COPY command, and then to either add rows using L</pg_putcopydata>, or to 
 read them by using L</pg_getcopydata>.
@@ -4040,16 +4040,17 @@ For example:
 
   $dbh->do("COPY foobar FROM STDIN");
 
-This would tell the server to enter a COPY IN state. It is now ready to 
+This would tell the server to enter a COPY IN mode (yes, that's confusing, but 
+the I<mode> is COPY IN because of the I<command> COPY FROM). It is now ready to 
 receive information via the L</pg_putcopydata> method. The complete syntax of the 
 COPY command is more complex and not documented here: the canonical 
 PostgreSQL documentation for COPY can be found at:
 
 http://www.postgresql.org/docs/current/static/sql-copy.html
 
-Once the COPY command has been issued, no other SQL commands are allowed 
-until L</pg_putcopyend> has been issued, or the final L</pg_getcopydata> has 
-been called.
+Once a COPY command has been issued, no other SQL commands are allowed 
+until L</pg_putcopyend> has been issued (for COPY FROM), or the final 
+L</pg_getcopydata> has been called (for COPY TO).
 
 Note: All other COPY methods (pg_putline, pg_getline, etc.) are now 
 heavily deprecated in favor of the pg_getcopydata, pg_putcopydata, and 
@@ -4057,14 +4058,14 @@ pg_putcopyend methods.
 
 =head3 B<pg_getcopydata>
 
-Used to retrieve data from a table after the server has been put into COPY OUT 
-mode by calling "COPY tablename TO STDOUT". Data is always returned 
+Used to retrieve data from a table after the server has been put into a 
+COPY OUT mode by calling "COPY tablename TO STDOUT". Data is always returned 
 one data row at a time. The first argument to pg_getcopydata 
 is the variable into which the data will be stored (this variable should not 
-be undefined, or it may throw a warning, although it may be a reference). This 
-method returns a number greater than 1 indicating the new size of the variable, 
-or a -1 when the COPY has finished. Once a -1 has been returned, no other action is 
-necessary, as COPY mode will have already terminated. Example:
+be undefined, or it may throw a warning, although it may be a reference). The 
+pg_gecopydata method returns a number greater than 1 indicating the new size of 
+the variable, or a -1 when the COPY has finished. Once a -1 has been returned, no 
+other action is necessary, as COPY mode will have already terminated. Example:
 
   $dbh->do("COPY mytable TO STDOUT");
   my @data;
@@ -4105,7 +4106,7 @@ the COPY statement. Returns a 1 on successful input. Examples:
 
 When you are finished with pg_putcopydata, call pg_putcopyend to let the server know 
 that you are done, and it will return to a normal, non-COPY state. Returns a 1 on 
-success. This method will fail if called when not in a COPY IN or COPY OUT state. 
+success. This method will fail if called when not in COPY IN mode.
 
 =head2 Large Objects
 
