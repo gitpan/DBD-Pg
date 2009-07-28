@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 13131 2009-07-27 22:34:09Z turnstep $
+  $Id: dbdimp.c 13137 2009-07-28 17:01:34Z turnstep $
 
   Copyright (c) 2002-2009 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -3380,9 +3380,6 @@ AV * dbd_st_fetch (SV * sth, imp_sth_t * imp_sth)
 					case PG_INT4:
 					case PG_INT2:
 						sv_setiv(sv, atol((char *)value));
-						break;
-					case PG_INT8:
-						sv_setnv(sv, atoll((char *)value));
 						break;
 					default:
 						sv_setpvn(sv, (char *)value, value_len);
