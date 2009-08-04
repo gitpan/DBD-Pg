@@ -1,5 +1,5 @@
 #  -*-cperl-*-
-#  $Id: Pg.pm 13139 2009-07-28 17:03:10Z turnstep $
+#  $Id: Pg.pm 13156 2009-08-04 04:04:42Z turnstep $
 #
 #  Copyright (c) 2002-2009 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.14.1');
+	use version; our $VERSION = qv('2.14.1_1');
 
 	use DBI ();
 	use DynaLoader ();
@@ -1659,34 +1659,26 @@ use 5.006001;
 
 	sub bind_param_array {
 
+		## Binds an array of data to a specific placeholder in a statement
 		## The DBI version is broken, so we implement a near-copy here
+
 		my $sth = shift;
 		my ($p_id, $value_array, $attr) = @_;
 
+		## Bail if the second arg is not undef or an an arrayref
 		return $sth->set_err(1, "Value for parameter $p_id must be a scalar or an arrayref, not a ".ref($value_array))
 			if defined $value_array and ref $value_array and ref $value_array ne 'ARRAY';
 
+		## Bail if the first arg is not a number
 		return $sth->set_err(1, q{Can't use named placeholders for non-driver supported bind_param_array})
 			unless DBI::looks_like_number($p_id); # because we rely on execute(@ary) here
 
-		# get/create arrayref to hold params
-		my $hash_of_arrays = $sth->{ParamArrays} ||= { };
+		## Store the list of items in the hash (will be undef or an arayref)
+		$sth->{ParamArrays}{$p_id} = $value_array;
 
-		if (ref $value_array eq 'ARRAY') {
-			# check that input has same length as existing
-			# find first arrayref entry (if any)
-			for (keys %$hash_of_arrays) {
-				my $v = $$hash_of_arrays{$_};
-				next unless ref $v eq 'ARRAY';
-				return $sth->set_err
-					(1,"Arrayref for parameter $p_id has ".@$value_array.' elements'
-					 ." but parameter $_ has ".@$v)
-					if @$value_array != @$v;
-			}
-		}
-
-		$$hash_of_arrays{$p_id} = $value_array;
+		## If any attribs were passed in, we need to call bind_param
 		return $sth->bind_param($p_id, '', $attr) if $attr; ## This is the big change so -w does not complain
+
 		return 1;
 	} ## end bind_param_array
 
@@ -1739,7 +1731,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.14.1 of the DBD::Pg module
+This documents version 2.14.1_1 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
