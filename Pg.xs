@@ -1,5 +1,5 @@
 /*
-  $Id: Pg.xs 12626 2009-03-24 00:59:45Z turnstep $
+  $Id: Pg.xs 13162 2009-08-04 18:10:35Z turnstep $
 
   Copyright (c) 2000-2009 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 1997-2000 Edmund Mergl
@@ -205,7 +205,7 @@ quote(dbh, to_quote_sv, type_sv=Nullsv)
 		else if (SvROK(to_quote_sv) && !SvAMAGIC(to_quote_sv)) {
 			if (SvTYPE(SvRV(to_quote_sv)) != SVt_PVAV)
 				croak("Cannot quote a reference");
-			RETVAL = pg_stringify_array(to_quote_sv, ",", imp_dbh->pg_server_version);
+			RETVAL = pg_stringify_array(to_quote_sv, ",", imp_dbh->pg_server_version, 1);
 		}
 		else {
 			sql_type_info_t *type_info;

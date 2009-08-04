@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 13152 2009-08-02 21:45:20Z turnstep $
+  $Id: dbdimp.c 13162 2009-08-04 18:10:35Z turnstep $
 
   Copyright (c) 2002-2009 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -2246,7 +2246,7 @@ int dbd_bind_ph (SV * sth, imp_sth_t * imp_sth, SV * ph_name, SV * newvalue, IV 
 		}
 		else if (SvTYPE(SvRV(newvalue)) == SVt_PVAV) {
 			SV * quotedval;
-			quotedval = pg_stringify_array(newvalue,",",imp_dbh->pg_server_version);
+			quotedval = pg_stringify_array(newvalue,",",imp_dbh->pg_server_version, 0);
 			currph->valuelen = sv_len(quotedval);
 			Renew(currph->value, currph->valuelen+1, char); /* freed in dbd_st_destroy */
 			currph->value = SvUTF8(quotedval) ? SvPVutf8_nolen(quotedval) : SvPV_nolen(quotedval);
@@ -2380,7 +2380,7 @@ int dbd_bind_ph (SV * sth, imp_sth_t * imp_sth, SV * ph_name, SV * newvalue, IV 
 
 
 /* ================================================================== */
-SV * pg_stringify_array(SV *input, const char * array_delim, int server_version) {
+SV * pg_stringify_array(SV *input, const char * array_delim, int server_version, int extraquotes) {
 
 	dTHX;
 	AV * toparr;
@@ -2399,12 +2399,14 @@ SV * pg_stringify_array(SV *input, const char * array_delim, int server_version)
 	if (TSTART) TRC(DBILOGFP, "%sBegin pg_stringify_array\n", THEADER);
 
 	toparr = (AV *) SvRV(input);
-	value = newSVpv("{", 1);
+	value = extraquotes ? newSVpv("'{", 2) : newSVpv("{", 1);
 
 	/* Empty arrays are easy */
 	if (av_len(toparr) < 0) {
 		av_clear(toparr);
 		sv_catpv(value, "}");
+		if (extraquotes)
+			sv_catpv(value, "'");
 		if (TEND) TRC(DBILOGFP, "%sEnd pg_stringify_array (empty)\n", THEADER);
 		return value;
 	}
@@ -2506,6 +2508,8 @@ SV * pg_stringify_array(SV *input, const char * array_delim, int server_version)
 	for (xy=0; xy<array_depth; xy++) {
 		sv_catpv(value, "}");
 	}
+	if (extraquotes)
+		sv_catpv(value, "'");
 
 	if (TEND) TRC(DBILOGFP, "%sEnd pg_stringify_array (string: %s)\n", THEADER, neatsvpv(value,0));
 	return value;
@@ -2978,7 +2982,7 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 	}
 	
 	/* We use the new server_side prepare style if:
-	   1. The statement is DML (DDL is not prepareable)
+	   1. The statement is DML (DDL is not preparable)
 	   2. The attribute "pg_direct" is false
 	   3. The attribute "pg_server_prepare" is not 0
 	   4. The "onetime" attribute has not been set
@@ -3036,7 +3040,7 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 		}
 		
 		if (TRACE5) TRC(DBILOGFP, "%sRunning PQexecPrepared with (%s) (%s)\n",
-						THEADER, imp_sth->prepare_name, imp_sth->PQvals);
+						THEADER, imp_sth->prepare_name, (char *)imp_sth->PQvals);
 		if (TSQL) {
 			TRC(DBILOGFP, "EXECUTE %s (\n", imp_sth->prepare_name);
 			for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,x++) {
