@@ -11,6 +11,8 @@ MANIFEST.SKIP
 README.win32
 README.dev
 win32.mak
+LICENSES/gpl-2.0.txt
+LICENSES/artistic.txt
 
 Pg.h
 Pg.xs
@@ -38,10 +40,6 @@ t/08async.t
 t/09arrays.t
 t/12placeholders.t
 t/20savepoints.t
-t/99_perlcritic.t
-t/99_pod.t
-t/99_spellcheck.t
-t/99_yaml.t
 t/99cleanup.t
 
 t/lib/App/Info.pm

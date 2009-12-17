@@ -25,6 +25,7 @@ my @tables =
 	 'dbd_pg_test2',
 	 'dbd_pg_test1',
 	 'dbd_pg_test',
+	 'dbd_pg_test_geom',
 	 );
 
 my @sequences =
@@ -82,7 +83,7 @@ sub connect_database {
 			$testdsn =~ s/$alias\s*=/$arg->{dbreplace}=/;
 		}
 		if ($arg->{dbquotes}) {
-			$testdsn =~ s/$alias\s*=(\w+)/'db="'.lc $2.'"'/e;
+			$testdsn =~ s/$alias\s*=([\-\w]+)/'db="'.lc $2.'"'/e;
 		}
 
 		goto GOTDBH if eval {
@@ -123,8 +124,10 @@ sub connect_database {
 						my $sockdir = "$testdir/data/socket";
 						if (! -e $sockdir) {
 							mkdir $sockdir;
-							if (! chown $uid, -1, $sockdir) {
-								warn "chown of $sockdir failed!\n";
+							if ($uid) {
+								if (! chown $uid, -1, $sockdir) {
+									warn "chown of $sockdir failed!\n";
+								}
 							}
 						}
 						$option = q{-o '-k socket'};
@@ -229,7 +232,7 @@ sub connect_database {
 		}
 
 	  INITDB:
-		my ($info,$testport);
+		my $testport;
 		$helpconnect = 16;
 
 		## Use the initdb found by App::Info
@@ -239,6 +242,7 @@ sub connect_database {
 		}
 
 		## Make sure initdb exists and is working properly
+		$ENV{LANG} = 'C';
 		$info = '';
 		eval {
 			$info = qx{$initdb --help 2>&1};
@@ -268,10 +272,10 @@ sub connect_database {
 		}
 		$info = '';
 		eval {
-			$info = qx{$pg_ctl --help};
+			$info = qx{$pg_ctl --help 2>&1};
 		};
 		last GETHANDLE if $@; ## Fail - pg_ctl bad
-		if (!defined $info or $info !~ /\@postgresql\.org/) {
+		if (!defined $info or ($info !~ /\@postgresql\.org/ and $info !~ /run as root/)) {
 			$@ = defined $initdb ? "Bad pg_ctl output: $info" : 'Bad pg_ctl output';
 			last GETHANDLE; ## Fail - pg_ctl bad
 		}
@@ -300,7 +304,7 @@ sub connect_database {
 			if (open $fh, '>', $readme) {
 				print $fh "This is a test directory for DBD::Pg and may be removed\n";
 				print $fh "You may want to ensure the postmaster has been stopped first.\n";
-				print $fh "Check the port in the postgresql.conf file\n";
+				print $fh "Check the data/postmaster.pid file\n";
 				close $fh or die qq{Could not close "$readme": $!\n};
 			}
 
@@ -312,7 +316,8 @@ sub connect_database {
 			unshift @userlist, $username if defined $username and $username ne getpwent;
 
 			my %doneuser;
-			for $testuser (@userlist) {
+			for (@userlist) {
+				$testuser = $_;
 				next if $doneuser{$testuser}++;
 				$uid = (getpwnam $testuser)[2];
 				next if !defined $uid;
@@ -322,7 +327,7 @@ sub connect_database {
 				$su = $testuser;
 				$founduser++;
 				$info = '';
-				my $olddir = getcwd;
+				$olddir = getcwd;
 				eval {
 					chdir $testdir;
 					$info = qx{su -m $testuser -c "$initdb --locale=C -E UTF8 -D $testdir/data 2>&1"};
@@ -393,8 +398,13 @@ sub connect_database {
 			$@ = qq{Could not open "$conf": $!};
 			last GETHANDLE; ## Fail - no conf file
 		}
-		print $cfh "\n\n## DBD::Pg testing parameters\nport=$testport\nmax_connections=4\n";
-		print $cfh "listen_addresses='localhost'\n" if $^O =~ /Win32/;
+		print $cfh "\n\n## DBD::Pg testing parameters\n";
+		print $cfh "port=$testport\n";
+		print $cfh "max_connections=4\n";
+		print $cfh "log_statement = 'all'\n";
+		print $cfh "log_line_prefix = '%m [%p] '\n";
+		print $cfh "log_min_messages = 'DEBUG1'\n";
+		print $cfh "listen_addresses='127.0.0.1'\n" if $^O =~ /Win32/;
 		print $cfh "\n";
 		close $cfh or die qq{Could not close "$conf": $!\n};
 
@@ -418,7 +428,7 @@ sub connect_database {
 				$option = q{-o '-k socket'};
 			}
 			my $COM = qq{$pg_ctl $option -l $testdir/dbdpg_test.logfile -D $testdir/data start};
-			my $olddir = getcwd;
+		    $olddir = getcwd;
 			if ($su) {
 				chdir $testdir;
 				$COM = qq{su -m $su -c "$COM"};
@@ -449,7 +459,9 @@ sub connect_database {
 				$dbh = DBI->connect($testdsn, $testuser, '',
 									{RaiseError => 1, PrintError => 0, AutoCommit => 1});
 			};
-			if ($@ =~ /starting up/ or $@ =~ /PGSQL\.$testport/) {
+			## Regardless of the error, try again.
+			## We used to check the message, but LANG problems may complicate that.
+			if ($@) {
 				if ($loop++ < 5) {
 					sleep 1;
 					redo STARTUP;
@@ -492,6 +504,16 @@ sub connect_database {
 	$ENV{DBI_DSN} = $testdsn;
 	$ENV{DBI_USER} = $testuser;
 
+	if ($arg->{quickreturn}) {
+		return $helpconnect, '', $dbh;
+	}
+
+	my $SQL = 'SELECT usesuper FROM pg_user WHERE usename = current_user';
+	my $bga = $dbh->selectall_arrayref($SQL)->[0][0];
+	if ($bga) {
+		$dbh->do(q{SET LC_MESSAGES = 'C'});
+	}
+
 	if ($arg->{nosetup}) {
 		return $helpconnect, '', $dbh unless schema_exists($dbh, $S);
 		$dbh->do("SET search_path TO $S");
@@ -511,7 +533,7 @@ sub connect_database {
 		$dbh->do("SET search_path TO $S");
 		$dbh->do('CREATE SEQUENCE dbd_pg_testsequence');
 		# If you add columns to this, please do not use reserved words!
-		my $SQL = q{
+		$SQL = q{
 CREATE TABLE dbd_pg_test (
   id         integer not null primary key,
   lii        integer unique not null default nextval('dbd_pg_testsequence'),
@@ -522,7 +544,9 @@ CREATE TABLE dbd_pg_test (
   pdate      timestamp default now(),
   testarray  text[][],
   testarray2 int[],
+  testarray3 bool[],
   "CaseTest" boolean,
+  expo       numeric(6,2),
   bytetest   bytea
 )
 };

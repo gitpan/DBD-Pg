@@ -18,7 +18,7 @@ my $dbh = connect_database();
 if (! defined $dbh) {
 	plan skip_all => 'Connection to database failed, cannot continue testing';
 }
-plan tests => 245;
+plan tests => 257;
 
 isnt ($dbh, undef, 'Connect to database for array testing');
 
@@ -36,15 +36,38 @@ my $cleararray = $dbh->prepare($SQL);
 $SQL = q{INSERT INTO dbd_pg_test(id,pname,testarray) VALUES (99,'Array Testing',?)};
 my $addarray = $dbh->prepare($SQL);
 
+$SQL = q{INSERT INTO dbd_pg_test(id,pname,testarray2) VALUES (99,'Array Testing',?)};
+my $addarray_int = $dbh->prepare($SQL);
+
+$SQL = q{INSERT INTO dbd_pg_test(id,pname,testarray3) VALUES (99,'Array Testing',?)};
+my $addarray_bool = $dbh->prepare($SQL);
+
 $SQL = q{SELECT testarray FROM dbd_pg_test WHERE pname= 'Array Testing'};
 my $getarray = $dbh->prepare($SQL);
 
-my $array_tests =
-q![]
-{}
-Empty array
+$SQL = q{SELECT testarray2 FROM dbd_pg_test WHERE pname= 'Array Testing'};
+my $getarray_int = $dbh->prepare($SQL);
 
-['']
+$SQL = q{SELECT testarray3 FROM dbd_pg_test WHERE pname= 'Array Testing'};
+my $getarray_bool = $dbh->prepare($SQL);
+
+$t='Array quoting allows direct insertion into statements';
+$SQL = q{INSERT INTO dbd_pg_test (id,testarray2) VALUES };
+my $quoteid = $dbh->quote(123);
+my $quotearr = $dbh->quote([456]);
+$SQL .= qq{($quoteid, $quotearr)};
+eval {
+	$dbh->do($SQL);
+};
+is ($@, q{}, $t);
+$dbh->rollback();
+
+## Input
+## Expected
+## Name of test
+
+my $array_tests =
+q!['']
 {""}
 Empty array
 
@@ -152,13 +175,17 @@ Simple double quote
 {{"O\"RLY?"},{"'Ya' - \"really\""},{123}} quote: {{"O\"RLY?"},{"'Ya' - \"really\""},{"123"}}
 Many quotes
 
-["Test\\\\nRun"]
-{"Test\\\\nRun"} quote: {"Test\\\\\\nRun"}
-Simple backslash
+["Single\\\\Backslash"]
+{"Single\\\\\\\\Backslash"} quote: {"Single\\\\\\\\Backslash"}
+Single backslash testing
 
-[["Test\\\\nRun","Quite \"so\""],["back\\\\\\\\slashes are a \"pa\\\\in\"",123] ]
-{{"Test\\\\nRun","Quite \"so\""},{"back\\\\\\\\\\\\slashes are a \"pa\\\\in\"",123}} quote: {{"Test\\\\\\nRun","Quite \"so\""},{"back\\\\\\\\\\\\slashes are a \"pa\\\\\\in\"","123"}}
-Escape party
+["Double\\\\\\\\Backslash"]
+{"Double\\\\\\\\\\\\\\\\Backslash"} quote: {"Double\\\\\\\\\\\\\\\\Backslash"}
+Double backslash testing
+
+[["Test\\\nRun","Quite \"so\""],["back\\\\\\\\slashes are a \"pa\\\\in\"",123] ]
+{{"Test\\\\\\\\nRun","Quite \"so\""},{"back\\\\\\\\\\\\\\\\slashes are a \"pa\\\\\\\\in\"",123}} quote: {{"Test\\\\\\\nRun","Quite \"so\""},{"back\\\\\\\\\\\\\\\\slashes are a \"pa\\\\\\\\in\"","123"}}
+Escape party - backslash+newline, two + one
 
 [undef]
 {NULL}
@@ -184,6 +211,9 @@ for my $test (split /\n\n/ => $array_tests) {
 	my $qexpected = $expected;
 	if ($expected =~ s/\s*quote:\s*(.+)//) {
 		$qexpected = $1;
+	}
+	if ($qexpected !~ /^ERROR/) {
+		$qexpected = qq{'$qexpected'};
 	}
 
 	if ($msg =~ s/NEED (\d+):\s*//) {
@@ -271,9 +301,6 @@ for my $test (split /\n\n/ => $array_tests) {
 		$qexpected =~ s/{}/{''}/;
 		$qexpected =~ y/{}/[]/;
 		$qexpected =~ s/NULL/undef/g;
-		$qexpected =~ s/\\\\n/\\n/g;
-		$qexpected =~ s/\\\\"/\\"/g;
-		$qexpected =~ s/\\\\i/\\i/g;
 		if ($msg =~ /closing brace/) {
 			$qexpected =~ s/]"/}"/;
 		}
@@ -291,7 +318,69 @@ for my $test (split /\n\n/ => $array_tests) {
 
 }
 
+
+## Test of no-item and empty string arrays
+
+$t=q{String array with no items returns empty array};
 $cleararray->execute();
+$addarray->execute('{}');
+$getarray->execute();
+$result = $getarray->fetchall_arrayref();
+is_deeply ($result, [[[]]], $t);
+
+$t=q{String array with empty string returns empty string};
+$cleararray->execute();
+$addarray->execute('{""}');
+$getarray->execute();
+$result = $getarray->fetchall_arrayref();
+is_deeply ($result, [[['']]], $t);
+
+## Test non-string array variants
+
+$t=q{Integer array with no items returns empty array};
+$cleararray->execute();
+$addarray_int->execute('{}');
+$getarray_int->execute();
+$result = $getarray_int->fetchall_arrayref();
+is_deeply ($result, [[[]]], $t);
+
+$t=q{Boolean array with no items returns empty array};
+$cleararray->execute();
+$addarray_bool->execute('{}');
+$getarray_bool->execute();
+$result = $getarray_bool->fetchall_arrayref();
+is_deeply ($result, [[[]]], $t);
+
+$t=q{Boolean array gets created and returned correctly};
+$cleararray->execute();
+$addarray_bool->execute('{1}');
+$getarray_bool->execute();
+$result = $getarray_bool->fetchall_arrayref();
+is_deeply ($result, [[[1]]], $t);
+
+$cleararray->execute();
+$addarray_bool->execute('{0}');
+$getarray_bool->execute();
+$result = $getarray_bool->fetchall_arrayref();
+is_deeply ($result, [[[0]]], $t);
+
+$cleararray->execute();
+$addarray_bool->execute('{t}');
+$getarray_bool->execute();
+$result = $getarray_bool->fetchall_arrayref();
+is_deeply ($result, [[[1]]], $t);
+
+$cleararray->execute();
+$addarray_bool->execute('{f}');
+$getarray_bool->execute();
+$result = $getarray_bool->fetchall_arrayref();
+is_deeply ($result, [[[0]]], $t);
+
+$cleararray->execute();
+$addarray_bool->execute('{f,t,f,0,1,1}');
+$getarray_bool->execute();
+$result = $getarray_bool->fetchall_arrayref();
+is_deeply ($result, [[[0,1,0,0,1,1]]], $t);
 
 ## Pure string to array conversion testing
 
@@ -397,11 +486,11 @@ Deep nesting
 Deep nesting
 
 1::bool
-['t']
+[1]
 Test of boolean type
 
 1::bool,0::bool,'true'::boolean
-['t','f','t']
+[1,0,1]
 Test of boolean types
 
 1::oid
@@ -455,7 +544,7 @@ for my $test (split /\n\n/ => $array_tests_out) {
 
 	$t="Array test $msg : $input";
 	$SQL = qq{SELECT ARRAY[$input]};
-	my $result = '';
+	$result = '';
 	eval {
 		$result = $dbh->selectall_arrayref($SQL)->[0][0];
 	};
@@ -475,6 +564,10 @@ SKIP: {
 	eval { require Encode; };
 	skip ('Encode module is needed for unicode tests', 14) if $@;
 
+	my $server_encoding = $dbh->selectall_arrayref('SHOW server_encoding')->[0][0];
+	skip ('Cannot reliably test unicode without a UTF8 database', 14)
+		if $server_encoding ne 'UTF8';
+
 	$t='String should be UTF-8';
 	local $dbh->{pg_enable_utf8} = 1;
 	my $utf8_str = chr(0x100).'dam'; # LATIN CAPITAL LETTER A WITH MACRON
@@ -489,7 +582,7 @@ SKIP: {
 
 	$t='quote() handles utf8 inside array';
 	$quoted = $dbh->quote([$utf8_str, $utf8_str]);
-	is ($quoted, qq!{"$utf8_str","$utf8_str"}!, $t);
+	is ($quoted, qq!'{"$utf8_str","$utf8_str"}'!, $t);
 
 	$t='Quoted array of strings should be UTF-8';
     ok (Encode::is_utf8( $quoted ), $t);
@@ -502,7 +595,7 @@ SKIP: {
 
 	$t='Inserting utf-8 into an array via quoted do() works';
 	$dbh->do('DELETE FROM dbd_pg_test');
-	$SQL = qq{INSERT INTO dbd_pg_test (id, testarray, val) VALUES (1, '$quoted', 'one')};
+	$SQL = qq{INSERT INTO dbd_pg_test (id, testarray, val) VALUES (1, $quoted, 'one')};
 	eval {
 		$dbh->do($SQL);
 	};
@@ -556,6 +649,18 @@ SKIP: {
 	ok (!Encode::is_utf8($result), $t);
 	$sth->finish();
 }
+
+
+## Quick test of empty arrays
+my $expected = $pgversion >= 80300 ? [[[]]] : [[undef]];
+
+$t=q{Empty int array is returned properly};
+$result = $dbh->selectall_arrayref(q{SELECT array(SELECT 12345::int WHERE 1=0)::int[]});
+is_deeply ($result, $expected, $t);
+
+$t=q{Empty text array is returned properly};
+$result = $dbh->selectall_arrayref(q{SELECT array(SELECT 'empty'::text WHERE 1=0)::text[]});
+is_deeply ($result, $expected, $t);
 
 cleanup_database($dbh,'test');
 $dbh->disconnect;

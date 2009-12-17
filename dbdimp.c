@@ -1,8 +1,8 @@
 /*
 
-  $Id: dbdimp.c 11545 2008-07-20 14:23:46Z turnstep $
+  $Id: dbdimp.c 13667 2009-12-17 14:45:23Z turnstep $
 
-  Copyright (c) 2002-2008 Greg Sabino Mullane and others: see the Changes file
+  Copyright (c) 2002-2009 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
   Portions Copyright (c) 1997-2000 Edmund Mergl
   Portions Copyright (c) 1994-1997 Tim Bunce
@@ -14,6 +14,10 @@
 
 
 #include "Pg.h"
+
+#if defined (_WIN32) && !defined (atoll)
+#  define atoll(X) _atoi64(X)
+#endif
 
 #ifndef powf
 #define powf (float)pow
@@ -69,7 +73,7 @@ static void pg_error(pTHX_ SV *h, int error_num, const char *error_msg);
 static void pg_warn (void * arg, const char * message);
 static ExecStatusType _result(pTHX_ imp_dbh_t *imp_dbh, const char *sql);
 static ExecStatusType _sqlstate(pTHX_ imp_dbh_t *imp_dbh, PGresult *result);
-static int pg_db_rollback_commit (pTHX_ SV *dbh, imp_dbh_t *imp_dbh, char * action);
+static int pg_db_rollback_commit (pTHX_ SV *dbh, imp_dbh_t *imp_dbh, int action);
 static void pg_st_split_statement (pTHX_ imp_sth_t *imp_sth, int version, char *statement);
 static int pg_st_prepare_statement (pTHX_ SV *sth, imp_sth_t *imp_sth);
 static int is_high_bit_set(pTHX_ const unsigned char *val, STRLEN size);
@@ -181,8 +185,8 @@ int dbd_db_login (SV * dbh, imp_dbh_t * imp_dbh, char * dbname, char * uid, char
 	connstatus = PQstatus(imp_dbh->conn);
 	if (CONNECTION_OK != connstatus) {
 		TRACE_PQERRORMESSAGE;
-		pg_error(aTHX_ dbh, connstatus, PQerrorMessage(imp_dbh->conn));
 		strncpy(imp_dbh->sqlstate, "08006", 6); /* "CONNECTION FAILURE" */
+		pg_error(aTHX_ dbh, connstatus, PQerrorMessage(imp_dbh->conn));
 		TRACE_PQFINISH;
 		PQfinish(imp_dbh->conn);
 		sv_free((SV *)imp_dbh->savepoints);
@@ -222,6 +226,7 @@ int dbd_db_login (SV * dbh, imp_dbh_t * imp_dbh, char * dbname, char * uid, char
 	imp_dbh->done_begin      = DBDPG_FALSE;
 	imp_dbh->dollaronly      = DBDPG_FALSE;
 	imp_dbh->expand_array    = DBDPG_TRUE;
+	imp_dbh->txn_read_only   = DBDPG_FALSE;
 	imp_dbh->pid_number      = getpid();
 	imp_dbh->prepare_number  = 1;
 	imp_dbh->copystate       = 0;
@@ -276,6 +281,9 @@ static void pg_error (pTHX_ SV * h, int error_num, const char * error_msg)
 static void pg_warn (void * arg, const char * message)
 {
 	dTHX;
+	SV *tmp;
+
+	tmp = sv_2mortal(newRV_inc((SV *)arg));
 
 	/* This fun little bit is to prevent a core dump when the following occurs:
 	   client_min_messages is set to DEBUG3 or greater, and we exit without a disconnect.
@@ -288,11 +296,11 @@ static void pg_warn (void * arg, const char * message)
 	   like DBIc_WARN. There may be a better way of handling all this, and we may want to 
 	   default to always warn() - input welcome.
 	*/
-	if (!SvROK(SvMAGIC(SvRV(newRV((SV*)arg)))->mg_obj)) {
+	if (!SvROK(SvMAGIC(SvRV(tmp))->mg_obj)) {
 		return;
 	}
 	else {
-		D_imp_dbh( sv_2mortal(newRV((SV*)arg)) );
+		D_imp_dbh(tmp);
 
 		if (TSTART) TRC(DBILOGFP, "%sBegin pg_warn (message: %s DBIc_WARN: %d PrintWarn: %d)\n",
 						THEADER,
@@ -351,7 +359,7 @@ static ExecStatusType _sqlstate(pTHX_ imp_dbh_t * imp_dbh, PGresult * result)
 	  Because PQresultErrorField may not work completely when an error occurs, and 
 	  we are connecting over TCP/IP, only set it here if non-null, and fall through 
 	  to a better default value below.
-    */
+	*/
 	if (result) {
 		TRACE_PQRESULTERRORFIELD;
 		if (NULL != PQresultErrorField(result,PG_DIAG_SQLSTATE)) {
@@ -376,6 +384,11 @@ static ExecStatusType _sqlstate(pTHX_ imp_dbh_t * imp_dbh, PGresult * result)
 			strncpy(imp_dbh->sqlstate, "01000", 6); /* WARNING */
 			break;
 		case PGRES_FATAL_ERROR:
+			if (!result) { /* libpq returned null - some sort of connection problem */
+				strncpy(imp_dbh->sqlstate, "08000", 6); /* CONNECTION EXCEPTION */
+				break;
+			}
+			/*@fallthrough@*/
 		default:
 			strncpy(imp_dbh->sqlstate, "22000", 6); /* DATA EXCEPTION */
 			break;
@@ -453,14 +466,14 @@ static PGTransactionStatusType pg_db_txn_status (pTHX_ imp_dbh_t * imp_dbh)
 /* rollback and commit share so much code they get one function: */
 
 /* ================================================================== */
-static int pg_db_rollback_commit (pTHX_ SV * dbh, imp_dbh_t * imp_dbh, char * action)
+static int pg_db_rollback_commit (pTHX_ SV * dbh, imp_dbh_t * imp_dbh, int action)
 {
 	PGTransactionStatusType tstatus;
 	ExecStatusType          status;
 
 	if (TSTART) TRC(DBILOGFP, "%sBegin pg_db_rollback_commit (action: %s AutoCommit: %d BegunWork: %d)\n",
 					THEADER,
-					action,
+					action ? "commit" : "rollback",
 					DBIc_is(imp_dbh, DBIcf_AutoCommit) ? 1 : 0,
 					DBIc_is(imp_dbh, DBIcf_BegunWork) ? 1 : 0);
 	
@@ -474,7 +487,7 @@ static int pg_db_rollback_commit (pTHX_ SV * dbh, imp_dbh_t * imp_dbh, char * ac
 	   ask it for the status directly and double-check things */
 
 	tstatus = pg_db_txn_status(aTHX_ imp_dbh);
-	if (TRACE4) TRC(DBILOGFP, "%sdbd_db_%s txn_status is %d\n", THEADER, action, tstatus);
+	if (TRACE4) TRC(DBILOGFP, "%sdbd_db_%s txn_status is %d\n", THEADER, action ? "commit" : "rollback", tstatus);
 
 	if (PQTRANS_IDLE == tstatus) { /* Not in a transaction */
 		if (imp_dbh->done_begin) {
@@ -512,7 +525,7 @@ static int pg_db_rollback_commit (pTHX_ SV * dbh, imp_dbh_t * imp_dbh, char * ac
 		return 1;
 	}
 
-	status = _result(aTHX_ imp_dbh, action);
+	status = _result(aTHX_ imp_dbh, action ? "commit" : "rollback");
 		
 	/* Set this early, for scripts that continue despite the error below */
 	imp_dbh->done_begin = DBDPG_FALSE;
@@ -538,7 +551,7 @@ int dbd_db_commit (SV * dbh, imp_dbh_t * imp_dbh)
 {
 	dTHX;
 	if (TSTART) TRC(DBILOGFP, "%sBegin dbd_db_commit\n", THEADER);
-	return pg_db_rollback_commit(aTHX_ dbh, imp_dbh, "commit");
+	return pg_db_rollback_commit(aTHX_ dbh, imp_dbh, 1);
 }
 
 /* ================================================================== */
@@ -546,14 +559,14 @@ int dbd_db_rollback (SV * dbh, imp_dbh_t * imp_dbh)
 {
 	dTHX;
 	if (TSTART) TRC(DBILOGFP, "%sBegin dbd_db_rollback\n", THEADER);
-	return pg_db_rollback_commit(aTHX_ dbh, imp_dbh, "rollback");
+	return pg_db_rollback_commit(aTHX_ dbh, imp_dbh, 0);
 }
 
 
 /* ================================================================== */
 int dbd_db_disconnect (SV * dbh, imp_dbh_t * imp_dbh)
 {
-   	dTHX;
+	dTHX;
 
 	if (TSTART) TRC(DBILOGFP, "%sBegin dbd_db_disconnect\n", THEADER);
 
@@ -622,7 +635,7 @@ SV * dbd_db_FETCH_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv)
 	SV *   retsv = Nullsv;
 	
 	if (TSTART) TRC(DBILOGFP, "%sBegin dbd_db_FETCH (key: %s)\n", THEADER, dbh ? key : key);
-	
+
 	switch (kl) {
 
 	case 5: /* pg_db */
@@ -742,8 +755,9 @@ SV * dbd_db_FETCH_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv)
 	case 30: /* pg_standard_conforming_strings */
 
 		if (strEQ("pg_standard_conforming_strings", key)) {
-			TRACE_PQPARAMETERSTATUS;
-			retsv = newSVpv(PQparameterStatus(imp_dbh->conn,"standard_conforming_strings"),0);
+			if (NULL != PQparameterStatus(imp_dbh->conn, "standard_conforming_strings")) {
+				retsv = newSVpv(PQparameterStatus(imp_dbh->conn,"standard_conforming_strings"),0);
+			}
 		}
 		break;
 
@@ -754,7 +768,7 @@ SV * dbd_db_FETCH_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv)
 	if (!retsv)
 		return Nullsv;
 	
-	if (retsv == &sv_yes || retsv == &sv_no) {
+	if (retsv == &PL_sv_yes || retsv == &PL_sv_no) {
 		return retsv; /* no need to mortalize yes or no */
 	}
 	return sv_2mortal(retsv);
@@ -771,9 +785,20 @@ int dbd_db_STORE_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv, SV * valuesv
 	unsigned int newval = SvTRUE(valuesv);
 	int          retval = 0;
 
-	if (TSTART) TRC(DBILOGFP, "%sBegin dbd_db_STORE (key: %s newval: %d)\n", THEADER, key, newval);
+	if (TSTART) TRC(DBILOGFP, "%sBegin dbd_db_STORE (key: %s newval: %d kl:%d)\n", THEADER, key, newval, (int)kl);
 	
 	switch (kl) {
+
+	case 8: /* ReadOnly */
+
+		if (strEQ("ReadOnly", key)) {
+			if (DBIc_has(imp_dbh, DBIcf_AutoCommit)) {
+				warn("Setting ReadOnly in AutoCommit mode has no effect");
+			}
+			imp_dbh->txn_read_only = newval ? DBDPG_TRUE : DBDPG_FALSE;
+			retval = 1;
+		}
+		break;
 
 	case 10: /* AutoCommit  pg_bool_tf */
 
@@ -908,9 +933,16 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 						 newSV(0), 0);
 				}
 				else {
+					HV *pvhv2 = newHV();
+					if (currph->bind_type->type.sql) {
+						(void)hv_store(pvhv2, "TYPE", 4, newSViv(currph->bind_type->type.sql), 0);
+					}
+					else {
+						(void)hv_store(pvhv2, "pg_type", 7, newSViv(currph->bind_type->type_id), 0);
+					}
 					(void)hv_store_ent
 						(pvhv, (3==imp_sth->placeholder_type ? newSVpv(currph->fooname,0) : newSViv(i+1)),
-						 newSVpv(currph->bind_type->type_name,0),0);
+						 newRV_noinc((SV*)pvhv2), 0);
 				}
 			}
 			retsv = newRV_noinc((SV*)pvhv);
@@ -1008,7 +1040,7 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 			AV *av = newAV();
 			char *fieldname;
 			SV * sv_fieldname;
-			retsv = newRV(sv_2mortal((SV*)av));
+			retsv = newRV_inc(sv_2mortal((SV*)av));
 			while(--fields >= 0) {
 				TRACE_PQFNAME;
 				fieldname = PQfname(imp_sth->result, fields);
@@ -1024,7 +1056,7 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 			/* Need to convert the Pg type to ANSI/SQL type. */
 			sql_type_info_t * type_info;
 			AV *av = newAV();
-			retsv = newRV(sv_2mortal((SV*)av));
+			retsv = newRV_inc(sv_2mortal((SV*)av));
 			while(--fields >= 0) {
 				TRACE_PQFTYPE;
 				type_info = pg_type_data((int)PQftype(imp_sth->result, fields));
@@ -1038,7 +1070,7 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 		if (strEQ("SCALE", key)) {
 			AV *av = newAV();
 			Oid o;
-			retsv = newRV(sv_2mortal((SV*)av));
+			retsv = newRV_inc(sv_2mortal((SV*)av));
 			while(--fields >= 0) {
 				TRACE_PQFTYPE;
 				o = PQftype(imp_sth->result, fields);
@@ -1048,7 +1080,7 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 					(void)av_store(av, fields, newSViv(o % (o>>16)));
 				}
 				else {
-					(void)av_store(av, fields, &sv_undef);
+					(void)av_store(av, fields, &PL_sv_undef);
 				}
 			}
 		}
@@ -1058,7 +1090,7 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 
 		if (strEQ("pg_size", key)) {
 			AV *av = newAV();
-			retsv = newRV(sv_2mortal((SV*)av));
+			retsv = newRV_inc(sv_2mortal((SV*)av));
 			while(--fields >= 0) {
 				TRACE_PQFSIZE;
 				(void)av_store(av, fields, newSViv(PQfsize(imp_sth->result, fields)));
@@ -1067,7 +1099,7 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 		else if (strEQ("pg_type", key)) {
 			sql_type_info_t * type_info;
 			AV *av = newAV();
-			retsv = newRV(sv_2mortal((SV*)av));
+			retsv = newRV_inc(sv_2mortal((SV*)av));
 			while(--fields >= 0) {			
 				TRACE_PQFTYPE;
 				type_info = pg_type_data((int)PQftype(imp_sth->result,fields));
@@ -1087,7 +1119,7 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 			D_imp_dbh_from_sth;
 			int nullable; /* 0 = not nullable, 1 = nullable 2 = unknown */
 			int y;
-			retsv = newRV(sv_2mortal((SV*)av));
+			retsv = newRV_inc(sv_2mortal((SV*)av));
 
 			while(--fields >= 0) {
 				nullable=2;
@@ -1132,7 +1164,7 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 			AV *av = newAV();
 			int sz = 0;
 			Oid o;
-			retsv = newRV(sv_2mortal((SV*)av));
+			retsv = newRV_inc(sv_2mortal((SV*)av));
 			while(--fields >= 0) {
 				TRACE_PQFTYPE;
 				o = PQftype(imp_sth->result, fields);
@@ -1153,7 +1185,7 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 					sz = PQfsize(imp_sth->result, fields);
 					break;
 				}
-				(void)av_store(av, fields, sz > 0 ? newSViv(sz) : &sv_undef);
+				(void)av_store(av, fields, sz > 0 ? newSViv(sz) : &PL_sv_undef);
 			}
 		}
 		break;
@@ -1161,13 +1193,13 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 	case 10: /* CursorName */
 
 		if (strEQ("CursorName", key))
-			retsv = &sv_undef;
+			retsv = &PL_sv_undef;
 		break;
 
 	case 11: /* RowsInCache */
 
 		if (strEQ("RowsInCache", key))
-			retsv = &sv_undef;
+			retsv = &PL_sv_undef;
 		break;
 
 	case 13: /* pg_oid_status  pg_cmd_status */
@@ -1266,7 +1298,7 @@ int dbd_discon_all (SV * drh, imp_drh_t * imp_drh)
 	if (TSTART) TRC(DBILOGFP, "%sBegin dbd_discon_all\n", THEADER);
 
 	/* The disconnect_all concept is flawed and needs more work */
-	if (!PL_dirty && !SvTRUE(perl_get_sv("DBI::PERL_ENDING",0))) {
+	if (!PL_dirty && !SvTRUE(get_sv("DBI::PERL_ENDING",0))) {
 		sv_setiv(DBIc_ERR(imp_drh), (IV)1);
 		sv_setpv(DBIc_ERRSTR(imp_drh), "disconnect_all not implemented");
 	}
@@ -1279,7 +1311,7 @@ int dbd_discon_all (SV * drh, imp_drh_t * imp_drh)
 
 /* Deprecated in favor of $dbh->{pg_socket} */
 /* ================================================================== */
-int pg_db_getfd (SV * dbh, imp_dbh_t * imp_dbh)
+int pg_db_getfd (imp_dbh_t * imp_dbh)
 {
 	dTHX;
 
@@ -1308,7 +1340,7 @@ SV * pg_db_pg_notifies (SV * dbh, imp_dbh_t * imp_dbh)
 		TRACE_PQERRORMESSAGE;
 		pg_error(aTHX_ dbh, PGRES_FATAL_ERROR, PQerrorMessage(imp_dbh->conn));
 		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_pg_notifies (error)\n", THEADER);
-		return &sv_undef;
+		return &PL_sv_undef;
 	}
 
 	TRACE_PQNOTIFIES;
@@ -1316,7 +1348,7 @@ SV * pg_db_pg_notifies (SV * dbh, imp_dbh_t * imp_dbh)
 
 	if (!notify) {
 		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_pg_notifies (undef)\n", THEADER);
-		return &sv_undef; 
+		return &PL_sv_undef; 
 	}
 
 	ret=newAV();
@@ -1328,7 +1360,7 @@ SV * pg_db_pg_notifies (SV * dbh, imp_dbh_t * imp_dbh)
 	TRACE_PQFREEMEM;
  	PQfreemem(notify);
 
-	retsv = newRV(sv_2mortal((SV*)ret));
+	retsv = newRV_inc(sv_2mortal((SV*)ret));
 
 	if (TEND) TRC(DBILOGFP, "%sEnd pg_db_pg_notifies\n", THEADER);
 	return sv_2mortal(retsv);
@@ -1365,6 +1397,10 @@ int dbd_st_prepare (SV * sth, imp_sth_t * imp_sth, char * statement, SV * attrib
 	imp_sth->type_info        = NULL;
 	imp_sth->seg              = NULL;
 	imp_sth->ph               = NULL;
+	imp_sth->PQvals           = NULL;
+	imp_sth->PQlens           = NULL;
+	imp_sth->PQfmts           = NULL;
+	imp_sth->PQoids           = NULL;
 	imp_sth->prepared_by_us   = DBDPG_FALSE; /* Set to 1 when actually done preparing */
 	imp_sth->onetime          = DBDPG_FALSE; /* Allow internal shortcut */
 	imp_sth->direct           = DBDPG_FALSE;
@@ -1476,6 +1512,8 @@ static void pg_st_split_statement (pTHX_ imp_sth_t * imp_sth, int version, char 
 
 	/* Builds the "segment" and "placeholder" structures for a statement handle */
 
+	D_imp_dbh_from_sth;
+
 	STRLEN currpos; /* Where we currently are in the statement string */
 
 	STRLEN sectionstart, sectionstop; /* Borders of current section */
@@ -1499,6 +1537,8 @@ static void pg_st_split_statement (pTHX_ imp_sth_t * imp_sth, int version, char 
 	bool inside_dollar; /* Inside a dollar quoted value */
 
 	char * dollarstring = NULL; /* Dynamic string between $$ in dollar quoting */
+
+	char standard_conforming_strings = 1; /* Status 0=on 1=unknown -1=off */
 
 	STRLEN xlen; /* Because "x" is too hard to search for */
 
@@ -1537,7 +1577,7 @@ static void pg_st_split_statement (pTHX_ imp_sth_t * imp_sth, int version, char 
 			imp_sth->seg->segment = NULL;
 		}
 		if (TRACE6) TRC(DBILOGFP, "%sdirect split = (%s) length=(%d)\n",
-						THEADER, imp_sth->seg->segment, imp_sth->totalsize);
+						THEADER, imp_sth->seg->segment, (int)imp_sth->totalsize);
 		if (TEND) TRC(DBILOGFP, "%sEnd pg_st_split_statement (direct)\n", THEADER);
 		return;
 	}
@@ -1578,15 +1618,24 @@ static void pg_st_split_statement (pTHX_ imp_sth_t * imp_sth, int version, char 
 		if ('\'' == ch || '"' == ch) {
 			quote = ch;
 			backslashes = 0;
+			if ('\'' == ch && 1 == standard_conforming_strings) {
+				const char * scs = PQparameterStatus(imp_dbh->conn,"standard_conforming_strings");
+				standard_conforming_strings = (NULL==scs ? 1 : strncmp(scs,"on",2));
+			}
+
 			/* Go until ending quote character (unescaped) or end of string */
 			while (quote && ++currpos && (ch = *statement++)) {
 				/* 1.1 : single quotes have no meaning in double-quoted sections and vice-versa */
 				/* 1.2 : backslashed quotes do not end the section */
-				if (ch == quote && (0==(backslashes&1))) {
+				/* 1.2.1 : backslashes have no meaning in double quoted sections */
+				/* 1.2.2 : if standard_confirming_strings is set, ignore backslashes in single quotes */
+				if (ch == quote && (quote == '"' || 0==(backslashes&1))) {
 					quote = 0;
 				}
-				else if ('\\' == ch) 
-					backslashes++;
+				else if ('\\' == ch) {
+					if (quote == '"' || standard_conforming_strings)
+						backslashes++;
+				}
 				else
 					backslashes = 0;
 			}
@@ -1603,14 +1652,13 @@ static void pg_st_split_statement (pTHX_ imp_sth_t * imp_sth, int version, char 
 
 		/* 2: A comment block: */
 		if (('-' == ch && '-' == *statement) ||
-			('/' == ch && '/' == *statement) ||
 			('/' == ch && '*' == *statement)
 			) {
 			quote = *statement;
 			/* Go until end of comment (may be newline) or end of the string */
 			while (quote && ++currpos && (ch = *statement++)) {
-				/* 2.1: dashdash and slashslash only terminate at newline */
-				if (('-' == quote || '/' == quote) && '\n' == ch) {
+				/* 2.1: dashdash only terminates at newline */
+				if ('-' == quote && '\n' == ch) {
 					quote=0;
 				}
 				/* 2.2: slashstar ends with a matching starslash */
@@ -1631,8 +1679,16 @@ static void pg_st_split_statement (pTHX_ imp_sth_t * imp_sth, int version, char 
 		} /* end comment section */
 
 		/* 3: advanced dollar quoting - only if the backend is version 8 or higher */
-		if (version >= 80000 && '$' == ch && (*statement == '$' || *statement >= 'A')) {
-			/* Unlike PG, we allow a little more latitude in legal characters - anything >= 65 can be used */
+		if (version >= 80000 && '$' == ch && 
+			(*statement == '$' 
+			 || *statement == '_'
+			 || (*statement >= 'A' && *statement <= 'Z') 
+			 || (*statement >= 'a' && *statement <= 'z'))) {
+			/* "SQL identifiers must begin with a letter (a-z, but also letters with diacritical marks and non-Latin letters) 
+                or an underscore (_). Subsequent characters in an identifier or key word can be letters, underscores, 
+                digits (0-9), or dollar signs ($)
+			*/
+			/* Postgres technically allows \200-\377 as well, but we don't */
 			sectionsize = 0; /* How far from the first dollar sign are we? */
 			found = 0; /* Have we found the end of the dollarquote? */
 
@@ -1640,12 +1696,17 @@ static void pg_st_split_statement (pTHX_ imp_sth_t * imp_sth, int version, char 
 			while ((ch = *statement++)) {
 
 				sectionsize++;
-				/* If we hit an invalid character, bail out */
-				if (ch <= 32 || (ch >= '0' && ch <= '9')) {
-					break;
-				}
 				if ('$' == ch) {
 					found = DBDPG_TRUE;
+					break;
+				}
+
+				/* If we hit an invalid character, bail out */
+				if (ch <= 47 
+					|| (ch >= 58 && ch <= 64)
+					|| (ch >= 91 && ch <= 94)
+					|| ch == 96
+					|| (ch >= 123)) {
 					break;
 				}
 			} /* end first scan */
@@ -1925,16 +1986,18 @@ static void pg_st_split_statement (pTHX_ imp_sth_t * imp_sth, int version, char 
 	if (TRACE7) {
 		TRC(DBILOGFP, "%sPlaceholder type: %d numsegs: %d numphs: %d\n",
 			THEADER, imp_sth->placeholder_type, imp_sth->numsegs, imp_sth->numphs);
-		TRC(DBILOGFP, "%sPlaceholder numbers, ph id, and segments:\n",
+		TRC(DBILOGFP, "%sPlaceholder numbers and segments:\n",
 			THEADER);
 		for (currseg=imp_sth->seg; NULL != currseg; currseg=currseg->nextseg) {
 			TRC(DBILOGFP, "%sPH: (%d) SEG: (%s)\n",
 				THEADER, currseg->placeholder, currseg->segment);
 		}
-		TRC(DBILOGFP, "%sPlaceholder number, fooname, id:\n", THEADER);
-		for (xlen=1,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,xlen++) {
-			TRC(DBILOGFP, "%s#%d FOONAME: (%s)\n",
-				THEADER, xlen, currph->fooname);
+		if (imp_sth->numphs) {
+			TRC(DBILOGFP, "%sPlaceholder number, fooname, id:\n", THEADER);
+			for (xlen=1,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,xlen++) {
+				TRC(DBILOGFP, "%s#%d FOONAME: (%s)\n",
+					THEADER, (int)xlen, currph->fooname);
+			}
 		}
 	}
 
@@ -1958,7 +2021,6 @@ static int pg_st_prepare_statement (pTHX_ SV * sth, imp_sth_t * imp_sth)
 	int          status = -1;
 	seg_t *      currseg;
 	bool         oldprepare = DBDPG_TRUE;
-	Oid *        paramTypes = NULL;
 	ph_t *       currph;
 
 	if (TSTART) TRC(DBILOGFP, "%sBegin pg_st_prepare_statement\n", THEADER);
@@ -2053,20 +2115,20 @@ static int pg_st_prepare_statement (pTHX_ SV * sth, imp_sth_t * imp_sth)
 		int params = 0;
 		if (imp_sth->numbound!=0) {
 			params = imp_sth->numphs;
-			Newz(0, paramTypes, imp_sth->numphs, Oid);
+			if (NULL == imp_sth->PQoids) {
+				Newz(0, imp_sth->PQoids, (unsigned int)imp_sth->numphs, Oid);
+			}
 			for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph) {
-				paramTypes[x++] = (currph->defaultval) ? 0 : (Oid)currph->bind_type->type_id;
+				imp_sth->PQoids[x++] = (currph->defaultval) ? 0 : (Oid)currph->bind_type->type_id;
 			}
 		}
 		if (TSQL)
 			TRC(DBILOGFP, "PREPARE %s AS %s;\n\n", imp_sth->prepare_name, statement);
 
 		TRACE_PQPREPARE;
-		result = PQprepare(imp_dbh->conn, imp_sth->prepare_name, statement, params, paramTypes);
-		Safefree(paramTypes);
+		result = PQprepare(imp_dbh->conn, imp_sth->prepare_name, statement, params, imp_sth->PQoids);
+		status = _sqlstate(aTHX_ imp_dbh, result);
 		if (result) {
-			TRACE_PQRESULTSTATUS;
-			status = PQresultStatus(result);
 			TRACE_PQCLEAR;
 			PQclear(result);
 		}
@@ -2076,6 +2138,8 @@ static int pg_st_prepare_statement (pTHX_ SV * sth, imp_sth_t * imp_sth)
 	Safefree(statement);
 	if (PGRES_COMMAND_OK != status) {
 		TRACE_PQERRORMESSAGE;
+		Safefree(imp_sth->prepare_name);
+		imp_sth->prepare_name = NULL;
 		pg_error(aTHX_ sth, status, PQerrorMessage(imp_dbh->conn));
 		if (TEND) TRC(DBILOGFP, "%sEnd pg_st_prepare_statement (error)\n", THEADER);
 		return -2;
@@ -2182,10 +2246,10 @@ int dbd_bind_ph (SV * sth, imp_sth_t * imp_sth, SV * ph_name, SV * newvalue, IV 
 		}
 		else if (SvTYPE(SvRV(newvalue)) == SVt_PVAV) {
 			SV * quotedval;
-			quotedval = pg_stringify_array(newvalue,",",imp_dbh->pg_server_version);
+			quotedval = pg_stringify_array(newvalue,",",imp_dbh->pg_server_version, 0);
 			currph->valuelen = sv_len(quotedval);
 			Renew(currph->value, currph->valuelen+1, char); /* freed in dbd_st_destroy */
-			currph->value = SvPVutf8_nolen(quotedval);
+			currph->value = SvUTF8(quotedval) ? SvPVutf8_nolen(quotedval) : SvPV_nolen(quotedval);
 			currph->bind_type = pg_type_data(PG_CSTRINGARRAY);
 			is_array = DBDPG_TRUE;
 		}
@@ -2246,10 +2310,10 @@ int dbd_bind_ph (SV * sth, imp_sth_t * imp_sth, SV * ph_name, SV * newvalue, IV 
            the insert.
 		*/
 		if (!(currph->bind_type = sql_type_data((int)sql_type))) {
-			croak("Cannot bind param %s: unknown sql_type %ld", name, sql_type);
+			croak("Cannot bind param %s: unknown sql_type %ld", name, (long)sql_type);
 		}
 		if (!(currph->bind_type = pg_type_data(currph->bind_type->type.pg))) {
-			croak("Cannot find a pg_type for %ld", sql_type);
+			croak("Cannot find a pg_type for %ld", (long)sql_type);
 		}
  	}
 	else if (NULL == currph->bind_type) { /* "sticky" data type */
@@ -2271,7 +2335,7 @@ int dbd_bind_ph (SV * sth, imp_sth_t * imp_sth, SV * ph_name, SV * newvalue, IV 
 
 	/* convert to a string ASAP */
 	if (!SvPOK(newvalue) && SvOK(newvalue)) {
-		(void)sv_2pv(newvalue, &na);
+		(void)sv_2pv(newvalue, &PL_na);
 	}
 
 	/* upgrade to at least string */
@@ -2306,7 +2370,7 @@ int dbd_bind_ph (SV * sth, imp_sth_t * imp_sth, SV * ph_name, SV * newvalue, IV 
 		TRC	(DBILOGFP,
 			 "%sPlaceholder (%s) bound as type (%s) (type_id=%d), length %d, value of (%s)\n",
 			 THEADER, name, currph->bind_type->type_name,
-			 currph->bind_type->type_id, currph->valuelen,
+			 currph->bind_type->type_id, (int)currph->valuelen,
 			 PG_BYTEA==currph->bind_type->type_id ? "(binary, not shown)" : value_string);
 
 	if (TEND) TRC(DBILOGFP, "%sEnd dbd_bind_ph\n", THEADER);
@@ -2316,7 +2380,7 @@ int dbd_bind_ph (SV * sth, imp_sth_t * imp_sth, SV * ph_name, SV * newvalue, IV 
 
 
 /* ================================================================== */
-SV * pg_stringify_array(SV *input, const char * array_delim, int server_version) {
+SV * pg_stringify_array(SV *input, const char * array_delim, int server_version, int extraquotes) {
 
 	dTHX;
 	AV * toparr;
@@ -2335,12 +2399,14 @@ SV * pg_stringify_array(SV *input, const char * array_delim, int server_version)
 	if (TSTART) TRC(DBILOGFP, "%sBegin pg_stringify_array\n", THEADER);
 
 	toparr = (AV *) SvRV(input);
-	value = newSVpv("{", 1);
+	value = extraquotes ? newSVpv("'{", 2) : newSVpv("{", 1);
 
 	/* Empty arrays are easy */
 	if (av_len(toparr) < 0) {
 		av_clear(toparr);
 		sv_catpv(value, "}");
+		if (extraquotes)
+			sv_catpv(value, "'");
 		if (TEND) TRC(DBILOGFP, "%sEnd pg_stringify_array (empty)\n", THEADER);
 		return value;
 	}
@@ -2410,10 +2476,13 @@ SV * pg_stringify_array(SV *input, const char * array_delim, int server_version)
 					SvUTF8_on(value);
 				string = SvPV(svitem, svlen);
 				while (svlen--) {
+
+					/* If an embedded quote, throw a backslash before it */
 					if ('\"' == *string)
 						sv_catpvn(value, "\\", 1);
+					/* If a backslash, double it up */
 					if ('\\' == *string) {
-						sv_catpvn(value, "\\\\", 2);
+						sv_catpvn(value, "\\\\\\", 3);
 					}
 					sv_catpvn(value, string, 1);
 					string++;
@@ -2439,6 +2508,8 @@ SV * pg_stringify_array(SV *input, const char * array_delim, int server_version)
 	for (xy=0; xy<array_depth; xy++) {
 		sv_catpv(value, "}");
 	}
+	if (extraquotes)
+		sv_catpv(value, "'");
 
 	if (TEND) TRC(DBILOGFP, "%sEnd pg_stringify_array (string: %s)\n", THEADER, neatsvpv(value,0));
 	return value;
@@ -2455,6 +2526,7 @@ static SV * pg_destringify_array(pTHX_ imp_dbh_t *imp_dbh, unsigned char * input
 	char*  string;
 	STRLEN section_size = 0;
 	bool   in_quote = 0;
+	bool   seen_quotes = 0;
 	int    opening_braces = 0;
 	int    closing_braces = 0;
 
@@ -2465,6 +2537,14 @@ static SV * pg_destringify_array(pTHX_ imp_dbh_t *imp_dbh, unsigned char * input
 	  Note: we don't do careful balance checking here, as this is coming straight from 
 	  the Postgres backend, and we rely on it to give us a sane and balanced structure
 	*/
+
+	/* The array may start with a non 1-based beginning. If so, we'll just eat the range */
+	if ('[' == *input) {
+		while (*input != '\0') {
+			if ('=' == *input++)
+				break;
+		}
+	}
 
 	/* Eat the opening brace and perform a sanity check */
 	if ('{' != *(input++))
@@ -2506,7 +2586,7 @@ static SV * pg_destringify_array(pTHX_ imp_dbh_t *imp_dbh, unsigned char * input
 		else if ('}' == *input) {
 		}
 		else if ('"' == *input) {
-			in_quote = (bool)1;
+			in_quote = seen_quotes = (bool)1;
 		}
 		else {
 			string[section_size++] = *input;
@@ -2514,14 +2594,19 @@ static SV * pg_destringify_array(pTHX_ imp_dbh_t *imp_dbh, unsigned char * input
 
 		if ('}' == *input || (coltype->array_delimeter == *input && '}' != *(input-1))) {
 			string[section_size] = '\0';
-			if (4 == section_size && 0 == strncmp(string, "NULL", 4) && '"' != *(input-1)) {
+			if (0 == section_size && !seen_quotes) {
+				/* Just an empty array */
+			}
+			else if (4 == section_size && 0 == strncmp(string, "NULL", 4) && '"' != *(input-1)) {
 				av_push(currentav, &PL_sv_undef);
 			}
 			else {
 				if (1 == coltype->svtype)
-					av_push(currentav, newSViv(SvIV(newSVpvn(string,section_size))));
+					av_push(currentav, newSViv(SvIV(sv_2mortal(newSVpvn(string,section_size)))));
 				else if (2 == coltype->svtype)
-					av_push(currentav, newSVnv(SvNV(newSVpvn(string,section_size))));
+					av_push(currentav, newSVnv(SvNV(sv_2mortal(newSVpvn(string,section_size)))));
+				else if (3 == coltype->svtype)
+					av_push(currentav, newSViv('t' == *string ? 1 : 0));
 				else {
 					SV *sv = newSVpvn(string, section_size);
 #ifdef is_utf8_string
@@ -2568,7 +2653,7 @@ static SV * pg_destringify_array(pTHX_ imp_dbh_t *imp_dbh, unsigned char * input
 	Safefree(string);
 
 	if (TEND) TRC(DBILOGFP, "%sEnd pg_destringify_array\n", THEADER);
-	return newRV((SV*)av);
+	return newRV_noinc((SV*)av);
 
 } /* end of pg_destringify_array */
 
@@ -2620,7 +2705,22 @@ int pg_quickexec (SV * dbh, const char * sql, const int asyncflag)
 			return -2;
 		}
 		imp_dbh->done_begin = DBDPG_TRUE;
+		/* If read-only mode, make it so */
+		if (imp_dbh->txn_read_only) {
+			status = _result(aTHX_ imp_dbh, "set transaction read only");
+			if (PGRES_COMMAND_OK != status) {
+				TRACE_PQERRORMESSAGE;
+				pg_error(aTHX_ dbh, status, PQerrorMessage(imp_dbh->conn));
+				if (TEND) TRC(DBILOGFP, "%sEnd pg_quickexec (error: set transaction read only failed)\n", THEADER);
+				return -2;
+			}
+		}
 	}
+
+	/*
+	  We want txn mode if AutoCommit
+	 */
+
 
 	/* Asynchronous commands get kicked off and return undef */
 	if (asyncflag & PG_ASYNC) {
@@ -2648,6 +2748,7 @@ int pg_quickexec (SV * dbh, const char * sql, const int asyncflag)
 
 	imp_dbh->copystate = 0; /* Assume not in copy mode until told otherwise */
 
+	if (TRACE4) TRC(DBILOGFP, "%sGot a status of %d\n", THEADER, status);
 	switch (status) {
 	case PGRES_TUPLES_OK:
 		TRACE_PQNTUPLES;
@@ -2732,10 +2833,6 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 	ph_t *        currph;
 	int           status = -1;
 	STRLEN        execsize, x;
-	const char ** paramValues = NULL;
-	int *         paramLengths = NULL;
-	int *         paramFormats = NULL;
-	Oid *         paramTypes = NULL;
 	seg_t *       currseg;
 	char *        statement = NULL;
 	int           num_fields;
@@ -2788,6 +2885,16 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 			return -2;
 		}
 		imp_dbh->done_begin = DBDPG_TRUE;
+		/* If read-only mode, make it so */
+		if (imp_dbh->txn_read_only) {
+			status = _result(aTHX_ imp_dbh, "set transaction read only");
+			if (PGRES_COMMAND_OK != status) {
+				TRACE_PQERRORMESSAGE;
+				pg_error(aTHX_ sth, status, PQerrorMessage(imp_dbh->conn));
+				if (TEND) TRC(DBILOGFP, "%sEnd pg_quickexec (error: set transaction read only failed)\n", THEADER);
+				return -2;
+			}
+		}
 	}
 
 	/* clear old result (if any) */
@@ -2847,35 +2954,39 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 	}
 	else { /* We are using a server that can handle PQexecParams/PQexecPrepared */
 		/* Put all values into an array to pass to PQexecPrepared */
-		Newz(0, paramValues, imp_sth->numphs, const char *); /* freed below */
+		if (NULL == imp_sth->PQvals) {
+			Newz(0, imp_sth->PQvals, (unsigned int)imp_sth->numphs, const char *); /* freed in dbd_st_destroy */
+		}
 		for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph) {
-			paramValues[x++] = currph->value;
+			imp_sth->PQvals[x++] = currph->value;
 		}
 
 		/* Binary or regular? */
 
 		if (imp_sth->has_binary) {
-			Newz(0, paramLengths, imp_sth->numphs, int); /* freed below */
-			Newz(0, paramFormats, imp_sth->numphs, int); /* freed below */
+			if (NULL == imp_sth->PQlens) {
+				Newz(0, imp_sth->PQlens, (unsigned int)imp_sth->numphs, int); /* freed in dbd_st_destroy */
+				Newz(0, imp_sth->PQfmts, (unsigned int)imp_sth->numphs, int); /* freed below */
+			}
 			for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,x++) {
 				if (PG_BYTEA==currph->bind_type->type_id) {
-					paramLengths[x] = (int)currph->valuelen;
-					paramFormats[x] = 1;
+					imp_sth->PQlens[x] = (int)currph->valuelen;
+					imp_sth->PQfmts[x] = 1;
 				}
 				else {
-					paramLengths[x] = 0;
-					paramFormats[x] = 0;
+					imp_sth->PQlens[x] = 0;
+					imp_sth->PQfmts[x] = 0;
 				}
 			}
 		}
 	}
 	
 	/* We use the new server_side prepare style if:
-	   1. The statement is DML
+	   1. The statement is DML (DDL is not preparable)
 	   2. The attribute "pg_direct" is false
 	   3. The attribute "pg_server_prepare" is not 0
-	   4. There is one or more placeholders
-	   5. There are no DEFAULT values
+	   4. The "onetime" attribute has not been set
+	   5. There are no DEFAULT or CURRENT values
 	   6a. The attribute "pg_server_prepare" is 1
 	   OR
 	   6b. All placeholders are bound (and "pg_server_prepare" is 2)
@@ -2895,7 +3006,7 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 		&& 0 != imp_sth->server_prepare
 		&& !imp_sth->has_default
 		&& !imp_sth->has_current
-		&& (1 <= imp_sth->numphs && !imp_sth->onetime)
+		&& !imp_sth->onetime
 		&& (1 == imp_sth->server_prepare
 			|| (imp_sth->numbound == imp_sth->numphs))
 		){
@@ -2908,9 +3019,6 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 				if (TRACE5) TRC(DBILOGFP, "%sRe-preparing statement\n", THEADER);
 			}
 			if (pg_st_prepare_statement(aTHX_ sth, imp_sth)!=0) {
-				Safefree(paramValues);
-				Safefree(paramLengths);
-				Safefree(paramFormats);
 				if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_execute (error)\n", THEADER);
 				return -2;
 			}
@@ -2922,12 +3030,12 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 		
 		if (TRACE7) {
 			for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,x++) {
-				TRC(DBILOGFP, "%sPQexecPrepared item #%d\n", THEADER, x);
+				TRC(DBILOGFP, "%sPQexecPrepared item #%d\n", THEADER, (int)x);
 				TRC(DBILOGFP, "%s-> Value: (%s)\n",
-					THEADER, (paramFormats && paramFormats[x]==1) ? "(binary, not shown)" 
-									: paramValues[x]);
-				TRC(DBILOGFP, "%s-> Length: (%d)\n", THEADER, paramLengths ? paramLengths[x] : 0);
-				TRC(DBILOGFP, "%s-> Format: (%d)\n", THEADER, paramFormats ? paramFormats[x] : 0);
+					THEADER, (imp_sth->PQfmts && imp_sth->PQfmts[x]==1) ? "(binary, not shown)" 
+									: imp_sth->PQvals[x]);
+				TRC(DBILOGFP, "%s-> Length: (%d)\n", THEADER, imp_sth->PQlens ? imp_sth->PQlens[x] : 0);
+				TRC(DBILOGFP, "%s-> Format: (%d)\n", THEADER, imp_sth->PQfmts ? imp_sth->PQfmts[x] : 0);
 			}
 		}
 		
@@ -2936,7 +3044,7 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 		if (TSQL) {
 			TRC(DBILOGFP, "EXECUTE %s (\n", imp_sth->prepare_name);
 			for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,x++) {
-				TRC(DBILOGFP, "$%d: %s\n", x+1, paramValues[x]);
+				TRC(DBILOGFP, "$%d: %s\n", (int)x+1, imp_sth->PQvals[x]);
 			}
 			TRC(DBILOGFP, ");\n\n");
 		}
@@ -2944,12 +3052,12 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 		if (imp_sth->async_flag & PG_ASYNC) {
 			TRACE_PQSENDQUERYPREPARED;
 			ret = PQsendQueryPrepared
-				(imp_dbh->conn, imp_sth->prepare_name, imp_sth->numphs, paramValues, paramLengths, paramFormats, 0);
+				(imp_dbh->conn, imp_sth->prepare_name, imp_sth->numphs, imp_sth->PQvals, imp_sth->PQlens, imp_sth->PQfmts, 0);
 		}
 		else {
 			TRACE_PQEXECPREPARED;
 			imp_sth->result = PQexecPrepared
-				(imp_dbh->conn, imp_sth->prepare_name, imp_sth->numphs, paramValues, paramLengths, paramFormats, 0);
+				(imp_dbh->conn, imp_sth->prepare_name, imp_sth->numphs, imp_sth->PQvals, imp_sth->PQlens, imp_sth->PQfmts, 0);
 		}
 	} /* end new-style prepare */
 	else {
@@ -2986,32 +3094,35 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 			New(0, statement, execsize+1, char); /* freed below */
 			statement[0] = '\0';
 			for (currseg=imp_sth->seg; NULL != currseg; currseg=currseg->nextseg) {
-				strcat(statement, currseg->segment);
+				if (currseg->segment != NULL)
+					strcat(statement, currseg->segment);
 				if (currseg->placeholder!=0)
 					sprintf(strchr(statement, '\0'), "$%d", currseg->placeholder);
 			}
 			statement[execsize] = '\0';
 			
-			/* Populate paramTypes */
-			Newz(0, paramTypes, imp_sth->numphs, Oid);
+			/* Populate PQoids */
+			if (NULL == imp_sth->PQoids) {
+				Newz(0, imp_sth->PQoids, (unsigned int)imp_sth->numphs, Oid);
+			}
 			for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph) {
-				paramTypes[x++] = (currph->defaultval) ? 0 : (Oid)currph->bind_type->type_id;
+				imp_sth->PQoids[x++] = (currph->defaultval) ? 0 : (Oid)currph->bind_type->type_id;
 			}
 		
 			if (TRACE7) {
 				for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,x++) {
-					TRC(DBILOGFP, "%sPQexecParams item #%d\n", THEADER, x);
-					TRC(DBILOGFP, "%s-> Type: (%d)\n", THEADER, paramTypes[x]);
-					TRC(DBILOGFP, "%s-> Value: (%s)\n", THEADER, paramValues[x]);
-					TRC(DBILOGFP, "%s-> Length: (%d)\n", THEADER, paramLengths ? paramLengths[x] : 0);
-					TRC(DBILOGFP, "%s-> Format: (%d)\n", THEADER, paramFormats ? paramFormats[x] : 0);
+					TRC(DBILOGFP, "%sPQexecParams item #%d\n", THEADER, (int)x);
+					TRC(DBILOGFP, "%s-> Type: (%d)\n", THEADER, imp_sth->PQoids[x]);
+					TRC(DBILOGFP, "%s-> Value: (%s)\n", THEADER, imp_sth->PQvals[x]);
+					TRC(DBILOGFP, "%s-> Length: (%d)\n", THEADER, imp_sth->PQlens ? imp_sth->PQlens[x] : 0);
+					TRC(DBILOGFP, "%s-> Format: (%d)\n", THEADER, imp_sth->PQfmts ? imp_sth->PQfmts[x] : 0);
 				}
 			}
 
 			if (TSQL) {
 				TRC(DBILOGFP, "EXECUTE %s (\n", statement);
 				for (x=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,x++) {
-					TRC(DBILOGFP, "$%d: %s\n", x+1, paramValues[x]);
+					TRC(DBILOGFP, "$%d: %s\n", (int)x+1, imp_sth->PQvals[x]);
 				}
 				TRC(DBILOGFP, ");\n\n");
 			}
@@ -3020,14 +3131,13 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 			if (imp_sth->async_flag & PG_ASYNC) {
 				TRACE_PQSENDQUERYPARAMS;
 				ret = PQsendQueryParams
-					(imp_dbh->conn, statement, imp_sth->numphs, paramTypes, paramValues, paramLengths, paramFormats, 0);
+					(imp_dbh->conn, statement, imp_sth->numphs, imp_sth->PQoids, imp_sth->PQvals, imp_sth->PQlens, imp_sth->PQfmts, 0);
 			}
 			else {
 				TRACE_PQEXECPARAMS;
 				imp_sth->result = PQexecParams
-					(imp_dbh->conn, statement, imp_sth->numphs, paramTypes, paramValues, paramLengths, paramFormats, 0);
+					(imp_dbh->conn, statement, imp_sth->numphs, imp_sth->PQoids, imp_sth->PQvals, imp_sth->PQlens, imp_sth->PQfmts, 0);
 			}
-			Safefree(paramTypes);
 		}
 		
 		/* PQexec */
@@ -3045,7 +3155,8 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 			New(0, statement, execsize+1, char); /* freed below */
 			statement[0] = '\0';
 			for (currseg=imp_sth->seg; NULL != currseg; currseg=currseg->nextseg) {
-				strcat(statement, currseg->segment);
+				if (currseg->segment != NULL)
+					strcat(statement, currseg->segment);
 				if (currseg->placeholder!=0)
 					strcat(statement, currseg->ph->quoted);
 			}
@@ -3073,10 +3184,6 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 	} /* end non-prepared exec */
 
 	/* Some form of PQexec/PQsendQuery has been run at this point */
-
-	Safefree(paramValues);
-	Safefree(paramLengths);
-	Safefree(paramFormats);			
 
 	/* If running asynchronously, we don't stick around for the result */
 	if (imp_sth->async_flag & PG_ASYNC) {
@@ -3224,7 +3331,7 @@ AV * dbd_st_fetch (SV * sth, imp_sth_t * imp_sth)
 
 	/* Set up the type_info array if we have not seen it yet */
 	if (NULL == imp_sth->type_info) {
-		Newz(0, imp_sth->type_info, num_fields, sql_type_info_t*); /* freed in dbd_st_destroy */
+		Newz(0, imp_sth->type_info, (unsigned int)num_fields, sql_type_info_t*); /* freed in dbd_st_destroy */
 		for (i = 0; i < num_fields; ++i) {
 			TRACE_PQFTYPE;
 			imp_sth->type_info[i] = pg_type_data((int)PQftype(imp_sth->result, i));
@@ -3265,13 +3372,29 @@ AV * dbd_st_fetch (SV * sth, imp_sth_t * imp_sth)
 			else {
 				if (type_info) {
 					type_info->dequote(value, &value_len); /* dequote in place */
-					if (PG_BOOL == type_info->type_id && imp_dbh->pg_bool_tf)
-						*value = ('1' == *value) ? 't' : 'f';
+					/* For certain types, we can cast to non-string Perlish values */
+					switch (type_info->type_id) {
+					case PG_BOOL:
+						if (imp_dbh->pg_bool_tf) {
+							*value = ('1' == *value) ? 't' : 'f';
+							sv_setpvn(sv, (char *)value, value_len);
+						}
+						else
+							sv_setiv(sv, '1' == *value ? 1 : 0);
+						break;
+					case PG_OID:
+					case PG_INT4:
+					case PG_INT2:
+						sv_setiv(sv, atol((char *)value));
+						break;
+					default:
+						sv_setpvn(sv, (char *)value, value_len);
+					}
 				}
-				else
+				else {
 					value_len = strlen((char *)value);
-			
-				sv_setpvn(sv, (char *)value, value_len);
+					sv_setpvn(sv, (char *)value, value_len);
+				}
 			
 				if (type_info && (PG_BPCHAR == type_info->type_id) && chopblanks) {
 					p = SvEND(sv);
@@ -3519,6 +3642,10 @@ void dbd_st_destroy (SV * sth, imp_sth_t * imp_sth)
 	Safefree(imp_sth->prepare_name);
 	Safefree(imp_sth->type_info);
 	Safefree(imp_sth->firstword);
+	Safefree(imp_sth->PQvals);
+	Safefree(imp_sth->PQlens);
+	Safefree(imp_sth->PQfmts);
+	Safefree(imp_sth->PQoids);
 
 	if (imp_sth->result) {
 		TRACE_PQCLEAR;
@@ -3572,7 +3699,7 @@ pg_db_putline (SV * dbh, const char * buffer)
 
 	/* We must be in COPY IN state */
 	if (PGRES_COPY_IN != imp_dbh->copystate)
-		croak("pg_putline can only be called directly after issuing a COPY IN command\n");
+		croak("pg_putline can only be called directly after issuing a COPY FROM command\n");
 
 	TRACE_PQPUTCOPYDATA;
 	copystatus = PQputCopyData(imp_dbh->conn, buffer, (int)strlen(buffer));
@@ -3610,7 +3737,7 @@ pg_db_getline (SV * dbh, SV * svbuf, int length)
 
 	/* We must be in COPY OUT state */
 	if (PGRES_COPY_OUT != imp_dbh->copystate)
-		croak("pg_getline can only be called directly after issuing a COPY command\n");
+		croak("pg_getline can only be called directly after issuing a COPY TO command\n");
 
 	length = 0; /* Make compilers happy */
 	TRACE_PQGETCOPYDATA;
@@ -3652,7 +3779,7 @@ pg_db_getcopydata (SV * dbh, SV * dataline, int async)
 
 	/* We must be in COPY OUT state */
 	if (PGRES_COPY_OUT != imp_dbh->copystate)
-		croak("pg_getcopydata can only be called directly after issuing a COPY command\n");
+		croak("pg_getcopydata can only be called directly after issuing a COPY TO command\n");
 
 	tempbuf = NULL;
 
@@ -3711,7 +3838,7 @@ pg_db_putcopydata (SV * dbh, SV * dataline)
 
 	/* We must be in COPY IN state */
 	if (PGRES_COPY_IN != imp_dbh->copystate)
-		croak("pg_putcopydata can only be called directly after issuing a COPY command\n");
+		croak("pg_putcopydata can only be called directly after issuing a COPY FROM command\n");
 
 	TRACE_PQPUTCOPYDATA;
 	copystatus = PQputCopyData
@@ -4005,7 +4132,7 @@ int pg_db_release (SV * dbh, imp_dbh_t * imp_dbh, char * savepoint)
 
 
 /* ================================================================== */
-/* Used to ensure we are in a txn, e.g. the lo_ functions below */
+/* For lo_* functions. Used to ensure we are in a transaction */
 static int pg_db_start_txn (pTHX_ SV * dbh, imp_dbh_t * imp_dbh)
 {
 	int status = -1;
@@ -4013,7 +4140,7 @@ static int pg_db_start_txn (pTHX_ SV * dbh, imp_dbh_t * imp_dbh)
 	if (TSTART) TRC(DBILOGFP, "%sBegin pg_db_start_txn\n", THEADER);
 
 	/* If not autocommit, start a new transaction */
-	if (!imp_dbh->done_begin && !DBIc_has(imp_dbh, DBIcf_AutoCommit)) {
+	if (!imp_dbh->done_begin) {
 		status = _result(aTHX_ imp_dbh, "begin");
 		if (PGRES_COMMAND_OK != status) {
 			TRACE_PQERRORMESSAGE;
@@ -4024,116 +4151,242 @@ static int pg_db_start_txn (pTHX_ SV * dbh, imp_dbh_t * imp_dbh)
 		imp_dbh->done_begin = DBDPG_TRUE;
 	}
 	if (TEND) TRC(DBILOGFP, "%sEnd pg_db_start_txn\n", THEADER);
+
 	return 1;
+
 } /* end of pg_db_start_txn */
 
+
+/* ================================================================== */
+/* For lo_import and lo_export functions. Used to commit or rollback a 
+   transaction, but only if AutoCommit is on. */
+static int pg_db_end_txn (pTHX_ SV * dbh, imp_dbh_t * imp_dbh, int commit)
+{
+	int status = -1;
+
+	if (TSTART) TRC(DBILOGFP, "%sBegin pg_db_end_txn with %s\n",
+					THEADER, commit ? "commit" : "rollback");
+
+	status = _result(aTHX_ imp_dbh, commit ? "commit" : "rollback");
+	imp_dbh->done_begin = DBDPG_FALSE;
+	if (PGRES_COMMAND_OK != status) {
+		TRACE_PQERRORMESSAGE;
+		pg_error(aTHX_ dbh, status, PQerrorMessage(imp_dbh->conn));
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_end_txn (error: status not OK for %s)\n",
+					  THEADER, commit ? "commit" : "rollback");
+		return 0;
+	}
+
+	if (TEND) TRC(DBILOGFP, "%sEnd pg_db_end_txn\n", THEADER);
+
+	return 1;
+
+} /* end of pg_db_end_txn */
 
 /* Large object functions */
 
 /* ================================================================== */
 unsigned int pg_db_lo_creat (SV * dbh, int mode)
 {
+
 	dTHX;
 	D_imp_dbh(dbh);
 
 	if (TSTART) TRC(DBILOGFP, "%sBegin pg_db_pg_lo_creat (mode: %d)\n", THEADER, mode);
 
-	if (!pg_db_start_txn(aTHX_ dbh,imp_dbh))
+	if (DBIc_has(imp_dbh, DBIcf_AutoCommit)) {
+		croak("Cannot call pg_lo_creat when AutoCommit is on");
+	}
+
+	if (!pg_db_start_txn(aTHX_ dbh,imp_dbh)) {
 		return 0; /* No other option, because lo_creat returns an Oid */
+	}
+
+	if (TLIBPQ) {
+		TRC(DBILOGFP, "%slo_creat\n", THEADER);
+	}
 
 	return lo_creat(imp_dbh->conn, mode); /* 0 on error */
+
 }
 
 /* ================================================================== */
 int pg_db_lo_open (SV * dbh, unsigned int lobjId, int mode)
 {
+
 	dTHX;
 	D_imp_dbh(dbh);
 
 	if (TSTART) TRC(DBILOGFP, "%sBegin pg_db_pg_lo_open (mode: %d objectid: %d)\n",
 					THEADER, mode, lobjId);
 
+	if (DBIc_has(imp_dbh, DBIcf_AutoCommit)) {
+		croak("Cannot call pg_lo_open when AutoCommit is on");
+	}
+
 	if (!pg_db_start_txn(aTHX_ dbh,imp_dbh))
 		return -2;
 
+	if (TLIBPQ) {
+		TRC(DBILOGFP, "%slo_open\n", THEADER);
+	}
+
 	return lo_open(imp_dbh->conn, lobjId, mode); /* -1 on error */
+
 }
 
 /* ================================================================== */
 int pg_db_lo_close (SV * dbh, int fd)
 {
+
 	dTHX;
 	D_imp_dbh(dbh);
 
 	if (TSTART) TRC(DBILOGFP, "%sBegin pg_db_lo_close (fd: %d)\n", THEADER, fd);
 
+	if (DBIc_has(imp_dbh, DBIcf_AutoCommit)) {
+		croak("Cannot call pg_lo_close when AutoCommit is on");
+	}
+
+	if (!pg_db_start_txn(aTHX_ dbh,imp_dbh))
+		return -1;
+
+	if (TLIBPQ) {
+		TRC(DBILOGFP, "%slo_close\n", THEADER);
+	}
+
 	return lo_close(imp_dbh->conn, fd); /* <0 on error, 0 if ok */
+
 }
 
 /* ================================================================== */
 int pg_db_lo_read (SV * dbh, int fd, char * buf, size_t len)
 {
+
 	dTHX;
 	D_imp_dbh(dbh);
 
 	if (TSTART) TRC(DBILOGFP, "%sBegin pg_db_lo_read (fd: %d length: %d)\n",
-					THEADER, fd, len);
+					THEADER, fd, (int)len);
+
+	if (DBIc_has(imp_dbh, DBIcf_AutoCommit)) {
+		croak("Cannot call pg_lo_read when AutoCommit is on");
+	}
+
+	if (!pg_db_start_txn(aTHX_ dbh,imp_dbh))
+		return -1;
+
+	if (TLIBPQ) {
+		TRC(DBILOGFP, "%slo_read\n", THEADER);
+	}
 
 	return lo_read(imp_dbh->conn, fd, buf, len); /* bytes read, <0 on error */
+
 }
 
 /* ================================================================== */
 int pg_db_lo_write (SV * dbh, int fd, char * buf, size_t len)
 {
+
 	dTHX;
 	D_imp_dbh(dbh);
 
 	if (TSTART) TRC(DBILOGFP, "%sBegin pg_db_lo_write (fd: %d length: %d)\n",
-					THEADER, fd, len);
+					THEADER, fd, (int)len);
+
+	if (DBIc_has(imp_dbh, DBIcf_AutoCommit)) {
+		croak("Cannot call pg_lo_write when AutoCommit is on");
+	}
+
+	if (!pg_db_start_txn(aTHX_ dbh,imp_dbh))
+		return -1;
+
+	if (TLIBPQ) {
+		TRC(DBILOGFP, "%slo_write\n", THEADER);
+	}
 
 	return lo_write(imp_dbh->conn, fd, buf, len); /* bytes written, <0 on error */
+
 }
 
 /* ================================================================== */
 int pg_db_lo_lseek (SV * dbh, int fd, int offset, int whence)
 {
+
 	dTHX;
 	D_imp_dbh(dbh);
 
 	if (TSTART) TRC(DBILOGFP, "%sBegin pg_db_lo_lseek (fd: %d offset: %d whence: %d)\n",
 					THEADER, fd, offset, whence);
 
+	if (DBIc_has(imp_dbh, DBIcf_AutoCommit)) {
+		croak("Cannot call pg_lo_lseek when AutoCommit is on");
+	}
+
+	if (!pg_db_start_txn(aTHX_ dbh,imp_dbh))
+		return -1;
+
+	if (TLIBPQ) {
+		TRC(DBILOGFP, "%slo_lseek\n", THEADER);
+	}
+
 	return lo_lseek(imp_dbh->conn, fd, offset, whence); /* new position, -1 on error */
+
 }
 
 /* ================================================================== */
 int pg_db_lo_tell (SV * dbh, int fd)
 {
+
 	dTHX;
 	D_imp_dbh(dbh);
 
 	if (TSTART) TRC(DBILOGFP, "%sBegin pg_db_lo_tell (fd: %d)\n", THEADER, fd);
 
+	if (DBIc_has(imp_dbh, DBIcf_AutoCommit)) {
+		croak("Cannot call pg_lo_tell when AutoCommit is on");
+	}
+
+	if (!pg_db_start_txn(aTHX_ dbh,imp_dbh))
+		return -1;
+
+	if (TLIBPQ) {
+		TRC(DBILOGFP, "%slo_tell\n", THEADER);
+	}
+
 	return lo_tell(imp_dbh->conn, fd); /* current position, <0 on error */
+
 }
 
 /* ================================================================== */
 int pg_db_lo_unlink (SV * dbh, unsigned int lobjId)
 {
+
 	dTHX;
 	D_imp_dbh(dbh);
 
 	if (TSTART) TRC(DBILOGFP, "%sBegin pg_db_lo_unlink (objectid: %d)\n", THEADER, lobjId);
 
+	if (DBIc_has(imp_dbh, DBIcf_AutoCommit)) {
+		croak("Cannot call pg_lo_unlink when AutoCommit is on");
+	}
+
 	if (!pg_db_start_txn(aTHX_ dbh,imp_dbh))
-		return -2;
+		return -1;
+
+	if (TLIBPQ) {
+		TRC(DBILOGFP, "%slo_unlink\n", THEADER);
+	}
 
 	return lo_unlink(imp_dbh->conn, lobjId); /* 1 on success, -1 on failure */
+
 }
 
 /* ================================================================== */
 unsigned int pg_db_lo_import (SV * dbh, char * filename)
 {
+
+	Oid loid;
 	dTHX;
 	D_imp_dbh(dbh);
 
@@ -4142,12 +4395,25 @@ unsigned int pg_db_lo_import (SV * dbh, char * filename)
 	if (!pg_db_start_txn(aTHX_ dbh,imp_dbh))
 		return 0; /* No other option, because lo_import returns an Oid */
 
-	return lo_import(imp_dbh->conn, filename); /* 0 on error */
+	if (TLIBPQ) {
+		TRC(DBILOGFP, "%slo_import\n", THEADER);
+	}
+	loid = lo_import(imp_dbh->conn, filename); /* 0 on error */
+
+	if (DBIc_has(imp_dbh, DBIcf_AutoCommit)) {
+		if (!pg_db_end_txn(aTHX_ dbh, imp_dbh, 0==loid ? 0 : 1))
+			return 0;
+	}
+
+	return loid;
+
 }
 
 /* ================================================================== */
 int pg_db_lo_export (SV * dbh, unsigned int lobjId, char * filename)
 {
+
+	Oid loid;
 	dTHX;
 	D_imp_dbh(dbh);
 
@@ -4157,7 +4423,16 @@ int pg_db_lo_export (SV * dbh, unsigned int lobjId, char * filename)
 	if (!pg_db_start_txn(aTHX_ dbh,imp_dbh))
 		return -2;
 
-	return lo_export(imp_dbh->conn, lobjId, filename); /* 1 on success, -1 on failure */
+	if (TLIBPQ) {
+		TRC(DBILOGFP, "%slo_export\n", THEADER);
+	}
+	loid = lo_export(imp_dbh->conn, lobjId, filename); /* 1 on success, -1 on failure */
+	if (DBIc_has(imp_dbh, DBIcf_AutoCommit)) {
+		if (!pg_db_end_txn(aTHX_ dbh, imp_dbh, -1==loid ? 0 : 1))
+			return -1;
+	}
+
+	return loid;
 }
 
 

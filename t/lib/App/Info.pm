@@ -1,6 +1,6 @@
 package App::Info;
 
-# $Id: Info.pm 7408 2005-01-08 07:18:58Z theory $
+# $Id: Info.pm 13583 2009-11-23 18:02:18Z turnstep $
 
 =head1 NAME
 
@@ -1184,7 +1184,7 @@ handling arguments to set up the event handlers, so that when we call
 C<confirm()> or C<unknown()> the event will be handled as the client expects.
 
 If we needed our subclass constructor to take its own parameter argumente, the
-approach is to specify the same C<key => $arg> syntax as is used by
+approach is to specify the same C<< key => $arg >> syntax as is used by
 App::Info's C<new()> method. Say we wanted to allow clients of our App::Info
 subclass to pass in a list of alternate executable locations for us to search.
 Such an argument would most make sense as an array reference. So we specify

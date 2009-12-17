@@ -1,7 +1,7 @@
 /*
-	$Id: dbdimp.h 11312 2008-05-25 13:20:28Z turnstep $
+	$Id: dbdimp.h 13162 2009-08-04 18:10:35Z turnstep $
 	
-    Copyright (c) 2000-2008 Greg Sabino Mullane and others: see the Changes file
+    Copyright (c) 2000-2009 Greg Sabino Mullane and others: see the Changes file
 	Portions Copyright (c) 1997-2000 Edmund Mergl
 	Portions Copyright (c) 1994-1997 Tim Bunce
 	
@@ -18,13 +18,6 @@ struct imp_drh_st {
 struct imp_dbh_st {
 	dbih_dbc_t com;            /* MUST be first element in structure */
 
-	bool    pg_bool_tf;        /* do bools return 't'/'f'? Set by user, default is 0 */
-	bool    pg_enable_utf8;    /* should we attempt to make utf8 strings? Set by user, default is 0 */
-	bool    prepare_now;       /* force immediate prepares, even with placeholders. Set by user, default is 0 */
-	bool    done_begin;        /* have we done a begin? (e.g. are we in a transaction?) */
-	bool    dollaronly;        /* only consider $1, $2 ... as valid placeholders */
-	bool    expand_array;      /* transform arrays from the db into Perl arrays? Default is 1 */
-
 	int     pg_protocol;       /* value of PQprotocolVersion, usually 3 (could also be 0) */
 	int     pg_server_version; /* server version e.g. 80100 */
 	int     pid_number;        /* prefixed before prepare_number */
@@ -38,6 +31,14 @@ struct imp_dbh_st {
 	AV      *savepoints;       /* list of savepoints */
 	PGconn  *conn;             /* connection structure */
 	char    *sqlstate;         /* from the last result */
+
+	bool    pg_bool_tf;        /* do bools return 't'/'f'? Set by user, default is 0 */
+	bool    pg_enable_utf8;    /* should we attempt to make utf8 strings? Set by user, default is 0 */
+	bool    prepare_now;       /* force immediate prepares, even with placeholders. Set by user, default is 0 */
+	bool    done_begin;        /* have we done a begin? (e.g. are we in a transaction?) */
+	bool    dollaronly;        /* only consider $1, $2 ... as valid placeholders */
+	bool    expand_array;      /* transform arrays from the db into Perl arrays? Default is 1 */
+	bool    txn_read_only;     /* are we in read-only mode? Set with $dbh->{ReadOnly} */
 };
 
 
@@ -70,7 +71,7 @@ typedef struct ph_st ph_t;
 
 /* Define sth implementor data structure */
 struct imp_sth_st {
-	dbih_stc_t com;         /* MUST be first element in structure */
+	dbih_stc_t com;          /* MUST be first element in structure */
 
 	int    server_prepare;   /* inherited from dbh. 3 states: 0=no 1=yes 2=smart */
 	int    placeholder_type; /* which style is being used 1=? 2=$1 3=:foo */
@@ -84,6 +85,10 @@ struct imp_sth_st {
 
 	STRLEN totalsize;        /* total string length of the statement (with no placeholders)*/
 
+	const char ** PQvals;    /* List of values to pass to PQ* */
+	int         * PQlens;    /* List of lengths to pass to PQ* */
+	int         * PQfmts;    /* List of formats to pass to PQ* */
+	Oid         * PQoids;    /* List of types to pass to PQ* */
 	char   *prepare_name;    /* name of the prepared query; NULL if not prepared */
 	char   *firstword;       /* first word of the statement */
 
@@ -178,11 +183,11 @@ int dbd_st_blob_read (SV * sth, imp_sth_t * imp_sth, int lobjId, long offset, lo
 
 /* Custom PG functions, in order they appear in dbdimp.c */
 
-int pg_db_getfd (SV *dbh, imp_dbh_t * imp_dbh);
+int pg_db_getfd (imp_dbh_t * imp_dbh);
 
 SV * pg_db_pg_notifies (SV *dbh, imp_dbh_t *imp_dbh);
 
-SV * pg_stringify_array(SV * input, const char * array_delim, int server_version);
+SV * pg_stringify_array(SV * input, const char * array_delim, int server_version, int extraquotes);
 
 int pg_quickexec (SV *dbh, const char *sql, const int asyncflag);
 

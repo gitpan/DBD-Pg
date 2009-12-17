@@ -1,4 +1,4 @@
-# $Id: Makefile.PL 11578 2008-07-23 17:17:05Z turnstep $
+# $Id: Makefile.PL 13673 2009-12-17 17:06:50Z turnstep $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -7,7 +7,7 @@ use warnings;
 use 5.006001;
 
 ## No version.pm for this one, as the prereqs are not loaded yet.
-my $VERSION = '2.8.8';
+my $VERSION = '2.16.0';
 
 my $lib;
 BEGIN {
@@ -77,45 +77,53 @@ my $pg = App::Info::RDBMS::PostgreSQL->new(on_unknown => $p);
 my ($major_ver, $minor_ver, $patch, $conf, $bindir) = map {$pg->$_}
 	qw/major_version minor_version patch_version configure bin_dir/;
 my $initdb = '';
-if (-d $bindir) {
+if (defined $bindir and -d $bindir) {
 	my $testinitdb = "$bindir${sep}initdb";
 	if (-e $testinitdb) {
 		$initdb = $testinitdb;
 	}
 }
-my $serverversion = sprintf '%d%.02d%.02d', $major_ver, $minor_ver, $patch;
-my $defaultport = $conf =~ /with-pgport=(\d+)/ ? $1 : 5432;
+my $serverversion = 0;
+my $defaultport = 0;
 
-if ((!$ENV{POSTGRES_INCLUDE} or !$ENV{POSTGRES_LIB}) and !$ENV{POSTGRES_HOME}) {
-    $POSTGRES_INCLUDE = $pg->inc_dir;
-    $POSTGRES_LIB     = $pg->lib_dir;
-} elsif ((!$ENV{POSTGRES_INCLUDE} or !$ENV{POSTGRES_LIB}) and $ENV{POSTGRES_HOME}) {
-    $POSTGRES_INCLUDE = "$ENV{POSTGRES_HOME}/include";
-    $POSTGRES_LIB     = "$ENV{POSTGRES_HOME}/lib";
-} else {
-    $POSTGRES_INCLUDE = "$ENV{POSTGRES_INCLUDE}";
-    $POSTGRES_LIB     = "$ENV{POSTGRES_LIB}";
+if (defined $major_ver) {
+	$serverversion = sprintf '%d%.02d%.02d', $major_ver, $minor_ver, $patch;
+	$defaultport = $conf =~ /with-pgport=(\d+)/ ? $1 : 5432;
 }
+
+# We set POSTGRES_INCLUDE and POSTGRES_LIB from the first found of:
+# 1. environment variable
+# 2. App::Info::RDBMS::PostgreSQL information
+# 3. subdirectory of $ENV{POSTGRES_HOME}
+
+$POSTGRES_INCLUDE = $ENV{POSTGRES_INCLUDE} || $pg->inc_dir || "$ENV{POSTGRES_HOME}/include";
+
+$POSTGRES_LIB = $ENV{POSTGRES_LIB} || $pg->lib_dir || "$ENV{POSTGRES_HOME}/lib";
 
 my $os = $^O;
 print "PostgreSQL version: $serverversion (default port: $defaultport)\n";
 my $showhome = $ENV{POSTGRES_HOME} || '(not set)';
 print "POSTGRES_HOME: $showhome\n";
-my $showinc = $ENV{POSTGRES_INCLUDE} || '(not set)';
+my $showinc = $POSTGRES_INCLUDE || '(not set)';
 print "POSTGRES_INCLUDE: $showinc\n";
-my $showlib = $ENV{POSTGRES_LIB} || '(not set)';
+my $showlib = $POSTGRES_LIB || '(not set)';
 print "POSTGRES_LIB: $showlib\n";
 print "OS: $os\n";
 
-my $baddir;
-for my $d (qw/HOME INCLUDE/) {
-	next if ! exists $ENV{"POSTGRES_$d"} or ! length $ENV{"POSTGRES_$d"};
-	if (! -d $ENV{"POSTGRES_$d"}) {
-		printf "The environment variable %s points to a non-existent directory: %s\n",
-			"POSTGRES_$d", $ENV{"POSTGRES_$d"};
-		$baddir++;
-	}
+my $baddir = 0;
+sub does_path_exist {
+	my ($path_name, $path) = @_;
+
+	return if ! defined $path or ! length $path or -d $path;
+	printf "The value of %s points to a non-existent directory: %s\n",
+		$path_name, $path;
+	$baddir++;
+	return;
 }
+
+does_path_exist('POSTGRES_HOME', $ENV{POSTGRES_HOME});
+does_path_exist('POSTGRES_INCLUDE',  $POSTGRES_INCLUDE);
+
 if ($baddir) {
 	print "Cannot build unless the directories exist, exiting.\n";
 	exit 0;
@@ -174,8 +182,14 @@ if ($ENV{DBDPG_GCCDEBUG}) {
 	$comp_opts .= ' -Wextra -Wdeclaration-after-statement -Wendif-labels -Wpointer-arith';
 	$comp_opts .= ' -Wbad-function-cast -Wcast-qual -Wcast-align -Wsign-compare -Waggregate-return';
 	$comp_opts .= ' -Wmissing-prototypes -Wmissing-declarations -Wmissing-format-attribute -Wpacked -Winline -Winvalid-pch';
-	$comp_opts .= ' -Wdisabled-optimization'; ## Not terribly useful
-	$comp_opts .= ' -Wnested-externs'; ## Does not like Perl__notused (from DBIXS;)
+	$comp_opts .= ' -Wdisabled-optimization';
+	$comp_opts .= ' -Wnested-externs';
+	$comp_opts .= " -Wstrict-prototypes"; ## Still hits a couple places in types.h
+	$comp_opts .= " -Wswitch-default";
+	$comp_opts .= " -Wsystem-headers";
+	$comp_opts .= " -Wmissing-noreturn";
+	$comp_opts .= " -Wfloat-equal"; ## Does not like SvTRUE() calls
+	$comp_opts .= " -Wpadded"; ## Use when adding/changing our structs
 }
 
 my %opts =
@@ -184,7 +198,7 @@ my %opts =
 	 VERSION_FROM   => 'Pg.pm',
 	 INC            => "-I$POSTGRES_INCLUDE -I$dbi_arch_dir",
 	 OBJECT         => "Pg\$(OBJ_EXT) dbdimp\$(OBJ_EXT) quote\$(OBJ_EXT) types\$(OBJ_EXT)",
-	 LIBS           => ["-L$POSTGRES_LIB -lpq"],
+	 LIBS           => ["-L$POSTGRES_LIB -lpq -lm"],
 	 AUTHOR         => 'Greg Sabino Mullane',
 	 ABSTRACT       => 'PostgreSQL database driver for the DBI module',
 	 PREREQ_PM      => {
@@ -197,7 +211,9 @@ my %opts =
 	 PERL_MALLOC_OK => 1,
 	 NEEDS_LINKING  => 1,
 	 NO_META        => 1,
+     NORECURS       => 1,
 	 clean          => { FILES => 'trace Pg.xsi README.testdatabase' },
+     realclean      => { FILES => 'dbdpg_test_database/' },
 );
 
 if ($os eq 'hpux') {
@@ -210,7 +226,7 @@ if ($os eq 'hpux') {
 elsif ($os =~ /Win32/) {
 	my $msdir = $POSTGRES_LIB;
 	$msdir =~ s{"$}{/ms"};
-	$opts{LIBS}[0] .= " -L$msdir";
+	$opts{LIBS}[0] .= " -L$msdir -lsecur32";
 }
 
 if ($Config{dlsrc} =~ /dl_none/) {
@@ -224,6 +240,22 @@ if ($Config{dlsrc} =~ /dl_none/) {
 		$string =~ s/(PERL_DL_NONLAZY=1)/PGINITDB="$initdb" $1/g;
 		return $string;
 	}
+}
+
+sub constants {
+	my $self = shift;
+
+	my $old_constants = $self->SUPER::constants();
+	my $new_constants = '';
+	for my $line (split /\n/ => $old_constants) {
+		if ($line =~ /^INC = .*strawberry.*/ ) {
+			print qq(Strawberry Perl found; adjusting the INC variable;\n);
+			$line . ' -I ' . DBI::DBD::dbd_dbi_arch_dir();
+			print qq(INC is now $line\n);
+		}
+		$new_constants .= "$line\n";
+	}
+	return $new_constants;
 }
 
 sub MY::postamble { ## no critic ProhibitQualifiedSubDeclarations
