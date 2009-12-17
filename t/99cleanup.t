@@ -27,5 +27,3 @@ SKIP: {
 $dbh->disconnect() if defined $dbh and ref $dbh;
 
 shutdown_test_database();
-
-unlink 'README.testdatabase';

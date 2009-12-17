@@ -1,7 +1,7 @@
 /*
-  $Id: Pg.xs 13162 2009-08-04 18:10:35Z turnstep $
+  $Id: Pg.xs 11357 2008-06-01 02:32:53Z turnstep $
 
-  Copyright (c) 2000-2009 Greg Sabino Mullane and others: see the Changes file
+  Copyright (c) 2000-2008 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 1997-2000 Edmund Mergl
   Portions Copyright (c) 1994-1997 Tim Bunce
 
@@ -104,7 +104,6 @@ constant(name=Nullch)
 	PG_POLYGON            = 604
 	PG_POLYGONARRAY       = 1027
 	PG_RECORD             = 2249
-	PG_RECORDARRAY        = 2287
 	PG_REFCURSOR          = 1790
 	PG_REFCURSORARRAY     = 2201
 	PG_REGCLASS           = 2205
@@ -205,7 +204,7 @@ quote(dbh, to_quote_sv, type_sv=Nullsv)
 		else if (SvROK(to_quote_sv) && !SvAMAGIC(to_quote_sv)) {
 			if (SvTYPE(SvRV(to_quote_sv)) != SVt_PVAV)
 				croak("Cannot quote a reference");
-			RETVAL = pg_stringify_array(to_quote_sv, ",", imp_dbh->pg_server_version, 1);
+			RETVAL = pg_stringify_array(to_quote_sv, ",", imp_dbh->pg_server_version);
 		}
 		else {
 			sql_type_info_t *type_info;
@@ -306,7 +305,8 @@ void do(dbh, statement, attr=Nullsv, ...)
 			imp_sth = (imp_sth_t*)(DBIh_COM(sth));
 			if (!dbdxst_bind_params(sth, imp_sth, items-2, ax+2))
 				XSRETURN_UNDEF;
-			imp_sth->onetime = 1; /* Tells dbdimp.c not to bother preparing this */
+			imp_sth->server_prepare = 1;
+			imp_sth->onetime = 1; /* Overrides the above at actual PQexec* decision time */
 			imp_sth->async_flag = asyncflag;
 			retval = dbd_st_execute(sth, imp_sth);
 		}
@@ -333,7 +333,7 @@ getfd(dbh)
 	CODE:
 		int ret;
 		D_imp_dbh(dbh);
-		ret = pg_db_getfd(imp_dbh);
+		ret = pg_db_getfd(dbh, imp_dbh);
 		ST(0) = sv_2mortal( newSViv( ret ) );
 
 
@@ -384,110 +384,6 @@ pg_release(dbh,name)
 			warn("release ineffective with AutoCommit enabled");
 		ST(0) = (pg_db_release(dbh, imp_dbh, name)!=0) ? &sv_yes : &sv_no;
 
-void
-pg_lo_creat(dbh, mode)
-	SV * dbh
-	int mode
-	CODE:
-		const unsigned int ret = pg_db_lo_creat(dbh, mode);
-		ST(0) = (ret > 0) ? sv_2mortal(newSVuv(ret)) : &sv_undef;
-
-void
-pg_lo_open(dbh, lobjId, mode)
-	SV * dbh
-	unsigned int lobjId
-	int mode
-	CODE:
-		const int ret = pg_db_lo_open(dbh, lobjId, mode);
-		ST(0) = (ret >= 0) ? sv_2mortal(newSViv(ret)) : &sv_undef;
-
-
-void
-pg_lo_write(dbh, fd, buf, len)
-	SV * dbh
-	int fd
-	char * buf
-	size_t len
-	CODE:
-		const int ret = pg_db_lo_write(dbh, fd, buf, len);
-		ST(0) = (ret >= 0) ? sv_2mortal(newSViv(ret)) : &sv_undef;
-
-
-void
-pg_lo_read(dbh, fd, buf, len)
-	SV * dbh
-	int fd
-	char * buf
-	size_t len
-	PREINIT:
-		SV * const bufsv = SvROK(ST(2)) ? SvRV(ST(2)) : ST(2);
-		int ret;
-	CODE:
-		sv_setpvn(bufsv,"",0); /* Make sure we can grow it safely */
-		buf = SvGROW(bufsv, len + 1);
-		ret = pg_db_lo_read(dbh, fd, buf, len);
-		if (ret > 0) {
-			SvCUR_set(bufsv, ret);
-			*SvEND(bufsv) = '\0';
-			sv_setpvn(ST(2), buf, (unsigned)ret);
-			SvSETMAGIC(ST(2));
-		}
-		ST(0) = (ret >= 0) ? sv_2mortal(newSViv(ret)) : &sv_undef;
-
-
-void
-pg_lo_lseek(dbh, fd, offset, whence)
-	SV * dbh
-	int fd
-	int offset
-	int whence
-	CODE:
-		const int ret = pg_db_lo_lseek(dbh, fd, offset, whence);
-		ST(0) = (ret >= 0) ? sv_2mortal(newSViv(ret)) : &sv_undef;
-
-
-void
-pg_lo_tell(dbh, fd)
-	SV * dbh
-	int fd
-	CODE:
-		const int ret = pg_db_lo_tell(dbh, fd);
-		ST(0) = (ret >= 0) ? sv_2mortal(newSViv(ret)) : &sv_undef;
-
-
-void
-pg_lo_close(dbh, fd)
-	SV * dbh
-	int fd
-	CODE:
-		ST(0) = (pg_db_lo_close(dbh, fd) >= 0) ? &sv_yes : &sv_no;
-
-
-void
-pg_lo_unlink(dbh, lobjId)
-	SV * dbh
-	unsigned int lobjId
-	CODE:
-		ST(0) = (pg_db_lo_unlink(dbh, lobjId) >= 1) ? &sv_yes : &sv_no;
-
-
-void
-pg_lo_import(dbh, filename)
-	SV * dbh
-	char * filename
-	CODE:
-		const unsigned int ret = pg_db_lo_import(dbh, filename);
-		ST(0) = (ret > 0) ? sv_2mortal(newSVuv(ret)) : &sv_undef;
-
-
-void
-pg_lo_export(dbh, lobjId, filename)
-	SV * dbh
-	unsigned int lobjId
-	char * filename
-	CODE:
-		ST(0) = (pg_db_lo_export(dbh, lobjId, filename) >= 1) ? &sv_yes : &sv_no;
-
 
 void
 lo_creat(dbh, mode)
@@ -496,6 +392,7 @@ lo_creat(dbh, mode)
 	CODE:
 		const unsigned int ret = pg_db_lo_creat(dbh, mode);
 		ST(0) = (ret > 0) ? sv_2mortal(newSVuv(ret)) : &sv_undef;
+
 
 void
 lo_open(dbh, lobjId, mode)
@@ -508,14 +405,11 @@ lo_open(dbh, lobjId, mode)
 
 
 void
-lo_write(dbh, fd, buf, len)
+lo_close(dbh, fd)
 	SV * dbh
 	int fd
-	char * buf
-	size_t len
 	CODE:
-		const int ret = pg_db_lo_write(dbh, fd, buf, len);
-		ST(0) = (ret >= 0) ? sv_2mortal(newSViv(ret)) : &sv_undef;
+		ST(0) = (pg_db_lo_close(dbh, fd) >= 0) ? &sv_yes : &sv_no;
 
 
 void
@@ -541,6 +435,17 @@ lo_read(dbh, fd, buf, len)
 
 
 void
+lo_write(dbh, fd, buf, len)
+	SV * dbh
+	int fd
+	char * buf
+	size_t len
+	CODE:
+		const int ret = pg_db_lo_write(dbh, fd, buf, len);
+		ST(0) = (ret >= 0) ? sv_2mortal(newSViv(ret)) : &sv_undef;
+
+
+void
 lo_lseek(dbh, fd, offset, whence)
 	SV * dbh
 	int fd
@@ -558,14 +463,6 @@ lo_tell(dbh, fd)
 	CODE:
 		const int ret = pg_db_lo_tell(dbh, fd);
 		ST(0) = (ret >= 0) ? sv_2mortal(newSViv(ret)) : &sv_undef;
-
-
-void
-lo_close(dbh, fd)
-	SV * dbh
-	int fd
-	CODE:
-		ST(0) = (pg_db_lo_close(dbh, fd) >= 0) ? &sv_yes : &sv_no;
 
 
 void
@@ -753,7 +650,6 @@ pg_cancel(dbh)
 	ST(0) = pg_db_cancel(dbh, imp_dbh) ? &sv_yes : &sv_no;
 
 #endif
-
 
 # -- end of DBD::Pg::db
 

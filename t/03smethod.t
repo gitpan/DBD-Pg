@@ -236,17 +236,17 @@ eval {
 };
 is ($@, q{}, $t);
 
-$t='Statement handle method "bind_param_array" works when binding one value to the second placeholder';
+$t='Statement handle method "bind_param_array" fails when binding one value to the first placeholder';
 eval {
-	$sth->bind_param_array(2, [ 'Mangoz' ]);
+	$sth->bind_param_array(1, [ 30 ]);
 };
-is ($@, q{}, $t);
+isnt ($@, q{}, $t);
 
-$t='Statement handle method "bind_param_array" works when binding two values to the second placeholder';
+$t='Statement handle method "bind_param_array" fails when binding two values to the second placeholder';
 eval {
 	$sth->bind_param_array(2, [ 'Plantain', 'Apple' ]);
 };
-is ($@, q{}, $t);
+isnt ($@, q{}, $t);
 
 #
 # Test of the "execute_array" statement handle method

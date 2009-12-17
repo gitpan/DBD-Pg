@@ -1,8 +1,8 @@
 /*
 
-   $Id: types.c 11297 2008-05-20 21:52:34Z turnstep $
+   $Id: types.c 11572 2008-07-23 03:57:59Z turnstep $
 
-   Copyright (c) 2003-2009 Greg Sabino Mullane and others: see the Changes file
+   Copyright (c) 2003-2008 Greg Sabino Mullane and others: see the Changes file
    
    You may distribute under the terms of either the GNU General Public
    License or the Artistic License, as specified in the Perl README file.
@@ -17,140 +17,139 @@
 #include "Pg.h"
 
 static sql_type_info_t pg_types[] = {
- {PG_ABSTIMEARRAY      ,"_abstime"         ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_ACLITEMARRAY      ,"_aclitem"         ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_BITARRAY          ,"_bit"             ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_BOOLARRAY         ,"_bool"            ,1,',',"array_out"       ,quote_string,dequote_string,{0},3},
- {PG_BOXARRAY          ,"_box"             ,1,';',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_BPCHARARRAY       ,"_bpchar"          ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_BYTEAARRAY        ,"_bytea"           ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_CHARARRAY         ,"_char"            ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_CIDARRAY          ,"_cid"             ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_CIDRARRAY         ,"_cidr"            ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_CIRCLEARRAY       ,"_circle"          ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_CSTRINGARRAY      ,"_cstring"         ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_DATEARRAY         ,"_date"            ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_FLOAT4ARRAY       ,"_float4"          ,1,',',"array_out"       ,quote_string,dequote_string,{0},2},
- {PG_FLOAT8ARRAY       ,"_float8"          ,1,',',"array_out"       ,quote_string,dequote_string,{0},2},
- {PG_GTSVECTORARRAY    ,"_gtsvector"       ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_INETARRAY         ,"_inet"            ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_INT2ARRAY         ,"_int2"            ,1,',',"array_out"       ,quote_string,dequote_string,{0},1},
- {PG_INT2VECTORARRAY   ,"_int2vector"      ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_INT4ARRAY         ,"_int4"            ,1,',',"array_out"       ,quote_string,dequote_string,{0},1},
- {PG_INT8ARRAY         ,"_int8"            ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_INTERVALARRAY     ,"_interval"        ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_LINEARRAY         ,"_line"            ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_LSEGARRAY         ,"_lseg"            ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_MACADDRARRAY      ,"_macaddr"         ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_MONEYARRAY        ,"_money"           ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_NAMEARRAY         ,"_name"            ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_NUMERICARRAY      ,"_numeric"         ,1,',',"array_out"       ,quote_string,dequote_string,{0},2},
- {PG_OIDARRAY          ,"_oid"             ,1,',',"array_out"       ,quote_string,dequote_string,{0},1},
- {PG_OIDVECTORARRAY    ,"_oidvector"       ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_PATHARRAY         ,"_path"            ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_POINTARRAY        ,"_point"           ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_POLYGONARRAY      ,"_polygon"         ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_RECORDARRAY       ,"_record"          ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_REFCURSORARRAY    ,"_refcursor"       ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_REGCLASSARRAY     ,"_regclass"        ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_REGCONFIGARRAY    ,"_regconfig"       ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_REGDICTIONARYARRAY,"_regdictionary"   ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_REGOPERARRAY      ,"_regoper"         ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_REGOPERATORARRAY  ,"_regoperator"     ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_REGPROCARRAY      ,"_regproc"         ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_REGPROCEDUREARRAY ,"_regprocedure"    ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_REGTYPEARRAY      ,"_regtype"         ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_RELTIMEARRAY      ,"_reltime"         ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_TEXTARRAY         ,"_text"            ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_TIDARRAY          ,"_tid"             ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_TIMEARRAY         ,"_time"            ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_TIMESTAMPARRAY    ,"_timestamp"       ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_TIMESTAMPTZARRAY  ,"_timestamptz"     ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_TIMETZARRAY       ,"_timetz"          ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_TINTERVALARRAY    ,"_tinterval"       ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_TSQUERYARRAY      ,"_tsquery"         ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_TSVECTORARRAY     ,"_tsvector"        ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_TXID_SNAPSHOTARRAY,"_txid_snapshot"   ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_UUIDARRAY         ,"_uuid"            ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_VARBITARRAY       ,"_varbit"          ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_VARCHARARRAY      ,"_varchar"         ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_XIDARRAY          ,"_xid"             ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_XMLARRAY          ,"_xml"             ,1,',',"array_out"       ,quote_string,dequote_string,{0},0},
- {PG_ABSTIME           ,"abstime"          ,1,',',"abstimeout"      ,quote_string,dequote_string,{0},0},
- {PG_ACLITEM           ,"aclitem"          ,1,',',"aclitemout"      ,quote_string,dequote_string,{0},0},
- {PG_ANY               ,"any"              ,1,',',"any_out"         ,quote_string,dequote_string,{0},0},
- {PG_ANYARRAY          ,"anyarray"         ,1,',',"anyarray_out"    ,quote_string,dequote_string,{0},0},
- {PG_ANYELEMENT        ,"anyelement"       ,1,',',"anyelement_out"  ,quote_string,dequote_string,{0},0},
- {PG_ANYENUM           ,"anyenum"          ,1,',',"anyenum_out"     ,quote_string,dequote_string,{0},0},
- {PG_ANYNONARRAY       ,"anynonarray"      ,1,',',"anynonarray_out" ,quote_string,dequote_string,{0},0},
- {PG_BIT               ,"bit"              ,1,',',"bit_out"         ,quote_string,dequote_string,{0},0},
- {PG_BOOL              ,"bool"             ,1,',',"boolout"         ,quote_bool  ,dequote_bool  ,{SQL_BOOLEAN},3},
- {PG_BOX               ,"box"              ,1,';',"box_out"         ,quote_geom  ,dequote_string,{0},0},
- {PG_BPCHAR            ,"bpchar"           ,1,',',"bpcharout"       ,quote_string,dequote_char  ,{SQL_CHAR},0},
- {PG_BYTEA             ,"bytea"            ,1,',',"byteaout"        ,quote_bytea ,dequote_bytea ,{SQL_VARBINARY},0},
- {PG_CHAR              ,"char"             ,1,',',"charout"         ,quote_string,dequote_char  ,{SQL_CHAR},0},
- {PG_CID               ,"cid"              ,1,',',"cidout"          ,quote_string,dequote_string,{0},0},
- {PG_CIDR              ,"cidr"             ,1,',',"cidr_out"        ,quote_string,dequote_string,{0},0},
- {PG_CIRCLE            ,"circle"           ,1,',',"circle_out"      ,quote_circle,dequote_string,{0},0},
- {PG_CSTRING           ,"cstring"          ,1,',',"cstring_out"     ,quote_string,dequote_string,{0},0},
- {PG_DATE              ,"date"             ,1,',',"date_out"        ,quote_string,dequote_string,{SQL_TYPE_DATE},0},
- {PG_FLOAT4            ,"float4"           ,1,',',"float4out"       ,quote_float ,null_dequote  ,{0},2},
- {PG_FLOAT8            ,"float8"           ,1,',',"float8out"       ,quote_float ,null_dequote  ,{SQL_FLOAT},2},
- {PG_GTSVECTOR         ,"gtsvector"        ,1,',',"gtsvectorout"    ,quote_string,dequote_string,{0},0},
- {PG_INET              ,"inet"             ,1,',',"inet_out"        ,quote_string,dequote_string,{0},0},
- {PG_INT2              ,"int2"             ,1,',',"int2out"         ,quote_int   ,null_dequote  ,{SQL_SMALLINT},1},
- {PG_INT2VECTOR        ,"int2vector"       ,1,',',"int2vectorout"   ,quote_string,dequote_string,{0},0},
- {PG_INT4              ,"int4"             ,1,',',"int4out"         ,quote_int   ,null_dequote  ,{SQL_INTEGER},1},
- {PG_INT8              ,"int8"             ,1,',',"int8out"         ,quote_int   ,null_dequote  ,{SQL_BIGINT},0},
- {PG_INTERNAL          ,"internal"         ,1,',',"internal_out"    ,quote_string,dequote_string,{0},0},
- {PG_INTERVAL          ,"interval"         ,1,',',"interval_out"    ,quote_string,dequote_string,{0},0},
- {PG_LANGUAGE_HANDLER  ,"language_handler" ,1,',',"language_handler_out",quote_string,dequote_string,{0},0},
- {PG_LINE              ,"line"             ,1,',',"line_out"        ,quote_geom  ,dequote_string,{0},0},
- {PG_LSEG              ,"lseg"             ,1,',',"lseg_out"        ,quote_geom  ,dequote_string,{0},0},
- {PG_MACADDR           ,"macaddr"          ,1,',',"macaddr_out"     ,quote_string,dequote_string,{0},0},
- {PG_MONEY             ,"money"            ,1,',',"cash_out"        ,quote_string,dequote_string,{0},0},
- {PG_NAME              ,"name"             ,1,',',"nameout"         ,quote_name  ,null_dequote  ,{SQL_VARCHAR},0},
- {PG_NUMERIC           ,"numeric"          ,1,',',"numeric_out"     ,quote_float ,null_dequote  ,{SQL_DECIMAL},2},
- {PG_OID               ,"oid"              ,1,',',"oidout"          ,quote_int   ,null_dequote  ,{0},1},
- {PG_OIDVECTOR         ,"oidvector"        ,1,',',"oidvectorout"    ,quote_string,dequote_string,{0},0},
- {PG_OPAQUE            ,"opaque"           ,1,',',"opaque_out"      ,quote_string,dequote_string,{0},0},
- {PG_PATH              ,"path"             ,1,',',"path_out"        ,quote_path  ,dequote_string,{0},0},
- {PG_PG_ATTRIBUTE      ,"pg_attribute"     ,1,',',"record_out"      ,quote_string,dequote_string,{0},0},
- {PG_PG_CLASS          ,"pg_class"         ,1,',',"record_out"      ,quote_string,dequote_string,{0},0},
- {PG_PG_PROC           ,"pg_proc"          ,1,',',"record_out"      ,quote_string,dequote_string,{0},0},
- {PG_PG_TYPE           ,"pg_type"          ,1,',',"record_out"      ,quote_string,dequote_string,{0},0},
- {PG_POINT             ,"point"            ,1,',',"point_out"       ,quote_geom  ,dequote_string,{0},0},
- {PG_POLYGON           ,"polygon"          ,1,',',"poly_out"        ,quote_geom  ,dequote_string,{0},0},
- {PG_RECORD            ,"record"           ,1,',',"record_out"      ,quote_string,dequote_string,{0},0},
- {PG_REFCURSOR         ,"refcursor"        ,1,',',"textout"         ,quote_string,dequote_string,{0},0},
- {PG_REGCLASS          ,"regclass"         ,1,',',"regclassout"     ,quote_string,dequote_string,{0},0},
- {PG_REGCONFIG         ,"regconfig"        ,1,',',"regconfigout"    ,quote_string,dequote_string,{0},0},
- {PG_REGDICTIONARY     ,"regdictionary"    ,1,',',"regdictionaryout",quote_string,dequote_string,{0},0},
- {PG_REGOPER           ,"regoper"          ,1,',',"regoperout"      ,quote_string,dequote_string,{0},0},
- {PG_REGOPERATOR       ,"regoperator"      ,1,',',"regoperatorout"  ,quote_string,dequote_string,{0},0},
- {PG_REGPROC           ,"regproc"          ,1,',',"regprocout"      ,quote_string,dequote_string,{0},0},
- {PG_REGPROCEDURE      ,"regprocedure"     ,1,',',"regprocedureout" ,quote_string,dequote_string,{0},0},
- {PG_REGTYPE           ,"regtype"          ,1,',',"regtypeout"      ,quote_string,dequote_string,{0},0},
- {PG_RELTIME           ,"reltime"          ,1,',',"reltimeout"      ,quote_string,dequote_string,{0},0},
- {PG_SMGR              ,"smgr"             ,1,',',"smgrout"         ,quote_string,dequote_string,{0},0},
- {PG_TEXT              ,"text"             ,1,',',"textout"         ,quote_string,dequote_string,{SQL_LONGVARCHAR},0},
- {PG_TID               ,"tid"              ,1,',',"tidout"          ,quote_geom  ,dequote_string,{0},0},
- {PG_TIME              ,"time"             ,1,',',"time_out"        ,quote_string,dequote_string,{SQL_TYPE_TIME},0},
- {PG_TIMESTAMP         ,"timestamp"        ,1,',',"timestamp_out"   ,quote_string,dequote_string,{SQL_TIMESTAMP},0},
- {PG_TIMESTAMPTZ       ,"timestamptz"      ,1,',',"timestamptz_out" ,quote_string,dequote_string,{SQL_TYPE_TIMESTAMP_WITH_TIMEZONE},0},
- {PG_TIMETZ            ,"timetz"           ,1,',',"timetz_out"      ,quote_string,dequote_string,{0},0},
- {PG_TINTERVAL         ,"tinterval"        ,1,',',"tintervalout"    ,quote_string,dequote_string,{0},0},
- {PG_TRIGGER           ,"trigger"          ,1,',',"trigger_out"     ,quote_string,dequote_string,{0},0},
- {PG_TSQUERY           ,"tsquery"          ,1,',',"tsqueryout"      ,quote_string,dequote_string,{0},0},
- {PG_TSVECTOR          ,"tsvector"         ,1,',',"tsvectorout"     ,quote_string,dequote_string,{0},0},
- {PG_TXID_SNAPSHOT     ,"txid_snapshot"    ,1,',',"txid_snapshot_out",quote_string,dequote_string,{0},0},
- {PG_UNKNOWN           ,"unknown"          ,1,',',"unknownout"      ,quote_string,dequote_string,{0},0},
- {PG_UUID              ,"uuid"             ,1,',',"uuid_out"        ,quote_string,dequote_string,{0},0},
- {PG_VARBIT            ,"varbit"           ,1,',',"varbit_out"      ,quote_string,dequote_string,{0},0},
- {PG_VARCHAR           ,"varchar"          ,1,',',"varcharout"      ,quote_string,dequote_string,{SQL_VARCHAR},0},
- {PG_VOID              ,"void"             ,1,',',"void_out"        ,quote_string,dequote_string,{0},0},
- {PG_XID               ,"xid"              ,1,',',"xidout"          ,quote_string,dequote_string,{0},0},
- {PG_XML               ,"xml"              ,1,',',"xml_out"         ,quote_string,dequote_string,{0},0},
+ {PG_ABSTIMEARRAY      ,"_abstime"         ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_ACLITEMARRAY      ,"_aclitem"         ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_BITARRAY          ,"_bit"             ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_BOOLARRAY         ,"_bool"            ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_BOXARRAY          ,"_box"             ,';',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_BPCHARARRAY       ,"_bpchar"          ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_BYTEAARRAY        ,"_bytea"           ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_CHARARRAY         ,"_char"            ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_CIDARRAY          ,"_cid"             ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_CIDRARRAY         ,"_cidr"            ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_CIRCLEARRAY       ,"_circle"          ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_CSTRINGARRAY      ,"_cstring"         ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_DATEARRAY         ,"_date"            ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_FLOAT4ARRAY       ,"_float4"          ,',',"array_out"       ,quote_string,dequote_string,{0},1,2},
+ {PG_FLOAT8ARRAY       ,"_float8"          ,',',"array_out"       ,quote_string,dequote_string,{0},1,2},
+ {PG_GTSVECTORARRAY    ,"_gtsvector"       ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_INETARRAY         ,"_inet"            ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_INT2ARRAY         ,"_int2"            ,',',"array_out"       ,quote_string,dequote_string,{0},1,1},
+ {PG_INT2VECTORARRAY   ,"_int2vector"      ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_INT4ARRAY         ,"_int4"            ,',',"array_out"       ,quote_string,dequote_string,{0},1,1},
+ {PG_INT8ARRAY         ,"_int8"            ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_INTERVALARRAY     ,"_interval"        ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_LINEARRAY         ,"_line"            ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_LSEGARRAY         ,"_lseg"            ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_MACADDRARRAY      ,"_macaddr"         ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_MONEYARRAY        ,"_money"           ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_NAMEARRAY         ,"_name"            ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_NUMERICARRAY      ,"_numeric"         ,',',"array_out"       ,quote_string,dequote_string,{0},1,2},
+ {PG_OIDARRAY          ,"_oid"             ,',',"array_out"       ,quote_string,dequote_string,{0},1,1},
+ {PG_OIDVECTORARRAY    ,"_oidvector"       ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_PATHARRAY         ,"_path"            ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_POINTARRAY        ,"_point"           ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_POLYGONARRAY      ,"_polygon"         ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_REFCURSORARRAY    ,"_refcursor"       ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_REGCLASSARRAY     ,"_regclass"        ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_REGCONFIGARRAY    ,"_regconfig"       ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_REGDICTIONARYARRAY,"_regdictionary"   ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_REGOPERARRAY      ,"_regoper"         ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_REGOPERATORARRAY  ,"_regoperator"     ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_REGPROCARRAY      ,"_regproc"         ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_REGPROCEDUREARRAY ,"_regprocedure"    ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_REGTYPEARRAY      ,"_regtype"         ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_RELTIMEARRAY      ,"_reltime"         ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_TEXTARRAY         ,"_text"            ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_TIDARRAY          ,"_tid"             ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_TIMEARRAY         ,"_time"            ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_TIMESTAMPARRAY    ,"_timestamp"       ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_TIMESTAMPTZARRAY  ,"_timestamptz"     ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_TIMETZARRAY       ,"_timetz"          ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_TINTERVALARRAY    ,"_tinterval"       ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_TSQUERYARRAY      ,"_tsquery"         ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_TSVECTORARRAY     ,"_tsvector"        ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_TXID_SNAPSHOTARRAY,"_txid_snapshot"   ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_UUIDARRAY         ,"_uuid"            ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_VARBITARRAY       ,"_varbit"          ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_VARCHARARRAY      ,"_varchar"         ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_XIDARRAY          ,"_xid"             ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_XMLARRAY          ,"_xml"             ,',',"array_out"       ,quote_string,dequote_string,{0},1,0},
+ {PG_ABSTIME           ,"abstime"          ,',',"abstimeout"      ,quote_string,dequote_string,{0},1,0},
+ {PG_ACLITEM           ,"aclitem"          ,',',"aclitemout"      ,quote_string,dequote_string,{0},1,0},
+ {PG_ANY               ,"any"              ,',',"any_out"         ,quote_string,dequote_string,{0},1,0},
+ {PG_ANYARRAY          ,"anyarray"         ,',',"anyarray_out"    ,quote_string,dequote_string,{0},1,0},
+ {PG_ANYELEMENT        ,"anyelement"       ,',',"anyelement_out"  ,quote_string,dequote_string,{0},1,0},
+ {PG_ANYENUM           ,"anyenum"          ,',',"anyenum_out"     ,quote_string,dequote_string,{0},1,0},
+ {PG_ANYNONARRAY       ,"anynonarray"      ,',',"anynonarray_out" ,quote_string,dequote_string,{0},1,0},
+ {PG_BIT               ,"bit"              ,',',"bit_out"         ,quote_string,dequote_string,{0},1,0},
+ {PG_BOOL              ,"bool"             ,',',"boolout"         ,quote_bool  ,dequote_bool  ,{SQL_BOOLEAN},1,0},
+ {PG_BOX               ,"box"              ,';',"box_out"         ,quote_geom  ,dequote_string,{0},1,0},
+ {PG_BPCHAR            ,"bpchar"           ,',',"bpcharout"       ,quote_string,dequote_char  ,{SQL_CHAR},1,0},
+ {PG_BYTEA             ,"bytea"            ,',',"byteaout"        ,quote_bytea ,dequote_bytea ,{SQL_VARBINARY},1,0},
+ {PG_CHAR              ,"char"             ,',',"charout"         ,quote_string,dequote_char  ,{SQL_CHAR},1,0},
+ {PG_CID               ,"cid"              ,',',"cidout"          ,quote_string,dequote_string,{0},1,0},
+ {PG_CIDR              ,"cidr"             ,',',"cidr_out"        ,quote_string,dequote_string,{0},1,0},
+ {PG_CIRCLE            ,"circle"           ,',',"circle_out"      ,quote_circle,dequote_string,{0},1,0},
+ {PG_CSTRING           ,"cstring"          ,',',"cstring_out"     ,quote_string,dequote_string,{0},1,0},
+ {PG_DATE              ,"date"             ,',',"date_out"        ,quote_string,dequote_string,{SQL_TYPE_DATE},1,0},
+ {PG_FLOAT4            ,"float4"           ,',',"float4out"       ,null_quote  ,null_dequote  ,{0},1,2},
+ {PG_FLOAT8            ,"float8"           ,',',"float8out"       ,null_quote  ,null_dequote  ,{SQL_FLOAT},1,2},
+ {PG_GTSVECTOR         ,"gtsvector"        ,',',"gtsvectorout"    ,quote_string,dequote_string,{0},1,0},
+ {PG_INET              ,"inet"             ,',',"inet_out"        ,quote_string,dequote_string,{0},1,0},
+ {PG_INT2              ,"int2"             ,',',"int2out"         ,null_quote  ,null_dequote  ,{SQL_SMALLINT},1,1},
+ {PG_INT2VECTOR        ,"int2vector"       ,',',"int2vectorout"   ,quote_string,dequote_string,{0},1,0},
+ {PG_INT4              ,"int4"             ,',',"int4out"         ,null_quote  ,null_dequote  ,{SQL_INTEGER},1,1},
+ {PG_INT8              ,"int8"             ,',',"int8out"         ,null_quote  ,null_dequote  ,{SQL_BIGINT},1,0},
+ {PG_INTERNAL          ,"internal"         ,',',"internal_out"    ,quote_string,dequote_string,{0},1,0},
+ {PG_INTERVAL          ,"interval"         ,',',"interval_out"    ,quote_string,dequote_string,{0},1,0},
+ {PG_LANGUAGE_HANDLER  ,"language_handler" ,',',"language_handler_out",quote_string,dequote_string,{0},1,0},
+ {PG_LINE              ,"line"             ,',',"line_out"        ,quote_geom  ,dequote_string,{0},1,0},
+ {PG_LSEG              ,"lseg"             ,',',"lseg_out"        ,quote_geom  ,dequote_string,{0},1,0},
+ {PG_MACADDR           ,"macaddr"          ,',',"macaddr_out"     ,quote_string,dequote_string,{0},1,0},
+ {PG_MONEY             ,"money"            ,',',"cash_out"        ,quote_string,dequote_string,{0},1,0},
+ {PG_NAME              ,"name"             ,',',"nameout"         ,null_quote  ,null_dequote  ,{SQL_VARCHAR},1,0},
+ {PG_NUMERIC           ,"numeric"          ,',',"numeric_out"     ,null_quote  ,null_dequote  ,{SQL_DECIMAL},1,2},
+ {PG_OID               ,"oid"              ,',',"oidout"          ,null_quote  ,null_dequote  ,{0},1,1},
+ {PG_OIDVECTOR         ,"oidvector"        ,',',"oidvectorout"    ,quote_string,dequote_string,{0},1,0},
+ {PG_OPAQUE            ,"opaque"           ,',',"opaque_out"      ,quote_string,dequote_string,{0},1,0},
+ {PG_PATH              ,"path"             ,',',"path_out"        ,quote_path  ,dequote_string,{0},1,0},
+ {PG_PG_ATTRIBUTE      ,"pg_attribute"     ,',',"record_out"      ,quote_string,dequote_string,{0},1,0},
+ {PG_PG_CLASS          ,"pg_class"         ,',',"record_out"      ,quote_string,dequote_string,{0},1,0},
+ {PG_PG_PROC           ,"pg_proc"          ,',',"record_out"      ,quote_string,dequote_string,{0},1,0},
+ {PG_PG_TYPE           ,"pg_type"          ,',',"record_out"      ,quote_string,dequote_string,{0},1,0},
+ {PG_POINT             ,"point"            ,',',"point_out"       ,quote_geom  ,dequote_string,{0},1,0},
+ {PG_POLYGON           ,"polygon"          ,',',"poly_out"        ,quote_geom  ,dequote_string,{0},1,0},
+ {PG_RECORD            ,"record"           ,',',"record_out"      ,quote_string,dequote_string,{0},1,0},
+ {PG_REFCURSOR         ,"refcursor"        ,',',"textout"         ,quote_string,dequote_string,{0},1,0},
+ {PG_REGCLASS          ,"regclass"         ,',',"regclassout"     ,quote_string,dequote_string,{0},1,0},
+ {PG_REGCONFIG         ,"regconfig"        ,',',"regconfigout"    ,quote_string,dequote_string,{0},1,0},
+ {PG_REGDICTIONARY     ,"regdictionary"    ,',',"regdictionaryout",quote_string,dequote_string,{0},1,0},
+ {PG_REGOPER           ,"regoper"          ,',',"regoperout"      ,quote_string,dequote_string,{0},1,0},
+ {PG_REGOPERATOR       ,"regoperator"      ,',',"regoperatorout"  ,quote_string,dequote_string,{0},1,0},
+ {PG_REGPROC           ,"regproc"          ,',',"regprocout"      ,quote_string,dequote_string,{0},1,0},
+ {PG_REGPROCEDURE      ,"regprocedure"     ,',',"regprocedureout" ,quote_string,dequote_string,{0},1,0},
+ {PG_REGTYPE           ,"regtype"          ,',',"regtypeout"      ,quote_string,dequote_string,{0},1,0},
+ {PG_RELTIME           ,"reltime"          ,',',"reltimeout"      ,quote_string,dequote_string,{0},1,0},
+ {PG_SMGR              ,"smgr"             ,',',"smgrout"         ,quote_string,dequote_string,{0},1,0},
+ {PG_TEXT              ,"text"             ,',',"textout"         ,quote_string,dequote_string,{SQL_LONGVARCHAR},1,0},
+ {PG_TID               ,"tid"              ,',',"tidout"          ,quote_geom  ,dequote_string,{0},1,0},
+ {PG_TIME              ,"time"             ,',',"time_out"        ,quote_string,dequote_string,{SQL_TYPE_TIME},1,0},
+ {PG_TIMESTAMP         ,"timestamp"        ,',',"timestamp_out"   ,quote_string,dequote_string,{SQL_TIMESTAMP},1,0},
+ {PG_TIMESTAMPTZ       ,"timestamptz"      ,',',"timestamptz_out" ,quote_string,dequote_string,{SQL_TYPE_TIMESTAMP_WITH_TIMEZONE},1,0},
+ {PG_TIMETZ            ,"timetz"           ,',',"timetz_out"      ,quote_string,dequote_string,{0},1,0},
+ {PG_TINTERVAL         ,"tinterval"        ,',',"tintervalout"    ,quote_string,dequote_string,{0},1,0},
+ {PG_TRIGGER           ,"trigger"          ,',',"trigger_out"     ,quote_string,dequote_string,{0},1,0},
+ {PG_TSQUERY           ,"tsquery"          ,',',"tsqueryout"      ,quote_string,dequote_string,{0},1,0},
+ {PG_TSVECTOR          ,"tsvector"         ,',',"tsvectorout"     ,quote_string,dequote_string,{0},1,0},
+ {PG_TXID_SNAPSHOT     ,"txid_snapshot"    ,',',"txid_snapshot_out",quote_string,dequote_string,{0},1,0},
+ {PG_UNKNOWN           ,"unknown"          ,',',"unknownout"      ,quote_string,dequote_string,{0},1,0},
+ {PG_UUID              ,"uuid"             ,',',"uuid_out"        ,quote_string,dequote_string,{0},1,0},
+ {PG_VARBIT            ,"varbit"           ,',',"varbit_out"      ,quote_string,dequote_string,{0},1,0},
+ {PG_VARCHAR           ,"varchar"          ,',',"varcharout"      ,quote_string,dequote_string,{SQL_VARCHAR},1,0},
+ {PG_VOID              ,"void"             ,',',"void_out"        ,quote_string,dequote_string,{0},1,0},
+ {PG_XID               ,"xid"              ,',',"xidout"          ,quote_string,dequote_string,{0},1,0},
+ {PG_XML               ,"xml"              ,',',"xml_out"         ,quote_string,dequote_string,{0},1,0},
 };
 
 sql_type_info_t* pg_type_data(int sql_type)
@@ -192,134 +191,133 @@ sql_type_info_t* pg_type_data(int sql_type)
 		case PG_PATHARRAY:          return &pg_types[30];
 		case PG_POINTARRAY:         return &pg_types[31];
 		case PG_POLYGONARRAY:       return &pg_types[32];
-		case PG_RECORDARRAY:        return &pg_types[33];
-		case PG_REFCURSORARRAY:     return &pg_types[34];
-		case PG_REGCLASSARRAY:      return &pg_types[35];
-		case PG_REGCONFIGARRAY:     return &pg_types[36];
-		case PG_REGDICTIONARYARRAY: return &pg_types[37];
-		case PG_REGOPERARRAY:       return &pg_types[38];
-		case PG_REGOPERATORARRAY:   return &pg_types[39];
-		case PG_REGPROCARRAY:       return &pg_types[40];
-		case PG_REGPROCEDUREARRAY:  return &pg_types[41];
-		case PG_REGTYPEARRAY:       return &pg_types[42];
-		case PG_RELTIMEARRAY:       return &pg_types[43];
-		case PG_TEXTARRAY:          return &pg_types[44];
-		case PG_TIDARRAY:           return &pg_types[45];
-		case PG_TIMEARRAY:          return &pg_types[46];
-		case PG_TIMESTAMPARRAY:     return &pg_types[47];
-		case PG_TIMESTAMPTZARRAY:   return &pg_types[48];
-		case PG_TIMETZARRAY:        return &pg_types[49];
-		case PG_TINTERVALARRAY:     return &pg_types[50];
-		case PG_TSQUERYARRAY:       return &pg_types[51];
-		case PG_TSVECTORARRAY:      return &pg_types[52];
-		case PG_TXID_SNAPSHOTARRAY: return &pg_types[53];
-		case PG_UUIDARRAY:          return &pg_types[54];
-		case PG_VARBITARRAY:        return &pg_types[55];
-		case PG_VARCHARARRAY:       return &pg_types[56];
-		case PG_XIDARRAY:           return &pg_types[57];
-		case PG_XMLARRAY:           return &pg_types[58];
-		case PG_ABSTIME:            return &pg_types[59];
-		case PG_ACLITEM:            return &pg_types[60];
-		case PG_ANY:                return &pg_types[61];
-		case PG_ANYARRAY:           return &pg_types[62];
-		case PG_ANYELEMENT:         return &pg_types[63];
-		case PG_ANYENUM:            return &pg_types[64];
-		case PG_ANYNONARRAY:        return &pg_types[65];
-		case PG_BIT:                return &pg_types[66];
-		case PG_BOOL:               return &pg_types[67];
-		case PG_BOX:                return &pg_types[68];
-		case PG_BPCHAR:             return &pg_types[69];
-		case PG_BYTEA:              return &pg_types[70];
-		case PG_CHAR:               return &pg_types[71];
-		case PG_CID:                return &pg_types[72];
-		case PG_CIDR:               return &pg_types[73];
-		case PG_CIRCLE:             return &pg_types[74];
-		case PG_CSTRING:            return &pg_types[75];
-		case PG_DATE:               return &pg_types[76];
-		case PG_FLOAT4:             return &pg_types[77];
-		case PG_FLOAT8:             return &pg_types[78];
-		case PG_GTSVECTOR:          return &pg_types[79];
-		case PG_INET:               return &pg_types[80];
-		case PG_INT2:               return &pg_types[81];
-		case PG_INT2VECTOR:         return &pg_types[82];
-		case PG_INT4:               return &pg_types[83];
-		case PG_INT8:               return &pg_types[84];
-		case PG_INTERNAL:           return &pg_types[85];
-		case PG_INTERVAL:           return &pg_types[86];
-		case PG_LANGUAGE_HANDLER:   return &pg_types[87];
-		case PG_LINE:               return &pg_types[88];
-		case PG_LSEG:               return &pg_types[89];
-		case PG_MACADDR:            return &pg_types[90];
-		case PG_MONEY:              return &pg_types[91];
-		case PG_NAME:               return &pg_types[92];
-		case PG_NUMERIC:            return &pg_types[93];
-		case PG_OID:                return &pg_types[94];
-		case PG_OIDVECTOR:          return &pg_types[95];
-		case PG_OPAQUE:             return &pg_types[96];
-		case PG_PATH:               return &pg_types[97];
-		case PG_PG_ATTRIBUTE:       return &pg_types[98];
-		case PG_PG_CLASS:           return &pg_types[99];
-		case PG_PG_PROC:            return &pg_types[100];
-		case PG_PG_TYPE:            return &pg_types[101];
-		case PG_POINT:              return &pg_types[102];
-		case PG_POLYGON:            return &pg_types[103];
-		case PG_RECORD:             return &pg_types[104];
-		case PG_REFCURSOR:          return &pg_types[105];
-		case PG_REGCLASS:           return &pg_types[106];
-		case PG_REGCONFIG:          return &pg_types[107];
-		case PG_REGDICTIONARY:      return &pg_types[108];
-		case PG_REGOPER:            return &pg_types[109];
-		case PG_REGOPERATOR:        return &pg_types[110];
-		case PG_REGPROC:            return &pg_types[111];
-		case PG_REGPROCEDURE:       return &pg_types[112];
-		case PG_REGTYPE:            return &pg_types[113];
-		case PG_RELTIME:            return &pg_types[114];
-		case PG_SMGR:               return &pg_types[115];
-		case PG_TEXT:               return &pg_types[116];
-		case PG_TID:                return &pg_types[117];
-		case PG_TIME:               return &pg_types[118];
-		case PG_TIMESTAMP:          return &pg_types[119];
-		case PG_TIMESTAMPTZ:        return &pg_types[120];
-		case PG_TIMETZ:             return &pg_types[121];
-		case PG_TINTERVAL:          return &pg_types[122];
-		case PG_TRIGGER:            return &pg_types[123];
-		case PG_TSQUERY:            return &pg_types[124];
-		case PG_TSVECTOR:           return &pg_types[125];
-		case PG_TXID_SNAPSHOT:      return &pg_types[126];
-		case PG_UNKNOWN:            return &pg_types[127];
-		case PG_UUID:               return &pg_types[128];
-		case PG_VARBIT:             return &pg_types[129];
-		case PG_VARCHAR:            return &pg_types[130];
-		case PG_VOID:               return &pg_types[131];
-		case PG_XID:                return &pg_types[132];
-		case PG_XML:                return &pg_types[133];
+		case PG_REFCURSORARRAY:     return &pg_types[33];
+		case PG_REGCLASSARRAY:      return &pg_types[34];
+		case PG_REGCONFIGARRAY:     return &pg_types[35];
+		case PG_REGDICTIONARYARRAY: return &pg_types[36];
+		case PG_REGOPERARRAY:       return &pg_types[37];
+		case PG_REGOPERATORARRAY:   return &pg_types[38];
+		case PG_REGPROCARRAY:       return &pg_types[39];
+		case PG_REGPROCEDUREARRAY:  return &pg_types[40];
+		case PG_REGTYPEARRAY:       return &pg_types[41];
+		case PG_RELTIMEARRAY:       return &pg_types[42];
+		case PG_TEXTARRAY:          return &pg_types[43];
+		case PG_TIDARRAY:           return &pg_types[44];
+		case PG_TIMEARRAY:          return &pg_types[45];
+		case PG_TIMESTAMPARRAY:     return &pg_types[46];
+		case PG_TIMESTAMPTZARRAY:   return &pg_types[47];
+		case PG_TIMETZARRAY:        return &pg_types[48];
+		case PG_TINTERVALARRAY:     return &pg_types[49];
+		case PG_TSQUERYARRAY:       return &pg_types[50];
+		case PG_TSVECTORARRAY:      return &pg_types[51];
+		case PG_TXID_SNAPSHOTARRAY: return &pg_types[52];
+		case PG_UUIDARRAY:          return &pg_types[53];
+		case PG_VARBITARRAY:        return &pg_types[54];
+		case PG_VARCHARARRAY:       return &pg_types[55];
+		case PG_XIDARRAY:           return &pg_types[56];
+		case PG_XMLARRAY:           return &pg_types[57];
+		case PG_ABSTIME:            return &pg_types[58];
+		case PG_ACLITEM:            return &pg_types[59];
+		case PG_ANY:                return &pg_types[60];
+		case PG_ANYARRAY:           return &pg_types[61];
+		case PG_ANYELEMENT:         return &pg_types[62];
+		case PG_ANYENUM:            return &pg_types[63];
+		case PG_ANYNONARRAY:        return &pg_types[64];
+		case PG_BIT:                return &pg_types[65];
+		case PG_BOOL:               return &pg_types[66];
+		case PG_BOX:                return &pg_types[67];
+		case PG_BPCHAR:             return &pg_types[68];
+		case PG_BYTEA:              return &pg_types[69];
+		case PG_CHAR:               return &pg_types[70];
+		case PG_CID:                return &pg_types[71];
+		case PG_CIDR:               return &pg_types[72];
+		case PG_CIRCLE:             return &pg_types[73];
+		case PG_CSTRING:            return &pg_types[74];
+		case PG_DATE:               return &pg_types[75];
+		case PG_FLOAT4:             return &pg_types[76];
+		case PG_FLOAT8:             return &pg_types[77];
+		case PG_GTSVECTOR:          return &pg_types[78];
+		case PG_INET:               return &pg_types[79];
+		case PG_INT2:               return &pg_types[80];
+		case PG_INT2VECTOR:         return &pg_types[81];
+		case PG_INT4:               return &pg_types[82];
+		case PG_INT8:               return &pg_types[83];
+		case PG_INTERNAL:           return &pg_types[84];
+		case PG_INTERVAL:           return &pg_types[85];
+		case PG_LANGUAGE_HANDLER:   return &pg_types[86];
+		case PG_LINE:               return &pg_types[87];
+		case PG_LSEG:               return &pg_types[88];
+		case PG_MACADDR:            return &pg_types[89];
+		case PG_MONEY:              return &pg_types[90];
+		case PG_NAME:               return &pg_types[91];
+		case PG_NUMERIC:            return &pg_types[92];
+		case PG_OID:                return &pg_types[93];
+		case PG_OIDVECTOR:          return &pg_types[94];
+		case PG_OPAQUE:             return &pg_types[95];
+		case PG_PATH:               return &pg_types[96];
+		case PG_PG_ATTRIBUTE:       return &pg_types[97];
+		case PG_PG_CLASS:           return &pg_types[98];
+		case PG_PG_PROC:            return &pg_types[99];
+		case PG_PG_TYPE:            return &pg_types[100];
+		case PG_POINT:              return &pg_types[101];
+		case PG_POLYGON:            return &pg_types[102];
+		case PG_RECORD:             return &pg_types[103];
+		case PG_REFCURSOR:          return &pg_types[104];
+		case PG_REGCLASS:           return &pg_types[105];
+		case PG_REGCONFIG:          return &pg_types[106];
+		case PG_REGDICTIONARY:      return &pg_types[107];
+		case PG_REGOPER:            return &pg_types[108];
+		case PG_REGOPERATOR:        return &pg_types[109];
+		case PG_REGPROC:            return &pg_types[110];
+		case PG_REGPROCEDURE:       return &pg_types[111];
+		case PG_REGTYPE:            return &pg_types[112];
+		case PG_RELTIME:            return &pg_types[113];
+		case PG_SMGR:               return &pg_types[114];
+		case PG_TEXT:               return &pg_types[115];
+		case PG_TID:                return &pg_types[116];
+		case PG_TIME:               return &pg_types[117];
+		case PG_TIMESTAMP:          return &pg_types[118];
+		case PG_TIMESTAMPTZ:        return &pg_types[119];
+		case PG_TIMETZ:             return &pg_types[120];
+		case PG_TINTERVAL:          return &pg_types[121];
+		case PG_TRIGGER:            return &pg_types[122];
+		case PG_TSQUERY:            return &pg_types[123];
+		case PG_TSVECTOR:           return &pg_types[124];
+		case PG_TXID_SNAPSHOT:      return &pg_types[125];
+		case PG_UNKNOWN:            return &pg_types[126];
+		case PG_UUID:               return &pg_types[127];
+		case PG_VARBIT:             return &pg_types[128];
+		case PG_VARCHAR:            return &pg_types[129];
+		case PG_VOID:               return &pg_types[130];
+		case PG_XID:                return &pg_types[131];
+		case PG_XML:                return &pg_types[132];
 		default: return NULL;
 	}
 }
 
 static sql_type_info_t sql_types[] = {
- {SQL_BOOLEAN,"SQL_BOOLEAN",1,',', "none", quote_bool, dequote_bool, {PG_BOOL}, 3},
- {SQL_CHAR,"SQL_CHAR",1,',', "none", quote_string, dequote_char, {PG_BPCHAR}, 0},
- {SQL_VARBINARY,"SQL_VARBINARY",1,',', "none", quote_bytea, dequote_bytea, {PG_BYTEA}, 0},
- {SQL_CHAR,"SQL_CHAR",1,',', "none", quote_string, dequote_char, {PG_CHAR}, 0},
- {SQL_TYPE_DATE,"SQL_TYPE_DATE",1,',', "none", quote_string, dequote_string, {PG_DATE}, 0},
- {SQL_FLOAT,"SQL_FLOAT",1,',', "none", quote_float, null_dequote, {PG_FLOAT8}, 2},
- {SQL_DOUBLE,"SQL_DOUBLE",1,',', "none", quote_float, null_dequote, {PG_FLOAT8}, 2},
- {SQL_NUMERIC,"SQL_NUMERIC",1,',', "none", quote_float, null_dequote, {PG_FLOAT8}, 2},
- {SQL_REAL,"SQL_REAL",1,',', "none", quote_float, null_dequote, {PG_FLOAT8}, 2},
- {SQL_SMALLINT,"SQL_SMALLINT",1,',', "none", quote_int, null_dequote, {PG_INT2}, 1},
- {SQL_TINYINT,"SQL_TINYINT",1,',', "none", quote_int, null_dequote, {PG_INT2}, 1},
- {SQL_INTEGER,"SQL_INTEGER",1,',', "none", quote_int, null_dequote, {PG_INT4}, 1},
- {SQL_BIGINT,"SQL_BIGINT",1,',', "none", quote_int, null_dequote, {PG_INT8}, 0},
- {SQL_VARCHAR,"SQL_VARCHAR",1,',', "none", quote_name, null_dequote, {PG_NAME}, 0},
- {SQL_DECIMAL,"SQL_DECIMAL",1,',', "none", quote_float, null_dequote, {PG_NUMERIC}, 2},
- {SQL_LONGVARCHAR,"SQL_LONGVARCHAR",1,',', "none", quote_string, dequote_string, {PG_TEXT}, 0},
- {SQL_TYPE_TIME,"SQL_TYPE_TIME",1,',', "none", quote_string, dequote_string, {PG_TIME}, 0},
- {SQL_TIMESTAMP,"SQL_TIMESTAMP",1,',', "none", quote_string, dequote_string, {PG_TIMESTAMP}, 0},
- {SQL_TYPE_TIMESTAMP,"SQL_TYPE_TIMESTAMP",1,',', "none", quote_string, dequote_string, {PG_TIMESTAMP}, 0},
- {SQL_TYPE_TIMESTAMP_WITH_TIMEZONE,"SQL_TYPE_TIMESTAMP_WITH_TIMEZONE",1,',', "none", quote_string, dequote_string, {PG_TIMESTAMPTZ}, 0},
- {SQL_TYPE_TIME_WITH_TIMEZONE,"SQL_TYPE_TIME_WITH_TIMEZONE",1,',', "none", quote_string, dequote_string, {PG_TIMESTAMPTZ}, 0},
- {SQL_VARCHAR,"SQL_VARCHAR",1,',', "none", quote_string, dequote_string, {PG_VARCHAR}, 0},
+ {SQL_BOOLEAN,"SQL_BOOLEAN",',', "none", quote_bool, dequote_bool, {PG_BOOL}, 1, 0},
+ {SQL_CHAR,"SQL_CHAR",',', "none", quote_string, dequote_char, {PG_BPCHAR}, 1, 0},
+ {SQL_VARBINARY,"SQL_VARBINARY",',', "none", quote_bytea, dequote_bytea, {PG_BYTEA}, 1, 0},
+ {SQL_CHAR,"SQL_CHAR",',', "none", quote_string, dequote_char, {PG_CHAR}, 1, 0},
+ {SQL_TYPE_DATE,"SQL_TYPE_DATE",',', "none", quote_string, dequote_string, {PG_DATE}, 1, 0},
+ {SQL_FLOAT,"SQL_FLOAT",',', "none", null_quote, null_dequote, {PG_FLOAT8}, 1, 2},
+ {SQL_DOUBLE,"SQL_DOUBLE",',', "none", null_quote, null_dequote, {PG_FLOAT8}, 1, 2},
+ {SQL_NUMERIC,"SQL_NUMERIC",',', "none", null_quote, null_dequote, {PG_FLOAT8}, 1, 2},
+ {SQL_REAL,"SQL_REAL",',', "none", null_quote, null_dequote, {PG_FLOAT8}, 1, 2},
+ {SQL_SMALLINT,"SQL_SMALLINT",',', "none", null_quote, null_dequote, {PG_INT2}, 1, 1},
+ {SQL_TINYINT,"SQL_TINYINT",',', "none", null_quote, null_dequote, {PG_INT2}, 1, 1},
+ {SQL_INTEGER,"SQL_INTEGER",',', "none", null_quote, null_dequote, {PG_INT4}, 1, 1},
+ {SQL_BIGINT,"SQL_BIGINT",',', "none", null_quote, null_dequote, {PG_INT8}, 1, 0},
+ {SQL_VARCHAR,"SQL_VARCHAR",',', "none", null_quote, null_dequote, {PG_NAME}, 1, 0},
+ {SQL_DECIMAL,"SQL_DECIMAL",',', "none", null_quote, null_dequote, {PG_NUMERIC}, 1, 2},
+ {SQL_LONGVARCHAR,"SQL_LONGVARCHAR",',', "none", quote_string, dequote_string, {PG_TEXT}, 1, 0},
+ {SQL_TYPE_TIME,"SQL_TYPE_TIME",',', "none", quote_string, dequote_string, {PG_TIME}, 1, 0},
+ {SQL_TIMESTAMP,"SQL_TIMESTAMP",',', "none", quote_string, dequote_string, {PG_TIMESTAMP}, 1, 0},
+ {SQL_TYPE_TIMESTAMP,"SQL_TYPE_TIMESTAMP",',', "none", quote_string, dequote_string, {PG_TIMESTAMP}, 1, 0},
+ {SQL_TYPE_TIMESTAMP_WITH_TIMEZONE,"SQL_TYPE_TIMESTAMP_WITH_TIMEZONE",',', "none", quote_string, dequote_string, {PG_TIMESTAMPTZ}, 1, 0},
+ {SQL_TYPE_TIME_WITH_TIMEZONE,"SQL_TYPE_TIME_WITH_TIMEZONE",',', "none", quote_string, dequote_string, {PG_TIMESTAMPTZ}, 1, 0},
+ {SQL_VARCHAR,"SQL_VARCHAR",',', "none", quote_string, dequote_string, {PG_VARCHAR}, 1, 0},
 };
 
 sql_type_info_t* sql_type_data(int sql_type)
@@ -370,7 +368,6 @@ my $arg = shift || die "Usage: $0 path-to-pgsql-source\n";
 -d $arg or die qq{Sorry, but "$arg" is not a directory!\n};
 
 my $file = "$arg/src/include/catalog/pg_type.h";
-my $typefile = $file;
 
 open my $fh, '<', $file or die qq{Could not open file "$file": $!\n};
 my $maxlen = 1;
@@ -379,7 +376,7 @@ my $thisname = 0;
 while(<$fh>) {
 	s/FLOAT8PASSBYVAL/t/;
 	s/FLOAT4PASSBYVAL/t/;
-	if (/^DATA\(insert OID\s+=\s+(\d+)\s+\(\s+(\S+)\s+\S+ \S+\s+\S+\s+[t|f]\s+. . [tf] ([tf]) \\(\d+) (\d+)\s+(\d+) (\d+) (\S+) (\S+) (\S+) (\S+)/o) {
+	if (/^DATA\(insert OID\s+=\s+(\d+)\s+\(\s+(\S+)\s+\S+ \S+\s+\S+\s+[t|f]\s+. ([tf]) \\(\d+) (\d+)\s+(\d+) (\d+) (\S+) (\S+) (\S+) (\S+)/o) {
 		my ($oid,$name,$typedef,$delim,$typrelid,$typelem,$typarray,$tin,$tout,$bin,$bout) =
 			($1,$2,$3,chr(oct($4)),$5,$6,$7,$8,$9,$10,$11);
 		die "Duplicated OID $oid!: $_\n" if exists $pgtype{$oid};
@@ -397,12 +394,6 @@ while(<$fh>) {
 			sqlc    => 0,
 			svtype  => 0,
 		};
-		if ($name =~ /_/) {
-			(my $basename = $name) =~ s/_//;
-			if (exists $pgtype{$basename}) {
-				$pgtype{$name}{delim} = $pgtype{$basename}{delim};
-			}
-		}
 		length($name) > $maxlen and $maxlen = length($name);
 		$thisname = $name;
 		## Special hack for array types
@@ -434,7 +425,6 @@ $starslash
 typedef struct sql_type_info {
 	int     type_id;
 	char*   type_name;
-	bool    bind_ok;
 	char    array_delimeter;
 	char*   arrayout;
 	char*   (*quote)();
@@ -443,6 +433,7 @@ typedef struct sql_type_info {
 			int pg;
 			int sql;
 	} type;
+	bool    bind_ok;
 	int     svtype;
 } sql_type_info_t;
 
@@ -602,7 +593,7 @@ print $newfh qq{$slashstar
 
    \$Id: types.c 11297 2008-05-20 21:52:34Z turnstep \$
 
-   Copyright (c) 2003-2009 Greg Sabino Mullane and others: see the Changes file
+   Copyright (c) 2003-2008 Greg Sabino Mullane and others: see the Changes file
    
    You may distribute under the terms of either the GNU General Public
    License or the Artistic License, as specified in the Perl README file.
@@ -625,7 +616,7 @@ while (<DATA>) {
 	chomp;
 	my ($name,$q,$dq,$sql,$sqlc,$svtype) = split / +/ => $_;
 	if (!exists $pgtype{$name}) {
-		die qq{Type ($name) was not found in source file $typefile!\n};
+		die qq{Type ($name) was not found in source file!\n};
 	}
 	$pgtype{$name}{quote}   = $q;
 	$pgtype{$name}{dequote} = $dq;
@@ -650,8 +641,8 @@ for my $name (sort {$a cmp $b } keys %pgtype) {
 	my ($sqltype,$quote,$dequote) = (0,0,0);
 	(my $sql = $t->{sql}) =~ s{^(\w+).*}{$1};
 
-	printf $newfh qq! {%-*s,%-*s,%d,'%s',%-18s,%-12s,%-14s,\{%s\},%d\},\n!,
-		$maxlen, $t->{define}, $maxlen-2, "\"$name\"", 1, $t->{delim}, "\"$t->{textout}\"", $t->{quote}, $t->{dequote}, $sql, $t->{svtype};
+	printf $newfh qq! {%-*s,%-*s,'%s',%-18s,%-12s,%-14s,\{%s\},%d,%d\},\n!,
+		$maxlen, $t->{define}, $maxlen-2, "\"$name\"", $t->{delim}, "\"$t->{textout}\"", $t->{quote}, $t->{dequote}, $sql, 1, $t->{svtype};
 	$pos{$name} = $item++;
 }
 
@@ -680,7 +671,7 @@ for my $name (sort { $a cmp $b } keys %pgtype) {
 	next unless $pgtype{$name}{sql};
 	for my $sql (split /\|/ => $pgtype{$name}{sql}) {
 		## {SQL_VARCHAR, "SQL_VARCHAR", quote_string, dequote_string, {VARCHAROID}, DBDPG_TRUE },
-		printf $newfh qq! {%s,"%s",1,',', "none", $pgtype{$name}{quote}, $pgtype{$name}{dequote}, \{$pgtype{$name}{define}\}, $pgtype{$name}{svtype}\},\n!, $sql, $sql;
+		printf $newfh qq! {%s,"%s",',', "none", $pgtype{$name}{quote}, $pgtype{$name}{dequote}, \{$pgtype{$name}{define}\}, 1, $pgtype{$name}{svtype}\},\n!, $sql, $sql;
 		$maxlen = length $sql if length $sql > $maxlen;
 		$pos{$sql} = $item++;
 	}
@@ -721,18 +712,18 @@ char     quote_string  dequote_char    SQL_CHAR                  0  0
 bpchar   quote_string  dequote_char    SQL_CHAR                  1  0
 cid      quote_string  dequote_string  0                         0  0
 
-## Things that get special quoting
-int2     quote_int     null_dequote    SQL_SMALLINT|SQL_TINYINT  1  1
-int4     quote_int     null_dequote    SQL_INTEGER               1  1
-int8     quote_int     null_dequote    SQL_BIGINT                1  0
-float4   quote_float   null_dequote    0                         1  2
-float8   quote_float   null_dequote    SQL_FLOAT|SQL_DOUBLE|SQL_NUMERIC|SQL_REAL 1  2
-numeric  quote_float   null_dequote    SQL_DECIMAL               1  2
-oid      quote_int     null_dequote    0                         0  1
-name     quote_name    null_dequote    SQL_VARCHAR               0  0 ## XXX Wrong
+## Things that get no quoting at all (e.g. numbers)
+int2     null_quote    null_dequote    SQL_SMALLINT|SQL_TINYINT  1  1
+int4     null_quote    null_dequote    SQL_INTEGER               1  1
+int8     null_quote    null_dequote    SQL_BIGINT                1  0
+float4   null_quote    null_dequote    0                         1  2
+float8   null_quote    null_dequote    SQL_FLOAT|SQL_DOUBLE|SQL_NUMERIC|SQL_REAL 1  2
+numeric  null_quote    null_dequote    SQL_DECIMAL               1  2
+oid      null_quote    null_dequote    0                         0  1
+name     null_quote    null_dequote    SQL_VARCHAR               0  0 ## XXX Wrong
 
 ## Boolean
-bool     quote_bool    dequote_bool    SQL_BOOLEAN               1  3
+bool     quote_bool    dequote_bool    SQL_BOOLEAN               1  0
 
 ## Geometric types
 point    quote_geom    dequote_string  0                         0  0
