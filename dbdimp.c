@@ -1,8 +1,8 @@
 /*
 
-  $Id: dbdimp.c 13667 2009-12-17 14:45:23Z turnstep $
+  $Id: dbdimp.c 13752 2010-01-20 19:19:06Z turnstep $
 
-  Copyright (c) 2002-2009 Greg Sabino Mullane and others: see the Changes file
+  Copyright (c) 2002-2010 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
   Portions Copyright (c) 1997-2000 Edmund Mergl
   Portions Copyright (c) 1994-1997 Tim Bunce
@@ -270,6 +270,10 @@ static void pg_error (pTHX_ SV * h, int error_num, const char * error_msg)
 	sv_setiv(DBIc_ERR(imp_xxh), (IV)error_num);
 	sv_setpvn(DBIc_ERRSTR(imp_xxh), error_msg, error_len);
 	sv_setpv(DBIc_STATE(imp_xxh), (char*)imp_dbh->sqlstate);
+
+	/* Set as utf-8 */
+	if (imp_dbh->pg_enable_utf8)
+		SvUTF8_on(DBIc_ERRSTR(imp_xxh));
 
 	if (TEND) TRC(DBILOGFP, "%sEnd pg_error\n", THEADER);
 

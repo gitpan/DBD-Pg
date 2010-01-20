@@ -1,8 +1,8 @@
 /*
 
-   $Id: quote.c 13129 2009-07-27 21:57:32Z turnstep $
+   $Id: quote.c 13752 2010-01-20 19:19:06Z turnstep $
 
-   Copyright (c) 2003-2009 Greg Sabino Mullane and others: see the Changes file
+   Copyright (c) 2003-2010 Greg Sabino Mullane and others: see the Changes file
 
    You may distribute under the terms of either the GNU General Public
    License or the Artistic License, as specified in the Perl README file.

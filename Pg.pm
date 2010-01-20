@@ -1,7 +1,7 @@
 #  -*-cperl-*-
-#  $Id: Pg.pm 13672 2009-12-17 17:04:11Z turnstep $
+#  $Id: Pg.pm 13752 2010-01-20 19:19:06Z turnstep $
 #
-#  Copyright (c) 2002-2009 Greg Sabino Mullane and others: see the Changes file
+#  Copyright (c) 2002-2010 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
 #  Portions Copyright (c) 1997-2001 Edmund Mergl
 #  Portions Copyright (c) 1994-1997 Tim Bunce
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.16.0');
+	use version; our $VERSION = qv('2.16.1');
 
 	use DBI ();
 	use DynaLoader ();
@@ -1731,7 +1731,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.16.0 of the DBD::Pg module
+This documents version 2.16.1 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
@@ -4199,7 +4199,7 @@ The current maintainers may be reached through the 'dbd-pg' mailing list:
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 1994-2009, Greg Sabino Mullane
+Copyright (C) 1994-2010, Greg Sabino Mullane
 
 This module (DBD::Pg) is free software; you can redistribute it and/or modify it 
 under the same terms as Perl 5.10.0. For more details, see the full text of the 

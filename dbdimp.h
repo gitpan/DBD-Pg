@@ -1,7 +1,7 @@
 /*
-	$Id: dbdimp.h 13162 2009-08-04 18:10:35Z turnstep $
+	$Id: dbdimp.h 13752 2010-01-20 19:19:06Z turnstep $
 	
-    Copyright (c) 2000-2009 Greg Sabino Mullane and others: see the Changes file
+    Copyright (c) 2000-2010 Greg Sabino Mullane and others: see the Changes file
 	Portions Copyright (c) 1997-2000 Edmund Mergl
 	Portions Copyright (c) 1994-1997 Tim Bunce
 	
