@@ -1,5 +1,5 @@
 /*
-  $Id: Pg.xs 13752 2010-01-20 19:19:06Z turnstep $
+  $Id: Pg.xs 13758 2010-01-20 21:14:28Z turnstep $
 
   Copyright (c) 2000-2010 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 1997-2000 Edmund Mergl
@@ -477,6 +477,17 @@ pg_lo_import(dbh, filename)
 	char * filename
 	CODE:
 		const unsigned int ret = pg_db_lo_import(dbh, filename);
+		ST(0) = (ret > 0) ? sv_2mortal(newSVuv(ret)) : &PL_sv_undef;
+
+
+void
+pg_lo_import_with_oid(dbh, filename, lobjId)
+	SV * dbh
+	char * filename
+	unsigned int lobjId
+	CODE:
+		const unsigned int ret = (lobjId==0) ? pg_db_lo_import(dbh, filename)
+			: pg_db_lo_import_with_oid(dbh, filename, lobjId);
 		ST(0) = (ret > 0) ? sv_2mortal(newSVuv(ret)) : &PL_sv_undef;
 
 

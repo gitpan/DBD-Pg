@@ -1,5 +1,5 @@
 #  -*-cperl-*-
-#  $Id: Pg.pm 13752 2010-01-20 19:19:06Z turnstep $
+#  $Id: Pg.pm 13885 2010-04-05 19:45:08Z turnstep $
 #
 #  Copyright (c) 2002-2010 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.16.1');
+	use version; our $VERSION = qv('2.17.0');
 
 	use DBI ();
 	use DynaLoader ();
@@ -152,6 +152,7 @@ use 5.006001;
 		DBD::Pg::db->install_method('pg_lo_close');
 		DBD::Pg::db->install_method('pg_lo_unlink');
 		DBD::Pg::db->install_method('pg_lo_import');
+		DBD::Pg::db->install_method('pg_lo_import_with_oid');
 		DBD::Pg::db->install_method('pg_lo_export');
 
 		return $drh;
@@ -1731,7 +1732,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.16.1 of the DBD::Pg module
+This documents version 2.17.0 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
@@ -2147,6 +2148,18 @@ This function cannot be used if AutoCommit is enabled.
 
 Imports a Unix file as a large object and returns the object id of the new
 object or C<undef> upon failure.
+
+=item lo_import_with_oid
+
+
+  $lobjId = $dbh->pg_lo_import($filename, $OID);
+
+Same as lo_import, but attempts to use the supplied OID as the 
+large object number. If this number is 0, it falls back to the 
+behavior of lo_import (which assigns the next available OID).
+
+This is only available when DBD::Pg is compiled against a Postgres 
+server version 8.4 or later.
 
 =item lo_export
 
@@ -2743,7 +2756,7 @@ new notices will not be picked up while in the middle of a transaction. An examp
   }
 
 Payloads will always be an empty string unless you are connecting to a Postgres 
-server version 8.5 or higher.
+server version 9.0 or higher.
 
 =head3 B<ping>
 
@@ -3896,8 +3909,9 @@ currently running asynchronous query to complete. It has no effect if there is n
 
 This database-level method attempts to cancel any currently running asynchronous query. It returns true if 
 the cancel succeeded, and false otherwise. Note that a query that has finished before this method is executed 
-will also return false. B<WARNING>: a successful cancellation will leave the database in an unusable state, 
-so DBD::Pg will automatically clear out the error message and issue a ROLLBACK.
+will also return false. B<WARNING>: a successful cancellation may leave the database in an unusable state, 
+so you may need to ROLLBACK or ROLLBACK TO a savepoint. As of version 2.17.0 of DBD::Pg, rollbacks are 
+not done automatically.
 
   $result = $dbh->pg_cancel();
 
@@ -4106,7 +4120,7 @@ success. This method will fail if called when not in COPY IN mode.
 =head2 Large Objects
 
 DBD::Pg supports all largeobject functions provided by libpq via the
-C<func> method. Please note that access to a large object, even read-only 
+C<< $dbh->pg_lo* >> methods. Please note that access to a large object, even read-only 
 large objects, must be put into a transaction.
 
 =head2 Cursors

@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 13752 2010-01-20 19:19:06Z turnstep $
+  $Id: dbdimp.c 13883 2010-04-05 19:08:17Z turnstep $
 
   Copyright (c) 2002-2010 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -4414,6 +4414,34 @@ unsigned int pg_db_lo_import (SV * dbh, char * filename)
 }
 
 /* ================================================================== */
+unsigned int pg_db_lo_import_with_oid (SV * dbh, char * filename, unsigned int lobjId)
+{
+
+	Oid loid;
+	dTHX;
+	D_imp_dbh(dbh);
+
+	if (TSTART) TRC(DBILOGFP, "%sBegin pg_db_lo_import_with_oid (filename: %s, oid: %d)\n",
+					THEADER, filename, lobjId);
+
+	if (!pg_db_start_txn(aTHX_ dbh,imp_dbh))
+		return 0; /* No other option, because lo_import* returns an Oid */
+
+	if (TLIBPQ) {
+		TRC(DBILOGFP, "%slo_import_with_oid\n", THEADER);
+	}
+	loid = lo_import_with_oid(imp_dbh->conn, filename, lobjId); /* 0 on error */
+
+	if (DBIc_has(imp_dbh, DBIcf_AutoCommit)) {
+		if (!pg_db_end_txn(aTHX_ dbh, imp_dbh, 0==loid ? 0 : 1))
+			return 0;
+	}
+
+	return loid;
+
+}
+
+/* ================================================================== */
 int pg_db_lo_export (SV * dbh, unsigned int lobjId, char * filename)
 {
 
@@ -4678,10 +4706,8 @@ int pg_db_ready(SV *h, imp_dbh_t *imp_dbh)
 /*
 Attempt to cancel a running asynchronous query
 Returns true if the cancel succeeded, and false if it did not
-If it did successfully cancel the query, it will also do a rollback.
-Note that queries which have finished do not cause a rollback.
 In this case, pg_cancel will return false.
-NOTE: We only return true if we cancelled and rolled back!
+NOTE: We only return true if we cancelled
 */
 
 /* ================================================================== */
@@ -4741,11 +4767,9 @@ int pg_db_cancel(SV *h, imp_dbh_t *imp_dbh)
 
 	status = _sqlstate(aTHX_ imp_dbh, result);
 
-	/* If we actually cancelled a running query, perform a rollback */
+	/* If we actually cancelled a running query, just return true - the caller must rollback if needed */
 	if (0 == strncmp(imp_dbh->sqlstate, "57014", 5)) {
-		if (TRACE3) { TRC(DBILOGFP, "%sRolling back after cancelled query\n", THEADER); }
-		dbd_db_rollback(h, imp_dbh);
-		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_cancel (rollback)\n", THEADER);
+		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_cancel\n", THEADER);
 		return DBDPG_TRUE;
 	}
 

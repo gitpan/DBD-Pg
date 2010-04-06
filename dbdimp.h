@@ -1,5 +1,5 @@
 /*
-	$Id: dbdimp.h 13752 2010-01-20 19:19:06Z turnstep $
+	$Id: dbdimp.h 13758 2010-01-20 21:14:28Z turnstep $
 	
     Copyright (c) 2000-2010 Greg Sabino Mullane and others: see the Changes file
 	Portions Copyright (c) 1997-2000 Edmund Mergl
@@ -230,6 +230,8 @@ int pg_db_lo_tell (SV *dbh, int fd);
 int pg_db_lo_unlink (SV *dbh, unsigned int lobjId);
 
 unsigned int pg_db_lo_import (SV *dbh, char *filename);
+
+unsigned int pg_db_lo_import_with_oid (SV *dbh, char *filename, unsigned int lobjId);
 
 int pg_db_lo_export (SV *dbh, unsigned int lobjId, char *filename);
 
