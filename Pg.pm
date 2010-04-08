@@ -1,5 +1,5 @@
 #  -*-cperl-*-
-#  $Id: Pg.pm 13885 2010-04-05 19:45:08Z turnstep $
+#  $Id: Pg.pm 13896 2010-04-07 20:52:54Z turnstep $
 #
 #  Copyright (c) 2002-2010 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.17.0');
+	use version; our $VERSION = qv('2.17.1');
 
 	use DBI ();
 	use DynaLoader ();
@@ -1732,7 +1732,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.17.0 of the DBD::Pg module
+This documents version 2.17.1 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
@@ -2143,14 +2143,12 @@ This function cannot be used if AutoCommit is enabled.
 
 =item lo_import
 
-
   $lobjId = $dbh->pg_lo_import($filename);
 
 Imports a Unix file as a large object and returns the object id of the new
 object or C<undef> upon failure.
 
 =item lo_import_with_oid
-
 
   $lobjId = $dbh->pg_lo_import($filename, $OID);
 

@@ -1,4 +1,4 @@
-# $Id: Makefile.PL 13885 2010-04-05 19:45:08Z turnstep $
+# $Id: Makefile.PL 13896 2010-04-07 20:52:54Z turnstep $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -7,7 +7,7 @@ use warnings;
 use 5.006001;
 
 ## No version.pm for this one, as the prereqs are not loaded yet.
-my $VERSION = '2.17.0';
+my $VERSION = '2.17.1';
 
 my $lib;
 BEGIN {
@@ -305,8 +305,6 @@ SPLINTFLAGS =            \
 SPLINTFLAGS_TEST = 
 
 SDEFINES = 
-
-CCFLAGS2 = -D_REENTRANT -D_GNU_SOURCE -DTHREADS_HAVE_PIDS -DDEBIAN -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 -DPGLIBVERSION=80111 -DPGDEFPORT=5432
 
 splint: $(H_FILES) $(C_FILES)
 	$(MKPATH) $(SPLINT_TMP)

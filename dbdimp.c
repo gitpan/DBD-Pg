@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 13883 2010-04-05 19:08:17Z turnstep $
+  $Id: dbdimp.c 13895 2010-04-07 20:49:50Z turnstep $
 
   Copyright (c) 2002-2010 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -53,6 +53,15 @@ void PQfreeCancel(PGcancel *cancel) {
 	croak ("Called wrong PQfreeCancel");
 }
 
+
+#endif
+
+#if PGLIBVERSION < 80400
+
+Oid lo_import_with_oid (PGconn *conn, char *filename, unsigned int lobjId);
+Oid lo_import_with_oid (PGconn *conn, char *filename, unsigned int lobjId) {
+	croak ("Cannot use lo_import_with_oid unless compiled against Postgres 8.4 or later");
+}
 
 #endif
 
