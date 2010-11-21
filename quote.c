@@ -1,6 +1,6 @@
 /*
 
-   $Id: quote.c 13752 2010-01-20 19:19:06Z turnstep $
+   $Id: quote.c 14471 2010-10-09 05:33:58Z machack666 $
 
    Copyright (c) 2003-2010 Greg Sabino Mullane and others: see the Changes file
 
@@ -322,7 +322,7 @@ char * quote_int(const char *string, STRLEN len, STRLEN *retlen, int estring)
 	return result;
 }
 
-char * quote_float(const char *string, STRLEN len, STRLEN *retlen, int estring)
+char * quote_float(char *string, STRLEN len, STRLEN *retlen, int estring)
 {
 	dTHX;
 	char * result;
@@ -442,7 +442,7 @@ void dequote_string(const char *string, STRLEN *retlen, int estring)
 
 
 
-void dequote_bytea(char *string, STRLEN *retlen, int estring)
+static void _dequote_bytea_escape(char *string, STRLEN *retlen, int estring)
 {
 	dTHX;
 	char *result;
@@ -480,6 +480,58 @@ void dequote_bytea(char *string, STRLEN *retlen, int estring)
 	}
 	*result = '\0';
 	return;
+}
+
+static int _decode_hex_digit(char digit)
+{
+	dTHX;
+	if (digit >= '0' && digit <= '9')
+		return digit - '0';
+	if (digit >= 'a' && digit <= 'f')
+		return 10 + digit - 'a';
+	if (digit >= 'A' && digit <= 'F')
+		return 10 + digit - 'A';
+
+	return -1;
+}
+
+static void _dequote_bytea_hex(char *string, STRLEN *retlen, int estring)
+{
+	dTHX;
+	char *result;
+
+	(*retlen) = 0;
+
+	if (NULL == string)
+		return;
+
+	result = string;
+
+	while (*string != '\0') {
+		int digit1, digit2;
+		digit1 = _decode_hex_digit(*string);
+		digit2 = _decode_hex_digit(*(string+1));
+		if (digit1 >= 0 && digit2 >= 0) {
+			*result++ = 16 * digit1 + digit2;
+			(*retlen)++;
+		}
+		string += 2;
+	}
+	*result = '\0';
+	return;
+}
+
+void dequote_bytea(char *string, STRLEN *retlen, int estring)
+{
+	dTHX;
+
+	if (NULL == string)
+		return;
+
+	if ('\\' == *string && 'x' == *(string+1))
+		return _dequote_bytea_hex(string, retlen, estring);
+	else
+		return _dequote_bytea_escape(string, retlen, estring);
 }
 
 /*

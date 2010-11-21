@@ -1,5 +1,5 @@
 #  -*-cperl-*-
-#  $Id: Pg.pm 13896 2010-04-07 20:52:54Z turnstep $
+#  $Id: Pg.pm 14533 2010-11-21 04:44:41Z turnstep $
 #
 #  Copyright (c) 2002-2010 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.17.1');
+	use version; our $VERSION = qv('2.17.2');
 
 	use DBI ();
 	use DynaLoader ();
@@ -132,7 +132,7 @@ use 5.006001;
 		DBD::Pg::db->install_method('pg_putline');
 		DBD::Pg::db->install_method('pg_ready');
 		DBD::Pg::db->install_method('pg_release');
-		DBD::Pg::db->install_method('pg_result');
+		DBD::Pg::db->install_method('pg_result'); ## NOT duplicated below!
 		DBD::Pg::db->install_method('pg_rollback_to');
 		DBD::Pg::db->install_method('pg_savepoint');
 		DBD::Pg::db->install_method('pg_server_trace');
@@ -178,13 +178,13 @@ use 5.006001;
 		## Future: connect to "postgres" when the minimum version we support is 8.0
 		my $connstring = 'dbname=template1';
 		if ($ENV{DBI_DSN}) {
-			($connstring = $ENV{DBI_DSN}) =~ s/dbi:Pg://;
+			($connstring = $ENV{DBI_DSN}) =~ s/dbi:Pg://i;
 		}
 		if (length $attr) {
 			$connstring .= ";$attr";
 		}
 
-		my $dbh = DBD::Pg::dr::connect($drh, $connstring) or return undef;
+		my $dbh = DBD::Pg::dr::connect($drh, $connstring) or return;
 		$dbh->{AutoCommit}=1;
 		my $SQL = 'SELECT pg_catalog.quote_ident(datname) FROM pg_catalog.pg_database ORDER BY 1';
 		my $sth = $dbh->prepare($SQL);
@@ -1732,7 +1732,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.17.1 of the DBD::Pg module
+This documents version 2.17.2 of the DBD::Pg module
 
 =head1 DESCRIPTION
 

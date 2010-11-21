@@ -23,10 +23,10 @@ select(($|=1,select(STDERR),$|=1)[1]);
 
 my $dbh = connect_database();
 
-if (! defined $dbh) {
+if (! $dbh) {
 	plan skip_all => 'Connection to database failed, cannot continue testing';
 }
-plan tests => 529;
+plan tests => 531;
 
 isnt ($dbh, undef, 'Connect to database for database handle method testing');
 
@@ -610,11 +610,13 @@ for my $r (@$result) {
 is_deeply (\%missing, {}, $t);
 
 ## Check some of the returned fields:
-$result = $result->[0];
-is ($r->{TABLE_CAT},   undef,         'DB handle method "primary_key_info" returns proper TABLE_CAT');
-is ($r->{TABLE_NAME},  'dbd_pg_test', 'DB handle method "primary_key_info" returns proper TABLE_NAME');
-is ($r->{COLUMN_NAME}, 'id',          'DB handle method "primary_key_info" returns proper COLUMN_NAME');
-cmp_ok ($result->{KEY_SEQ}, '>=', 1,  'DB handle method "primary_key_info" returns proper KEY_SEQ');
+$r = $result->[0];
+is ($r->{TABLE_CAT},   undef,              'DB handle method "primary_key_info" returns proper TABLE_CAT');
+is ($r->{TABLE_NAME},  'dbd_pg_test',      'DB handle method "primary_key_info" returns proper TABLE_NAME');
+is ($r->{COLUMN_NAME}, 'id',               'DB handle method "primary_key_info" returns proper COLUMN_NAME');
+is ($r->{PK_NAME},     'dbd_pg_test_pkey', 'DB handle method "primary_key_info" returns proper PK_NAME');
+is ($r->{DATA_TYPE},   'int4',             'DB handle method "primary_key_info" returns proper DATA_TYPE');
+is ($r->{KEY_SEQ},     1,                  'DB handle method "primary_key_info" returns proper KEY_SEQ');
 
 #
 # Test of the "primary_key" database handle method
@@ -1400,8 +1402,6 @@ $result = $dbh->pg_lo_unlink($object);
 ok (!$result, $t);
 $dbh->rollback();
 
-my $abctext = $pgversion >= 80500 ? 'x6162630a646566' : "abc\ndef";
-
 SKIP: {
 
 	eval {
@@ -1420,7 +1420,7 @@ SKIP: {
 	$t='DB handle method "pg_lo_import" inserts correct data';
 	$SQL = "SELECT data FROM pg_largeobject where loid = $handle";
 	$info = $dbh->selectall_arrayref($SQL)->[0][0];
-	is_deeply ($info, $abctext, $t);
+	is_deeply ($info, "abc\ndef", $t);
 	$dbh->commit();
 
   SKIP: {
@@ -1442,7 +1442,7 @@ SKIP: {
 		$t='DB handle method "pg_lo_import_with_oid" inserts correct data';
 		$SQL = "SELECT data FROM pg_largeobject where loid = $thandle";
 		$info = $dbh->selectall_arrayref($SQL)->[0][0];
-		is_deeply ($info, $abctext, $t);
+		is_deeply ($info, "abc\ndef", $t);
 
 		$t='DB handle method "pg_lo_import_with_oid" fails when given already used number';
 		eval {
@@ -1556,7 +1556,7 @@ SKIP: {
 	$sth = $dbh->prepare($SQL);
 	$sth->execute($handle);
 	$info = $sth->fetchall_arrayref()->[0][0];
-	is_deeply ($info, $abctext, $t);
+	is_deeply ($info, "abc\ndef", $t);
 
 	$t='DB handle method "pg_lo_import" works (AutoCommit on, begin_work called, no command)';
 	$dbh->begin_work();
@@ -1564,7 +1564,7 @@ SKIP: {
 	ok ($handle, $t);
 	$sth->execute($handle);
 	$info = $sth->fetchall_arrayref()->[0][0];
-	is_deeply ($info, $abctext, $t);
+	is_deeply ($info, "abc\ndef", $t);
 	$dbh->rollback();
 
 	$t='DB handle method "pg_lo_import" works (AutoCommit on, begin_work called, no command, rollback)';
@@ -1583,7 +1583,7 @@ SKIP: {
 	ok ($handle, $t);
 	$sth->execute($handle);
 	$info = $sth->fetchall_arrayref()->[0][0];
-	is_deeply ($info, $abctext, $t);
+	is_deeply ($info, "abc\ndef", $t);
 	$dbh->rollback();
 
 	$t='DB handle method "pg_lo_import" works (AutoCommit on, begin_work called, second command, rollback)';
@@ -1603,7 +1603,7 @@ SKIP: {
 	ok ($handle, $t);
 	$sth->execute($handle);
 	$info = $sth->fetchall_arrayref()->[0][0];
-	is_deeply ($info, $abctext, $t);
+	is_deeply ($info, "abc\ndef", $t);
 
 	$t='DB handle method "pg_lo_import" works (AutoCommit not on, second command)';
 	$dbh->rollback();
@@ -1612,7 +1612,7 @@ SKIP: {
 	ok ($handle, $t);
 	$sth->execute($handle);
 	$info = $sth->fetchall_arrayref()->[0][0];
-	is_deeply ($info, $abctext, $t);
+	is_deeply ($info, "abc\ndef", $t);
 
 	unlink $filename;
 	$dbh->{AutoCommit} = 1;

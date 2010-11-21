@@ -1,6 +1,6 @@
 /*
 
-  $Id: dbdimp.c 13895 2010-04-07 20:49:50Z turnstep $
+  $Id: dbdimp.c 14538 2010-11-21 05:03:00Z turnstep $
 
   Copyright (c) 2002-2010 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -2910,8 +2910,13 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 		}
 	}
 
-	/* clear old result (if any) */
-	if (imp_sth->result) {
+	/*
+	  Clear old result (if any), except if starting the
+	  query asynchronously. Old async results will be
+	  deleted implicitly the next time pg_db_result is
+	  called.
+	*/
+	if (imp_sth->result && !(imp_sth->async_flag & PG_ASYNC)) {
 		TRACE_PQCLEAR;
 		PQclear(imp_sth->result);
 		imp_sth->result = NULL;

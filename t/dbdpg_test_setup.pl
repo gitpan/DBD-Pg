@@ -46,7 +46,7 @@ use vars qw/$fh/;
 sub connect_database {
 
 	## Connect to the database (unless 'dbh' is passed in)
-	## Setup all the tables (unless 'nosetup' is passed in)
+	## Setup all the tables (unless 'nocreate' is passed in)
 	## Returns three values:
 	## 1. helpconnect for use by 01connect.t
 	## 2. Any error generated
@@ -88,7 +88,7 @@ sub connect_database {
 		}
 
 		goto GOTDBH if eval {
-			$dbh = DBI->connect($testdsn, $testuser, '',
+			$dbh = DBI->connect($testdsn, $testuser, $ENV{DBI_PASS},
 								{RaiseError => 1, PrintError => 0, AutoCommit => 1});
 			1;
 		};
