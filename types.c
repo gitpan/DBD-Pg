@@ -1,8 +1,8 @@
 /*
 
-   $Id: types.c 11297 2008-05-20 21:52:34Z turnstep $
+   $Id: types.c 14779 2011-03-27 03:43:15Z turnstep $
 
-   Copyright (c) 2003-2010 Greg Sabino Mullane and others: see the Changes file
+   Copyright (c) 2003-2011 Greg Sabino Mullane and others: see the Changes file
    
    You may distribute under the terms of either the GNU General Public
    License or the Artistic License, as specified in the Perl README file.
@@ -602,7 +602,7 @@ print $newfh qq{$slashstar
 
    \$Id: types.c 11297 2008-05-20 21:52:34Z turnstep \$
 
-   Copyright (c) 2003-2010 Greg Sabino Mullane and others: see the Changes file
+   Copyright (c) 2003-2011 Greg Sabino Mullane and others: see the Changes file
    
    You may distribute under the terms of either the GNU General Public
    License or the Artistic License, as specified in the Perl README file.

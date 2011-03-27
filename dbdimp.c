@@ -1,8 +1,8 @@
 /*
 
-  $Id: dbdimp.c 14538 2010-11-21 05:03:00Z turnstep $
+  $Id: dbdimp.c 14779 2011-03-27 03:43:15Z turnstep $
 
-  Copyright (c) 2002-2010 Greg Sabino Mullane and others: see the Changes file
+  Copyright (c) 2002-2011 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
   Portions Copyright (c) 1997-2000 Edmund Mergl
   Portions Copyright (c) 1994-1997 Tim Bunce
@@ -100,9 +100,10 @@ void dbd_init (dbistate_t *dbistate)
 
 
 /* ================================================================== */
-int dbd_db_login (SV * dbh, imp_dbh_t * imp_dbh, char * dbname, char * uid, char * pwd)
+int dbd_db_login6 (SV * dbh, imp_dbh_t * imp_dbh, char * dbname, char * uid, char * pwd, SV *attr)
 {
 
+	dTHR;
 	dTHX;
 	char *         conn_str;
 	char *         dest;
@@ -253,6 +254,7 @@ int dbd_db_login (SV * dbh, imp_dbh_t * imp_dbh, char * dbname, char * uid, char
 	DBIc_ACTIVE_on(imp_dbh);
 
 	if (TEND) TRC(DBILOGFP, "%sEnd dbd_db_login\n", THEADER);
+
 	return 1;
 
 } /* end of dbd_db_login */
@@ -281,8 +283,10 @@ static void pg_error (pTHX_ SV * h, int error_num, const char * error_msg)
 	sv_setpv(DBIc_STATE(imp_xxh), (char*)imp_dbh->sqlstate);
 
 	/* Set as utf-8 */
+#ifdef is_utf8_string
 	if (imp_dbh->pg_enable_utf8)
 		SvUTF8_on(DBIc_ERRSTR(imp_xxh));
+#endif
 
 	if (TEND) TRC(DBILOGFP, "%sEnd pg_error\n", THEADER);
 
@@ -918,10 +922,13 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 			ph_t *currph;
 			int i;
 			for (i=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,i++) {
-				(void)hv_store_ent 
-					(pvhv,
-					 (3==imp_sth->placeholder_type ? newSVpv(currph->fooname,0) : newSViv(i+1)),
-					 newSViv(NULL == currph->bind_type ? 0 : 1), 0);
+                SV *key, *val;
+                key = (3==imp_sth->placeholder_type ? newSVpv(currph->fooname,0) : newSViv(i+1));
+				val = newSViv(NULL == currph->bind_type ? 0 : 1);
+				if (! hv_store_ent(pvhv, key, val, 0)) {
+					SvREFCNT_dec(val);
+				}
+				SvREFCNT_dec(key);
 			}
 			retsv = newRV_noinc((SV*)pvhv);
 		}
@@ -940,10 +947,13 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 			ph_t *currph;
 			int i;
 			for (i=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,i++) {
+				SV *key, *val;
+				key = (3==imp_sth->placeholder_type ? newSVpv(currph->fooname,0) : newSViv(i+1));
 				if (NULL == currph->bind_type) {
-					(void)hv_store_ent
-						(pvhv, (3==imp_sth->placeholder_type ? newSVpv(currph->fooname,0) : newSViv(i+1)),
-						 newSV(0), 0);
+					val = newSV(0);
+					if (! hv_store_ent(pvhv, key, val, 0)) {
+						SvREFCNT_dec(val);
+					}
 				}
 				else {
 					HV *pvhv2 = newHV();
@@ -953,10 +963,12 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 					else {
 						(void)hv_store(pvhv2, "pg_type", 7, newSViv(currph->bind_type->type_id), 0);
 					}
-					(void)hv_store_ent
-						(pvhv, (3==imp_sth->placeholder_type ? newSVpv(currph->fooname,0) : newSViv(i+1)),
-						 newRV_noinc((SV*)pvhv2), 0);
+					val = newRV_noinc((SV*)pvhv2);
+					if (! hv_store_ent(pvhv, key, val, 0)) {
+						SvREFCNT_dec(val);
+					}
 				}
+				SvREFCNT_dec(key);
 			}
 			retsv = newRV_noinc((SV*)pvhv);
 		}
@@ -969,18 +981,22 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 			ph_t *currph;
 			int i;
 			for (i=0,currph=imp_sth->ph; NULL != currph; currph=currph->nextph,i++) {
+                SV *key, *val;
+                key = (3==imp_sth->placeholder_type ? newSVpv(currph->fooname,0) : newSViv(i+1));
+ 
 				if (NULL == currph->value) {
-					(void)hv_store_ent 
-						(pvhv,
-						 (3==imp_sth->placeholder_type ? newSVpv(currph->fooname,0) : newSViv(i+1)),
-						 newSV(0), 0);
+                    val = newSV(0);
+					if (!hv_store_ent(pvhv, key, val, 0)) {
+                        SvREFCNT_dec(val);
+                    }
 				}
 				else {
-					(void)hv_store_ent
-						(pvhv,
-						 (3==imp_sth->placeholder_type ? newSVpv(currph->fooname,0) : newSViv(i+1)),
-						 newSVpv(currph->value,0),0);
+                    val = newSVpv(currph->value,0);
+					if (!hv_store_ent(pvhv, key, val, 0)) {
+                        SvREFCNT_dec(val);
+                    }
 				}
+                SvREFCNT_dec(key);
 			}
 			retsv = newRV_noinc((SV*)pvhv);
 		}
@@ -1033,7 +1049,7 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 
 	if (retsv != Nullsv) {
 		if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_FETCH_attrib\n", THEADER);
-		return retsv;
+		return sv_2mortal(retsv);
 	}
 
 	if (! imp_sth->result) {
@@ -2262,8 +2278,10 @@ int dbd_bind_ph (SV * sth, imp_sth_t * imp_sth, SV * ph_name, SV * newvalue, IV 
 			quotedval = pg_stringify_array(newvalue,",",imp_dbh->pg_server_version, 0);
 			currph->valuelen = sv_len(quotedval);
 			Renew(currph->value, currph->valuelen+1, char); /* freed in dbd_st_destroy */
-			currph->value = SvUTF8(quotedval) ? SvPVutf8_nolen(quotedval) : SvPV_nolen(quotedval);
+			Copy(SvUTF8(quotedval) ? SvPVutf8_nolen(quotedval) : SvPV_nolen(quotedval),
+				 currph->value, currph->valuelen+1, char);
 			currph->bind_type = pg_type_data(PG_CSTRINGARRAY);
+			sv_2mortal(quotedval);
 			is_array = DBDPG_TRUE;
 		}
 		else {
@@ -2406,7 +2424,7 @@ SV * pg_stringify_array(SV *input, const char * array_delim, int server_version,
 	int xy, yz;
 	SV * svitem;
 	char * string;
-	STRLEN svlen;
+	STRLEN stringlength;
 	SV * value;
 
 	if (TSTART) TRC(DBILOGFP, "%sBegin pg_stringify_array\n", THEADER);
@@ -2487,8 +2505,8 @@ SV * pg_stringify_array(SV *input, const char * array_delim, int server_version,
 				sv_catpv(value, "\"");
 				if (SvUTF8(svitem))
 					SvUTF8_on(value);
-				string = SvPV(svitem, svlen);
-				while (svlen--) {
+				string = SvPV(svitem, stringlength);
+				while (stringlength--) {
 
 					/* If an embedded quote, throw a backslash before it */
 					if ('\"' == *string)
@@ -3010,14 +3028,15 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 	   6b. All placeholders are bound (and "pg_server_prepare" is 2)
 	*/
 	if (TRACE4) TRC(DBILOGFP,
-					"%sPQexec* decision: dml=%d direct=%d server_prepare=%d numbound=%d numphs=%d default=%d\n",
+					"%sPQexec* decision: dml=%d direct=%d server_prepare=%d numbound=%d numphs=%d default=%d current=%d\n",
 					THEADER, 
 					imp_sth->is_dml,
 					imp_sth->direct,
 					imp_sth->server_prepare,
 					imp_sth->numbound,
 					imp_sth->numphs,
-					imp_sth->has_default);
+					imp_sth->has_default,
+					imp_sth->has_current);
 
 	if (imp_sth->is_dml
 		&& !imp_sth->direct
@@ -3806,6 +3825,10 @@ pg_db_getcopydata (SV * dbh, SV * dataline, int async)
 
 	if (copystatus > 0) {
 		sv_setpv(dataline, tempbuf);
+#ifdef is_utf8_string
+		if (imp_dbh->pg_enable_utf8)
+			SvUTF8_on(dataline);
+#endif
 		TRACE_PQFREEMEM;
 		PQfreemem(tempbuf);
 	}
@@ -4781,6 +4804,9 @@ int pg_db_cancel(SV *h, imp_dbh_t *imp_dbh)
 
 	status = _sqlstate(aTHX_ imp_dbh, result);
 
+	TRACE_PQCLEAR;
+	PQclear(result);
+
 	/* If we actually cancelled a running query, just return true - the caller must rollback if needed */
 	if (0 == strncmp(imp_dbh->sqlstate, "57014", 5)) {
 		if (TEND) TRC(DBILOGFP, "%sEnd pg_db_cancel\n", THEADER);
@@ -4858,6 +4884,8 @@ static int handle_old_async(pTHX_ SV * handle, imp_dbh_t * imp_dbh, const int as
 			/* Suck up the cancellation notice */
 			TRACE_PQGETRESULT;
 			while ((result = PQgetResult(imp_dbh->conn)) != NULL) {
+				TRACE_PQCLEAR;
+				PQclear(result);
 			}
 			/* We need to rollback! - reprepare!? */
 			TRACE_PQEXEC;
@@ -4914,6 +4942,39 @@ static int handle_old_async(pTHX_ SV * handle, imp_dbh_t * imp_dbh, const int as
 } /* end of handle_old_async */
 
 
+/* ================================================================== */
+/* Attempt to cancel a synchronous query
+   Returns true if the cancel succeeded, and false if it did not */
+int dbd_st_cancel(SV *sth, imp_sth_t *imp_sth)
+{
+	dTHX;
+	D_imp_dbh_from_sth;
+	PGcancel *cancel;
+	char errbuf[256];
+
+	if (TSTART) TRC(DBILOGFP, "%sBegin dbd_st_cancel\n", THEADER);
+
+	/* Get the cancel structure */
+	TRACE_PQGETCANCEL;
+	cancel = PQgetCancel(imp_dbh->conn);
+
+	/* This almost always works. If not, free our structure and complain loudly */
+	TRACE_PQGETCANCEL;
+	if (!PQcancel(cancel, errbuf, sizeof(errbuf))) {
+		TRACE_PQFREECANCEL;
+		PQfreeCancel(cancel);
+		if (TRACEWARN) TRC(DBILOGFP, "%sPQcancel failed: %s\n", THEADER, errbuf);
+		pg_error(aTHX_ sth, PGRES_FATAL_ERROR, "PQcancel failed");
+		if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_cancel (error: cancel failed)\n", THEADER);
+		return DBDPG_FALSE;
+	}
+	TRACE_PQFREECANCEL;
+	PQfreeCancel(cancel);
+
+	if (TEND) TRC(DBILOGFP, "%sEnd dbd_st_cancel\n", THEADER);
+	return DBDPG_TRUE;
+
+} /* end of dbd_st_cancel */
 
 /*
 Some information to keep you sane:

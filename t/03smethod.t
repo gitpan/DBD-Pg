@@ -9,6 +9,7 @@
 use 5.006;
 use strict;
 use warnings;
+use POSIX qw(:signal_h);
 use Test::More;
 use DBI ':sql_types';
 use lib 't','.';
@@ -20,13 +21,13 @@ my $dbh = connect_database();
 if (! $dbh) {
 	plan skip_all => 'Connection to database failed, cannot continue testing';
 }
-plan tests => 96;
+plan tests => 97;
 
 isnt ($dbh, undef, 'Connect to database for statement handle method testing');
 
 my $pglibversion = $dbh->{pg_lib_version};
 
-my ($SQL, $sth, $sth2, $result, @result, $expected, $warning, $rows, $t);
+my ($SQL, $sth, $sth2, $result, @result, $expected, $rows, $t);
 
 #
 # Test of the prepare flags
@@ -651,6 +652,38 @@ $t=q{Statement handle attribute pg_current_row returns 0 after fetchall_arrayref
 $sth->execute();
 $sth->fetchall_arrayref();
 is ($sth->{pg_current_row}, 0, $t);
+
+#
+# Test of the statement handle method "cancel"
+#
+
+$dbh->do('INSERT INTO dbd_pg_test (id) VALUES (?)',undef,1);
+$dbh->commit;
+$dbh->do('SELECT * FROM dbd_pg_test WHERE id = ? FOR UPDATE',undef,1);
+
+my $dbh2 = $dbh->clone;
+$dbh2->do('SET search_path TO ' . $dbh->selectrow_array('SHOW search_path'));
+
+my $oldaction;
+eval {
+	# This statement will block indefinitely because of the 'FOR UPDATE' clause,
+	# so we set up an alarm to cancel it after 2 seconds.
+	my $sthl = $dbh2->prepare('SELECT * FROM dbd_pg_test WHERE id = ? FOR UPDATE');
+	$sthl->{RaiseError} = 1;
+
+	my $action = POSIX::SigAction->new(
+		sub {$sthl->cancel},POSIX::SigSet->new(SIGALRM));
+	$oldaction = POSIX::SigAction->new;
+	POSIX::sigaction(SIGALRM,$action,$oldaction);
+
+	alarm(2); # seconds before alarm
+	$sthl->execute(1);
+	alarm(0); # cancel alarm (if execute didn't block)
+};
+# restore original signal handler
+POSIX::sigaction(SIGALRM,$oldaction);
+like ($@,qr/canceling statement due to user request/,'cancel');
+$dbh2->disconnect();
 
 cleanup_database($dbh,'test');
 $dbh->rollback();

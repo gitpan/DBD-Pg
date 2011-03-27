@@ -1,7 +1,7 @@
 /*
-	$Id: dbdimp.h 13758 2010-01-20 21:14:28Z turnstep $
+	$Id: dbdimp.h 14779 2011-03-27 03:43:15Z turnstep $
 	
-    Copyright (c) 2000-2010 Greg Sabino Mullane and others: see the Changes file
+    Copyright (c) 2000-2011 Greg Sabino Mullane and others: see the Changes file
 	Portions Copyright (c) 1997-2000 Edmund Mergl
 	Portions Copyright (c) 1994-1997 Tim Bunce
 	
@@ -118,8 +118,8 @@ struct imp_sth_st {
 #define dbd_init  pg_init
 extern void dbd_init (dbistate_t *dbistate);
 
-#define dbd_db_login  pg_db_login
-int dbd_db_login (SV * dbh, imp_dbh_t * imp_dbh, char * dbname, char * uid, char * pwd);
+#define dbd_db_login6 pg_db_login6
+int dbd_db_login6 (SV * dbh, imp_dbh_t * imp_dbh, char * dbname, char * uid, char * pwd, SV *attr);
 
 #define dbd_db_ping  pg_db_ping
 int dbd_db_ping(SV *dbh);
@@ -166,8 +166,11 @@ AV * dbd_st_fetch (SV * sth, imp_sth_t * imp_sth);
 #define dbd_st_rows pg_st_rows
 int dbd_st_rows (SV * sth, imp_sth_t * imp_sth);
 
-#define dbd_st_finish  pg_st_finidh
+#define dbd_st_finish  pg_st_finish
 int dbd_st_finish (SV * sth, imp_sth_t * imp_sth);
+
+#define dbd_st_cancel pg_st_cancel
+int dbd_st_cancel (SV * sth, imp_sth_t * imp_sth);
 
 #define dbd_st_destroy  pg_st_destroy
 void dbd_st_destroy (SV * sth, imp_sth_t * imp_sth);

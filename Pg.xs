@@ -1,7 +1,7 @@
 /*
-  $Id: Pg.xs 13758 2010-01-20 21:14:28Z turnstep $
+  $Id: Pg.xs 14779 2011-03-27 03:43:15Z turnstep $
 
-  Copyright (c) 2000-2010 Greg Sabino Mullane and others: see the Changes file
+  Copyright (c) 2000-2011 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 1997-2000 Edmund Mergl
   Portions Copyright (c) 1994-1997 Tim Bunce
 
@@ -795,6 +795,13 @@ pg_cancel(sth)
 	CODE:
 	D_imp_sth(sth);
 	ST(0) = pg_db_cancel_sth(sth, imp_sth) ? &PL_sv_yes : &PL_sv_no;
+
+void
+cancel(sth)
+	SV *sth
+	CODE:
+	D_imp_sth(sth);
+	ST(0) = dbd_st_cancel(sth, imp_sth) ? &PL_sv_yes : &PL_sv_no;
 
 #if PGLIBVERSION >= 80000
 

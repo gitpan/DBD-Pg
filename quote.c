@@ -1,8 +1,8 @@
 /*
 
-   $Id: quote.c 14471 2010-10-09 05:33:58Z machack666 $
+   $Id: quote.c 14779 2011-03-27 03:43:15Z turnstep $
 
-   Copyright (c) 2003-2010 Greg Sabino Mullane and others: see the Changes file
+   Copyright (c) 2003-2011 Greg Sabino Mullane and others: see the Changes file
 
    You may distribute under the terms of either the GNU General Public
    License or the Artistic License, as specified in the Perl README file.
@@ -449,37 +449,35 @@ static void _dequote_bytea_escape(char *string, STRLEN *retlen, int estring)
 
 	(*retlen) = 0;
 
-	if (NULL == string)
-			return;
+	if (NULL != string) {
+		result = string;
 
-	result = string;
-
-	while (*string != '\0') {
-		(*retlen)++;
-		if ('\\' == *string) {
-			if ('\\' == *(string+1)) {
-				*result++ = '\\';
-				string +=2;
-			}
-			else if (
-				 (*(string+1) >= '0' && *(string+1) <= '3') &&
-				 (*(string+2) >= '0' && *(string+2) <= '7') &&
-				 (*(string+3) >= '0' && *(string+3) <= '7'))
-				{
-					*result++ = (*(string+1)-'0')*64 + (*(string+2)-'0')*8 + (*(string+3)-'0');
-					string += 4;
+		while (*string != '\0') {
+			(*retlen)++;
+			if ('\\' == *string) {
+				if ('\\' == *(string+1)) {
+					*result++ = '\\';
+					string +=2;
 				}
-			else { /* Invalid escape sequence - ignore the backslash */
-				(*retlen)--;
-				string++;
+				else if (
+						 (*(string+1) >= '0' && *(string+1) <= '3') &&
+						 (*(string+2) >= '0' && *(string+2) <= '7') &&
+						 (*(string+3) >= '0' && *(string+3) <= '7'))
+					{
+						*result++ = (*(string+1)-'0')*64 + (*(string+2)-'0')*8 + (*(string+3)-'0');
+						string += 4;
+					}
+				else { /* Invalid escape sequence - ignore the backslash */
+					(*retlen)--;
+					string++;
+				}
+			}
+			else {
+				*result++ = *string++;
 			}
 		}
-		else {
-			*result++ = *string++;
-		}
+		*result = '\0';
 	}
-	*result = '\0';
-	return;
 }
 
 static int _decode_hex_digit(char digit)
@@ -502,36 +500,33 @@ static void _dequote_bytea_hex(char *string, STRLEN *retlen, int estring)
 
 	(*retlen) = 0;
 
-	if (NULL == string)
-		return;
+	if (NULL != string) {
+		result = string;
 
-	result = string;
-
-	while (*string != '\0') {
-		int digit1, digit2;
-		digit1 = _decode_hex_digit(*string);
-		digit2 = _decode_hex_digit(*(string+1));
-		if (digit1 >= 0 && digit2 >= 0) {
-			*result++ = 16 * digit1 + digit2;
-			(*retlen)++;
+		while (*string != '\0') {
+			int digit1, digit2;
+			digit1 = _decode_hex_digit(*string);
+			digit2 = _decode_hex_digit(*(string+1));
+			if (digit1 >= 0 && digit2 >= 0) {
+				*result++ = 16 * digit1 + digit2;
+				(*retlen)++;
+			}
+			string += 2;
 		}
-		string += 2;
+		*result = '\0';
 	}
-	*result = '\0';
-	return;
 }
 
 void dequote_bytea(char *string, STRLEN *retlen, int estring)
 {
 	dTHX;
 
-	if (NULL == string)
-		return;
-
-	if ('\\' == *string && 'x' == *(string+1))
-		return _dequote_bytea_hex(string, retlen, estring);
-	else
-		return _dequote_bytea_escape(string, retlen, estring);
+	if (NULL != string) {
+		if ('\\' == *string && 'x' == *(string+1))
+			_dequote_bytea_hex(string, retlen, estring);
+		else
+			_dequote_bytea_escape(string, retlen, estring);
+	}
 }
 
 /*
@@ -546,7 +541,7 @@ void dequote_sql_binary(char *string, STRLEN *retlen, int estring)
 	/* We are going to return a dequote_bytea(), just in case */
 	warn("Use of SQL_BINARY invalid in dequote()");
 	dequote_bytea(string, retlen, estring);
-	return;
+
 	/* Put dequote_sql_binary function here at some point */
 }
 

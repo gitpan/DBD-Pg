@@ -438,7 +438,7 @@ SKIP: {
 	$t='Unicode (utf8) data returned from database is not corrupted';
 	is (length($name), 4, $t);
 
-	$t='ASCII text returned from database does not have utf8 bit set';
+	$t='ASCII text returned from database does have utf8 bit set';
 	$sth->finish();
 	$sth->execute(1);
 	my ($id2, $name2) = $sth->fetchrow_array();

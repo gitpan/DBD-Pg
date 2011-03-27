@@ -624,6 +624,8 @@ SKIP: {
 	};
 	is ($@, q{}, $t);
 
+	local $dbh->{pg_enable_utf8} = 1;
+
 	$t='Retreiving an array containing utf-8 works';
 	$SQL = q{SELECT id, testarray, val FROM dbd_pg_test WHERE id = 1};
 	$sth = $dbh->prepare($SQL);
