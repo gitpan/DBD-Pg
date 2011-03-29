@@ -1,5 +1,5 @@
 /*
-  $Id: Pg.xs 14779 2011-03-27 03:43:15Z turnstep $
+  $Id: Pg.xs 14786 2011-03-28 12:00:54Z turnstep $
 
   Copyright (c) 2000-2011 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 1997-2000 Edmund Mergl
@@ -56,6 +56,7 @@ constant(name=Nullch)
 	PG_CSTRINGARRAY       = 1263
 	PG_DATE               = 1082
 	PG_DATEARRAY          = 1182
+	PG_FDW_HANDLER        = 3115
 	PG_FLOAT4             = 700
 	PG_FLOAT4ARRAY        = 1021
 	PG_FLOAT8             = 701
@@ -97,6 +98,7 @@ constant(name=Nullch)
 	PG_PATHARRAY          = 1019
 	PG_PG_ATTRIBUTE       = 75
 	PG_PG_CLASS           = 83
+	PG_PG_NODE_TREE       = 194
 	PG_PG_PROC            = 81
 	PG_PG_TYPE            = 71
 	PG_POINT              = 600

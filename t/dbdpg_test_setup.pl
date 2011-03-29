@@ -9,6 +9,15 @@ use Cwd;
 use 5.006;
 select(($|=1,select(STDERR),$|=1)[1]);
 
+my $testfh;
+if (exists $ENV{TEST_OUTPUT}) {
+	my $file = $ENV{TEST_OUTPUT};
+	open $testfh, '>>', $file or die qq{Could not append file "$file": $!\n};
+	#Test::More->builder->output($testfh);
+	Test::More->builder->failure_output($testfh);
+	Test::More->builder->todo_output($testfh);
+}
+
 my @schemas =
 	(
 	 'dbd_pg_testschema',
@@ -742,7 +751,7 @@ sub shutdown_test_database {
 	my ($testdsn,$testuser,$helpconnect,$su,$uid,$testdir,$pg_ctl,$initdb) = get_test_settings();
 
 	if (-e $testdir and -e "$testdir/data/postmaster.pid") {
-		my $COM = qq{$pg_ctl -D $testdir/data --silent -m fast stop};
+		my $COM = qq{$pg_ctl -D $testdir/data -m fast stop};
 		my $olddir = getcwd;
 		if ($su) {
 			$COM = qq{su $su -m -c "$COM"};

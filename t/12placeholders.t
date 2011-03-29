@@ -426,12 +426,17 @@ eval {
 };
 is ($@, q{}, $t);
 
-$t='Calling do() with invalid crowded placeholders fails cleanly';
-$dbh->commit();
-eval {
-  $dbh->do(q{SELECT ??}, undef, 'public', 'error');
-};
-is($dbh->state, '42601', $t);
+SKIP: {
+	if ($pglibversion < 80000) {
+		skip ('Skipping specific placeholder test on 7.4-compiled servers', 1);
+	}
+	$t='Calling do() with invalid crowded placeholders fails cleanly';
+	$dbh->commit();
+	eval {
+		$dbh->do(q{SELECT ??}, undef, 'public', 'error');
+	};
+	is($dbh->state, '42601', $t);
+}
 
 $t='Prepare/execute with non-DML placeholder works';
 $dbh->commit();
@@ -440,6 +445,7 @@ eval {
   $sth->execute('pg_catalog');
 };
 is ($@, q{}, $t);
+$dbh->do(q{SET search_path TO DEFAULT});
 
 $t='Prepare/execute does not allow geometric operators';
 $dbh->commit();
@@ -510,7 +516,6 @@ SKIP: {
 	skip 'Cannot run some quote tests on very old versions of Postgres', 14 if $pgversion < 80000;
 
 $t='Prepare works with placeholders after double slashes';
-## TODO: Fix with a perms check per bug 61534
 eval {
 	$dbh->do(q{CREATE OPERATOR // ( PROCEDURE=bit, LEFTARG=int, RIGHTARG=int )});
 	$sth = $dbh->prepare(q{SELECT ? // ?});
@@ -528,7 +533,7 @@ eval {
 like ($@, qr{Invalid placeholders}, $t);
 
 $t='Dollar quotes with invalid characters are not parsed as identifiers';
-for my $char (qw!+ / : @ [ `!) {
+for my $char (qw!+ / : @ [ `!) { ## six characters
 	eval {
 		$sth = $dbh->prepare(qq{SELECT \$abc${char}\$ 123 \$abc${char}\$});
 		$sth->execute();
@@ -539,7 +544,7 @@ for my $char (qw!+ / : @ [ `!) {
 
 $t='Dollar quotes with valid characters are parsed as identifiers';
 $dbh->rollback();
-for my $char (qw{0 9 A Z a z}) {
+for my $char (qw{0 9 A Z a z}) { ## six letters
 	eval {
 		$sth = $dbh->prepare(qq{SELECT \$abc${char}\$ 123 \$abc${char}\$});
 		$sth->execute();
