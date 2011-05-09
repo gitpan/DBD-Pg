@@ -1,5 +1,5 @@
 #  -*-cperl-*-
-#  $Id: Pg.pm 14796 2011-03-28 19:42:44Z turnstep $
+#  $Id: Pg.pm 14843 2011-05-09 15:53:36Z turnstep $
 #
 #  Copyright (c) 2002-2011 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
@@ -17,7 +17,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.18.0');
+	use version; our $VERSION = qv('2.18.1');
 
 	use DBI ();
 	use DynaLoader ();
@@ -1732,7 +1732,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.18.0 of the DBD::Pg module
+This documents version 2.18.1 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
@@ -3839,7 +3839,7 @@ of version 8.0 or greater) The basic usage is as follows:
   do_something_else();
   {
     if ($dbh->pg_ready()) {
-      $res = $pg_result();
+      $res = pg_result();
       print "Result of do(): $res\n";
     }
     print "Query is still running...\n";
