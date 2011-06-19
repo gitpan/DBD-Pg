@@ -1,7 +1,5 @@
 package App::Info::Request;
 
-# $Id: Request.pm 7408 2005-01-08 07:18:58Z theory $
-
 =head1 NAME
 
 App::Info::Request - App::Info event handler request object

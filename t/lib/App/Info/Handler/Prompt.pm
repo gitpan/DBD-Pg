@@ -1,7 +1,5 @@
 package App::Info::Handler::Prompt;
 
-# $Id: Prompt.pm 7408 2005-01-08 07:18:58Z theory $
-
 =head1 NAME
 
 App::Info::Handler::Prompt - Prompting App::Info event handler

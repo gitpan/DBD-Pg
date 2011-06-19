@@ -1,7 +1,5 @@
 package App::Info::RDBMS::PostgreSQL;
 
-# $Id: PostgreSQL.pm 11556 2008-07-21 15:15:03Z turnstep $
-
 =head1 NAME
 
 App::Info::RDBMS::PostgreSQL - Information about PostgreSQL

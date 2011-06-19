@@ -1,6 +1,4 @@
 /*
-   $Id: Pg.h 14779 2011-03-27 03:43:15Z turnstep $
-
    Copyright (c) 2000-2011 Greg Sabino Mullane and others: see the Changes file
    Copyright (c) 1997-2000 Edmund Mergl
    Portions Copyright (c) 1994-1997 Tim Bunce

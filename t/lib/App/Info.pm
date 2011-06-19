@@ -1,7 +1,5 @@
 package App::Info;
 
-# $Id: Info.pm 13583 2009-11-23 18:02:18Z turnstep $
-
 =head1 NAME
 
 App::Info - Information about software packages on a system

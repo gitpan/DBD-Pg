@@ -1,5 +1,4 @@
 /*
-  $Id: Pg.xs 14786 2011-03-28 12:00:54Z turnstep $
 
   Copyright (c) 2000-2011 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 1997-2000 Edmund Mergl

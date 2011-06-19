@@ -1,7 +1,5 @@
 package App::Info::RDBMS;
 
-# $Id: RDBMS.pm 7356 2004-11-08 17:51:29Z theory $
-
 use strict;
 use App::Info;
 use vars qw(@ISA $VERSION);

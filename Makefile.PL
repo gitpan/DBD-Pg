@@ -1,5 +1,3 @@
-# $Id: Makefile.PL 14843 2011-05-09 15:53:36Z turnstep $
-
 use ExtUtils::MakeMaker;
 use Config;
 use strict;
@@ -7,8 +5,10 @@ use warnings;
 use 5.006001;
 
 ## No version.pm for this one, as the prereqs are not loaded yet.
-my $VERSION = '2.18.1';
+my $VERSION = '2.99.9_1';
 
+## App::Info is stored inside t/lib
+## Create a proper path so we can use it below
 my $lib;
 BEGIN {
     use vars qw/$sep/;
@@ -25,6 +25,7 @@ BEGIN {
 }
 
 use lib $lib;
+
 if ($VERSION =~ /_/) {
     print "WARNING! This is a test version ($VERSION) and should not be used in production!\n";
 }
@@ -272,7 +273,7 @@ sub MY::postamble { ## no critic ProhibitQualifiedSubDeclarations
 tags:
 	ctags -f tags --recurse --totals \
 		--exclude=blib \
-		--exclude=.svn \
+		--exclude=.git \
 		--exclude='*~' \
 		--languages=Perl,C --langmap=c:+.h,Perl:+.t \
 

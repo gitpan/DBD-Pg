@@ -1,6 +1,4 @@
 /*
-	$Id: dbdimp.h 14779 2011-03-27 03:43:15Z turnstep $
-	
     Copyright (c) 2000-2011 Greg Sabino Mullane and others: see the Changes file
 	Portions Copyright (c) 1997-2000 Edmund Mergl
 	Portions Copyright (c) 1994-1997 Tim Bunce
@@ -33,7 +31,8 @@ struct imp_dbh_st {
 	char    *sqlstate;         /* from the last result */
 
 	bool    pg_bool_tf;        /* do bools return 't'/'f'? Set by user, default is 0 */
-	bool    pg_enable_utf8;    /* should we attempt to make utf8 strings? Set by user, default is 0 */
+    bool    utf8_strings;      /* so we set the utf8 flag on data from the database? */
+	bool    pg_enable_utf8;    /* (DEPRECATED) should we attempt to make utf8 strings? Set by user, default is 0 */
 	bool    prepare_now;       /* force immediate prepares, even with placeholders. Set by user, default is 0 */
 	bool    done_begin;        /* have we done a begin? (e.g. are we in a transaction?) */
 	bool    dollaronly;        /* only consider $1, $2 ... as valid placeholders */

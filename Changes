@@ -1,12 +1,23 @@
 'GSM' is Greg Sabino Mullane, greg@turnstep.com)
 
+Version 2.99.9_1 (will be 3.0.0)
+
+  - Cleanup and overhaul the UTF-8 support. Use the server_encoding to 
+    determine if we set the internal utf8 flag on text from the database. 
+    Default to always doing so unless using SQL_ASCII.
+
+  - Replace pg_enable_utf8 with pg_utf8_strings [GSM]
+
+  - Better error message when trying to do things post-disconnect [GSM]
+
+  - Switch from subversion to git. [GSM]
+
 
 Version 2.18.1  Released May 9, 2011
 
   - Fix LANG testing issue [GSM] (CPAN bug #56705)
 
   - Fix bug when async commands issued immediately after a COPY. [GSM] (CPAN bug #68041)
-
 
 Version 2.18.0  Released March 28, 2011 (subversion r14081)
 

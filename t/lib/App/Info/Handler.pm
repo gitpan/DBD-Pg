@@ -1,7 +1,5 @@
 package App::Info::Handler;
 
-# $Id: Handler.pm 13586 2009-11-23 18:06:47Z turnstep $
-
 =head1 NAME
 
 App::Info::Handler - App::Info event handler base class

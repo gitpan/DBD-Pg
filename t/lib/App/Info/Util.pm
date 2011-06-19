@@ -1,7 +1,5 @@
 package App::Info::Util;
 
-# $Id: Util.pm 7408 2005-01-08 07:18:58Z theory $
-
 =head1 NAME
 
 App::Info::Util - Utility class for App::Info subclasses
