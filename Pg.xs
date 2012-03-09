@@ -1,6 +1,6 @@
 /*
 
-  Copyright (c) 2000-2011 Greg Sabino Mullane and others: see the Changes file
+  Copyright (c) 2000-2012 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 1997-2000 Edmund Mergl
   Portions Copyright (c) 1994-1997 Tim Bunce
 
@@ -199,14 +199,17 @@ quote(dbh, to_quote_sv, type_sv=Nullsv)
 
 		SvGETMAGIC(to_quote_sv);
 
+		/* Reject references other than overloaded objects (presumed
+		  stringifiable) and arrays (will make a PostgreSQL array). */
+		if (SvROK(to_quote_sv) && !SvAMAGIC(to_quote_sv)) {
+			if (SvTYPE(SvRV(to_quote_sv)) != SVt_PVAV)
+				croak("Cannot quote a reference");
+			to_quote_sv = pg_stringify_array(to_quote_sv, ",", imp_dbh->pg_server_version);
+		}
+
 		/* Null is always returned as "NULL", so we can ignore any type given */
 		if (!SvOK(to_quote_sv)) {
 			RETVAL = newSVpvn("NULL", 4);
-		}
-		else if (SvROK(to_quote_sv) && !SvAMAGIC(to_quote_sv)) {
-			if (SvTYPE(SvRV(to_quote_sv)) != SVt_PVAV)
-				croak("Cannot quote a reference");
-			RETVAL = pg_stringify_array(to_quote_sv, ",", imp_dbh->pg_server_version, 1);
 		}
 		else {
 			sql_type_info_t *type_info;

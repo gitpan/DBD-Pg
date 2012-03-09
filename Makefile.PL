@@ -5,7 +5,7 @@ use warnings;
 use 5.006001;
 
 ## No version.pm for this one, as the prereqs are not loaded yet.
-my $VERSION = '2.99.9_2';
+my $VERSION = '2.19.0';
 
 ## App::Info is stored inside t/lib
 ## Create a proper path so we can use it below
@@ -206,6 +206,7 @@ my %opts =
                         'ExtUtils::MakeMaker' => '6.11',
                         'DBI'                 => '1.52',
                         'Test::More'          => '0.61',
+                        'Time::HiRes'         => '0',
                         'version'             => '0',
                        },
      CCFLAGS        => $comp_opts,

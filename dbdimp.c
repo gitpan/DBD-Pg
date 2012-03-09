@@ -1,6 +1,6 @@
 /*
 
-  Copyright (c) 2002-2011 Greg Sabino Mullane and others: see the Changes file
+  Copyright (c) 2002-2012 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
   Portions Copyright (c) 1997-2000 Edmund Mergl
   Portions Copyright (c) 1994-1997 Tim Bunce
@@ -83,6 +83,7 @@ static ExecStatusType _sqlstate(pTHX_ imp_dbh_t *imp_dbh, PGresult *result);
 static int pg_db_rollback_commit (pTHX_ SV *dbh, imp_dbh_t *imp_dbh, int action);
 static void pg_st_split_statement (pTHX_ imp_sth_t *imp_sth, int version, char *statement);
 static int pg_st_prepare_statement (pTHX_ SV *sth, imp_sth_t *imp_sth);
+static int is_high_bit_set(pTHX_ const unsigned char *val, STRLEN size);
 static int pg_st_deallocate_statement(pTHX_ SV *sth, imp_sth_t *imp_sth);
 static PGTransactionStatusType pg_db_txn_status (pTHX_ imp_dbh_t *imp_dbh);
 static int pg_db_start_txn (pTHX_ SV *dbh, imp_dbh_t *imp_dbh);
@@ -102,13 +103,11 @@ int dbd_db_login6 (SV * dbh, imp_dbh_t * imp_dbh, char * dbname, char * uid, cha
 
 	dTHR;
 	dTHX;
-	SV   **        svp;
 	char *         conn_str;
 	char *         dest;
 	bool           inquote = DBDPG_FALSE;
 	STRLEN         connect_string_size;
 	ConnStatusType connstatus;
-	int            utf8int;
 
 	if (TSTART) TRC(DBILOGFP, "%sBegin dbd_db_login\n", THEADER);
   
@@ -211,31 +210,6 @@ int dbd_db_login6 (SV * dbh, imp_dbh_t * imp_dbh, char * dbname, char * uid, cha
 	TRACE_PQPROTOCOLVERSION;
 	imp_dbh->pg_protocol = PQprotocolVersion(imp_dbh->conn);
 
-	/* Check the value of the pg_utf8_strings attribute. Default to not set (-1) */
-	utf8int = -1;
-	DBD_ATTRIB_GET_IV(attr, "pg_utf8_strings", 15, svp, utf8int);
-
-	/*
-	  We need to see if we are treating things with utf8 respect, or as byte soup
-	  The rules are:
-	  - pg_utf8_strings trumps everything else
-	  - SQL_ASCII is always byte soup
-	  - Everything else is not
-	*/
-	if (utf8int > 1) { /* Force it on, no matter what */
-	  imp_dbh->utf8_strings = DBDPG_TRUE;
-    }
-    else {
-		if (utf8int == 0) { /* Force it off, no matter what */
-			imp_dbh->utf8_strings = DBDPG_FALSE;
-		}
-		else { /* Neither is set, so use the server_encoding */
-			imp_dbh->utf8_strings = 
-				(0 == strncmp(PQparameterStatus(imp_dbh->conn, "server_encoding"), "SQL_ASCII", 9))
-				? DBDPG_FALSE : DBDPG_TRUE;
-		}
-	}
-
 	/* Figure out this particular backend's version */
 	imp_dbh->pg_server_version = -1;
 #if PGLIBVERSION >= 80000
@@ -254,8 +228,8 @@ int dbd_db_login6 (SV * dbh, imp_dbh_t * imp_dbh, char * dbname, char * uid, cha
 		}
 	}
 
-	/* Set all the defaults for this database handle */
 	imp_dbh->pg_bool_tf      = DBDPG_FALSE;
+	imp_dbh->pg_enable_utf8  = DBDPG_FALSE;
  	imp_dbh->prepare_now     = DBDPG_FALSE;
 	imp_dbh->done_begin      = DBDPG_FALSE;
 	imp_dbh->dollaronly      = DBDPG_FALSE;
@@ -267,10 +241,6 @@ int dbd_db_login6 (SV * dbh, imp_dbh_t * imp_dbh, char * dbname, char * uid, cha
 	imp_dbh->pg_errorlevel   = 1; /* Default */
 	imp_dbh->async_status    = 0;
 	imp_dbh->async_sth       = NULL;
-
-	/* Deprecated: */
-	imp_dbh->pg_enable_utf8  = DBDPG_FALSE;
-
 
 	/* If using server version 7.4, switch to "smart" */
 	imp_dbh->server_prepare = PGLIBVERSION >= 80000 ? 1 : 2;
@@ -312,8 +282,10 @@ static void pg_error (pTHX_ SV * h, int error_num, const char * error_msg)
 	sv_setpv(DBIc_STATE(imp_xxh), (char*)imp_dbh->sqlstate);
 
 	/* Set as utf-8 */
-	if (imp_dbh->utf8_strings)
+#ifdef is_utf8_string
+	if (imp_dbh->pg_enable_utf8)
 		SvUTF8_on(DBIc_ERRSTR(imp_xxh));
+#endif
 
 	if (TEND) TRC(DBILOGFP, "%sEnd pg_error\n", THEADER);
 
@@ -354,7 +326,7 @@ static void pg_warn (void * arg, const char * message)
 						DBIc_is(imp_dbh, DBIcf_PrintWarn) ? 1 : 0);
 
 		if (DBIc_WARN(imp_dbh) && DBIc_is(imp_dbh, DBIcf_PrintWarn))
-			warn(message);
+			warn("%s", message);
 
 		if (TEND) TRC(DBILOGFP, "%sEnd pg_warn\n", THEADER);
 	}
@@ -773,11 +745,13 @@ SV * dbd_db_FETCH_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv)
 			retsv = newSViv((IV) PGLIBVERSION );
 		else if (strEQ("pg_prepare_now", key))
 			retsv = newSViv((IV)imp_dbh->prepare_now);
+#ifdef is_utf8_string
 		else if (strEQ("pg_enable_utf8", key))
 			retsv = newSViv((IV)imp_dbh->pg_enable_utf8);
+#endif
 		break;
 
-	case 15: /* pg_default_port pg_async_status pg_expand_array pg_utf8_strings */
+	case 15: /* pg_default_port pg_async_status pg_expand_array */
 
 		if (strEQ("pg_default_port", key))
 			retsv = newSViv((IV) PGDEFPORT );
@@ -785,8 +759,6 @@ SV * dbd_db_FETCH_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv)
 			retsv = newSViv((IV)imp_dbh->async_status);
 		else if (strEQ("pg_expand_array", key))
 			retsv = newSViv((IV)imp_dbh->expand_array);
-		else if (strEQ("pg_utf8_strings", key))
-			retsv = newSViv((IV)imp_dbh->utf8_strings);
 		break;
 
 	case 17: /* pg_server_prepare  pg_server_version */
@@ -895,25 +867,20 @@ int dbd_db_STORE_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv, SV * valuesv
 			retval = 1;
 		}
 
+#ifdef is_utf8_string
 		else if (strEQ("pg_enable_utf8", key)) {
 			imp_dbh->pg_enable_utf8 = newval!=0 ? DBDPG_TRUE : DBDPG_FALSE;
 			retval = 1;
 		}
-
+#endif
 		break;
 
-	case 15: /* pg_expand_array pg_utf8_strings */
+	case 15: /* pg_expand_array */
 
 		if (strEQ("pg_expand_array", key)) {
 			imp_dbh->expand_array = newval ? DBDPG_TRUE : DBDPG_FALSE;
 			retval = 1;
 		}
-
-		else if (strEQ("pg_utf8_strings", key)) {
-			imp_dbh->utf8_strings = newval!=0 ? DBDPG_TRUE : DBDPG_FALSE;
-			retval = 1;
-		}
-
 		break;
 
 	case 17: /* pg_server_prepare */
@@ -1114,20 +1081,20 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 			AV *av = newAV();
 			char *fieldname;
 			SV * sv_fieldname;
-			D_imp_dbh_from_sth;
 			retsv = newRV_inc(sv_2mortal((SV*)av));
 			while(--fields >= 0) {
 				TRACE_PQFNAME;
 				fieldname = PQfname(imp_sth->result, fields);
 				sv_fieldname = newSVpv(fieldname,0);
-				if (imp_dbh->utf8_strings)
+#ifdef is_utf8_string
+				if (is_high_bit_set(aTHX_ (unsigned char *)fieldname, strlen(fieldname)) && is_utf8_string((unsigned char *)fieldname, strlen(fieldname)))
 					SvUTF8_on(sv_fieldname);
+#endif
 				(void)av_store(av, fields, sv_fieldname);
 			}
 		}
 		else if (strEQ("TYPE", key)) {
 			/* Need to convert the Pg type to ANSI/SQL type. */
-			/* None of this should ever be non-ASCII, so don't worry about utf8 here */
 			sql_type_info_t * type_info;
 			AV *av = newAV();
 			retsv = newRV_inc(sv_2mortal((SV*)av));
@@ -1576,7 +1543,7 @@ int dbd_st_prepare (SV * sth, imp_sth_t * imp_sth, char * statement, SV * attrib
 
 		if (pg_st_prepare_statement(aTHX_ sth, imp_sth)!=0) {
 			TRACE_PQERRORMESSAGE;
-			croak (PQerrorMessage(imp_dbh->conn));
+			croak ("%s", PQerrorMessage(imp_dbh->conn));
 		}
 	}
 
@@ -1766,12 +1733,12 @@ static void pg_st_split_statement (pTHX_ imp_sth_t * imp_sth, int version, char 
 			(*statement == '$' 
 			 || *statement == '_'
 			 || (*statement >= 'A' && *statement <= 'Z') 
-			 || (*statement >= 'a' && *statement <= 'z'))) {
+			 || (*statement >= 'a' && *statement <= 'z')
+			 || ((unsigned char)*statement >= (unsigned char)'\200'))) {
 			/* "SQL identifiers must begin with a letter (a-z, but also letters with diacritical marks and non-Latin letters) 
                 or an underscore (_). Subsequent characters in an identifier or key word can be letters, underscores, 
                 digits (0-9), or dollar signs ($)
 			*/
-			/* Postgres technically allows \200-\377 as well, but we don't */
 			sectionsize = 0; /* How far from the first dollar sign are we? */
 			found = 0; /* Have we found the end of the dollarquote? */
 
@@ -1789,7 +1756,7 @@ static void pg_st_split_statement (pTHX_ imp_sth_t * imp_sth, int version, char 
 					|| (ch >= 58 && ch <= 64)
 					|| (ch >= 91 && ch <= 94)
 					|| ch == 96
-					|| (ch >= 123)) {
+					) {
 					break;
 				}
 			} /* end first scan */
@@ -1944,7 +1911,7 @@ static void pg_st_split_statement (pTHX_ imp_sth_t * imp_sth, int version, char 
 			sectionsize = currpos-sectionstop;
 			/* Have we seen this placeholder yet? */
 			for (xint=1,thisph=imp_sth->ph; NULL != thisph; thisph=thisph->nextph,xint++) {
-				if (0==strncmp(thisph->fooname, statement-sectionsize, sectionsize)) {
+				if (0==strncmp(thisph->fooname, statement-sectionsize, sectionsize + 1)) {
 					newseg->placeholder = xint;
 					newseg->ph = thisph;
 					break;
@@ -2329,7 +2296,7 @@ int dbd_bind_ph (SV * sth, imp_sth_t * imp_sth, SV * ph_name, SV * newvalue, IV 
 		}
 		else if (SvTYPE(SvRV(newvalue)) == SVt_PVAV) {
 			SV * quotedval;
-			quotedval = pg_stringify_array(newvalue,",",imp_dbh->pg_server_version, 0);
+			quotedval = pg_stringify_array(newvalue,",",imp_dbh->pg_server_version);
 			currph->valuelen = sv_len(quotedval);
 			Renew(currph->value, currph->valuelen+1, char); /* freed in dbd_st_destroy */
 			Copy(SvUTF8(quotedval) ? SvPVutf8_nolen(quotedval) : SvPV_nolen(quotedval),
@@ -2465,7 +2432,7 @@ int dbd_bind_ph (SV * sth, imp_sth_t * imp_sth, SV * ph_name, SV * newvalue, IV 
 
 
 /* ================================================================== */
-SV * pg_stringify_array(SV *input, const char * array_delim, int server_version, int extraquotes) {
+SV * pg_stringify_array(SV *input, const char * array_delim, int server_version) {
 
 	dTHX;
 	AV * toparr;
@@ -2484,14 +2451,12 @@ SV * pg_stringify_array(SV *input, const char * array_delim, int server_version,
 	if (TSTART) TRC(DBILOGFP, "%sBegin pg_stringify_array\n", THEADER);
 
 	toparr = (AV *) SvRV(input);
-	value = extraquotes ? newSVpv("'{", 2) : newSVpv("{", 1);
+	value = newSVpv("{", 1);
 
 	/* Empty arrays are easy */
 	if (av_len(toparr) < 0) {
 		av_clear(toparr);
 		sv_catpv(value, "}");
-		if (extraquotes)
-			sv_catpv(value, "'");
 		if (TEND) TRC(DBILOGFP, "%sEnd pg_stringify_array (empty)\n", THEADER);
 		return value;
 	}
@@ -2561,14 +2526,9 @@ SV * pg_stringify_array(SV *input, const char * array_delim, int server_version,
 					SvUTF8_on(value);
 				string = SvPV(svitem, stringlength);
 				while (stringlength--) {
-
-					/* If an embedded quote, throw a backslash before it */
-					if ('\"' == *string)
+ 					/* Escape backslashes and double-quotes. */
+ 					if ('\"' == *string || '\\' == *string)
 						sv_catpvn(value, "\\", 1);
-					/* If a backslash, double it up */
-					if ('\\' == *string) {
-						sv_catpvn(value, "\\\\\\", 3);
-					}
 					sv_catpvn(value, string, 1);
 					string++;
 				}
@@ -2593,8 +2553,6 @@ SV * pg_stringify_array(SV *input, const char * array_delim, int server_version,
 	for (xy=0; xy<array_depth; xy++) {
 		sv_catpv(value, "}");
 	}
-	if (extraquotes)
-		sv_catpv(value, "'");
 
 	if (TEND) TRC(DBILOGFP, "%sEnd pg_stringify_array (string: %s)\n", THEADER, neatsvpv(value,0));
 	return value;
@@ -2694,9 +2652,16 @@ static SV * pg_destringify_array(pTHX_ imp_dbh_t *imp_dbh, unsigned char * input
 					av_push(currentav, newSViv('t' == *string ? 1 : 0));
 				else {
 					SV *sv = newSVpvn(string, section_size);
-					if (imp_dbh->utf8_strings)
-						SvUTF8_on(sv);
+#ifdef is_utf8_string
+					if (imp_dbh->pg_enable_utf8) {
+						SvUTF8_off(sv);
+						if (is_high_bit_set(aTHX_ (unsigned char *)string, section_size) && is_utf8_string((unsigned char*)string, section_size)) {
+							SvUTF8_on(sv);
+						}
+					}
+#endif
 					av_push(currentav, sv);
+
 				}
 			}
 			section_size = 0;
@@ -2850,7 +2815,8 @@ int pg_quickexec (SV * dbh, const char * sql, const int asyncflag)
 			rows = atoi(cmdStatus + 5);
 		}
 		else if (0 == strncmp(cmdStatus, "DELETE", 6)
- 			  || 0 == strncmp(cmdStatus, "UPDATE", 6)) {
+ 			  || 0 == strncmp(cmdStatus, "UPDATE", 6)
+ 			  || 0 == strncmp(cmdStatus, "SELECT", 6)) {
 			rows = atoi(cmdStatus + 7);
 		}
 		break;
@@ -3004,8 +2970,7 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 	if (!imp_sth->is_dml
 		|| imp_sth->has_default
 		|| imp_sth->has_current
-		|| (1 != imp_sth->server_prepare
-			&& imp_sth->numbound != imp_sth->numphs)
+		|| 1 != imp_sth->server_prepare
 		) {
 		for (currph=imp_sth->ph; NULL != currph; currph=currph->nextph) {
 			if (currph->isdefault) {
@@ -3160,7 +3125,7 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 			&& imp_sth->numphs
 			&& !imp_sth->has_default
 			&& !imp_sth->has_current
-			&& (1 == imp_sth->server_prepare || imp_sth->numbound == imp_sth->numphs)
+			&& 1 == imp_sth->server_prepare
 			) {
 
 			if (TRACE5) TRC(DBILOGFP, "%sPQexecParams\n", THEADER);
@@ -3370,6 +3335,16 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 
 
 /* ================================================================== */
+static int is_high_bit_set(pTHX_ const unsigned char * val, STRLEN size)
+{
+	if (TSTART) TRC(DBILOGFP, "%sBegin is_high_bit_set\n", THEADER);
+	while (*val && size--)
+		if (*val++ & 0x80) return 1;
+	return 0;
+}
+
+
+/* ================================================================== */
 AV * dbd_st_fetch (SV * sth, imp_sth_t * imp_sth)
 {
 	dTHX;
@@ -3468,16 +3443,11 @@ AV * dbd_st_fetch (SV * sth, imp_sth_t * imp_sth)
 						break;
 					default:
 						sv_setpvn(sv, (char *)value, value_len);
-						if (imp_dbh->utf8_strings)
-							SvUTF8_on(sv);
 					}
 				}
 				else {
 					value_len = strlen((char *)value);
 					sv_setpvn(sv, (char *)value, value_len);
-					/* Check for specific types here? */
-					if (imp_dbh->utf8_strings)
-						SvUTF8_on(sv);
 				}
 			
 				if (type_info && (PG_BPCHAR == type_info->type_id) && chopblanks) {
@@ -3491,6 +3461,23 @@ AV * dbd_st_fetch (SV * sth, imp_sth_t * imp_sth)
 					}
 				}
 			}
+#ifdef is_utf8_string
+			if (imp_dbh->pg_enable_utf8 && type_info) {
+				SvUTF8_off(sv);
+				switch (type_info->type_id) {
+				case PG_CHAR:
+				case PG_TEXT:
+				case PG_BPCHAR:
+				case PG_VARCHAR:
+					if (is_high_bit_set(aTHX_ value, value_len) && is_utf8_string((unsigned char*)value, value_len)) {
+						SvUTF8_on(sv);
+					}
+					break;
+				default:
+					break;
+				}
+			}
+#endif
 		}
 	}
 	
@@ -3506,8 +3493,10 @@ AV * dbd_st_fetch (SV * sth, imp_sth_t * imp_sth)
 				*/
 				const char * const s = SvPV(AvARRAY(av)[i],len);
 				sv_setpvn(currph->inout, s, len);
-				if (imp_dbh->utf8_strings)
+				if (SvUTF8(AvARRAY(av)[i]))
 					SvUTF8_on(currph->inout);
+				else
+					SvUTF8_off(currph->inout);
 			}
 		}
 	}
@@ -3852,8 +3841,10 @@ int pg_db_getcopydata (SV * dbh, SV * dataline, int async)
 
 	if (copystatus > 0) {
 		sv_setpv(dataline, tempbuf);
-		if (imp_dbh->utf8_strings)
+#ifdef is_utf8_string
+		if (imp_dbh->pg_enable_utf8)
 			SvUTF8_on(dataline);
+#endif
 		TRACE_PQFREEMEM;
 		PQfreemem(tempbuf);
 	}

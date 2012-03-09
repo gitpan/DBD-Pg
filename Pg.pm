@@ -1,6 +1,6 @@
 #  -*-cperl-*-
 #
-#  Copyright (c) 2002-2011 Greg Sabino Mullane and others: see the Changes file
+#  Copyright (c) 2002-2012 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
 #  Portions Copyright (c) 1997-2001 Edmund Mergl
 #  Portions Copyright (c) 1994-1997 Tim Bunce
@@ -16,7 +16,7 @@ use 5.006001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.99.9_2');
+	use version; our $VERSION = qv('2.19.0');
 
 	use DBI ();
 	use DynaLoader ();
@@ -553,7 +553,7 @@ use 5.006001;
 			(
 			 'column_info',
 			 $data,
-			 [ sort { $col_map{$a} <=> $col_map{$b} } keys %col_map]
+			 [ sort { $col_map{$a} <=> $col_map{$b} } keys %col_map],
 			 );
 	}
 
@@ -972,7 +972,7 @@ use 5.006001;
 			"\t\t\t\t( a.attrelid = '$_' AND a.attnum IN ($cols) )"
 		} sort keys %colnum;
 
-		$sth = $dbh->prepare(qq{$SQL \)});
+		$sth = $dbh->prepare(qq{$SQL )});
 		$sth->execute();
 		my $attribs = $sth->fetchall_arrayref({});
 
@@ -1625,7 +1625,6 @@ use 5.006001;
 				pg_bool_tf                     => undef,
 				pg_db                          => undef,
 				pg_default_port                => undef,
-				pg_utf8_strings                => undef,
 				pg_enable_utf8                 => undef,
 				pg_errorlevel                  => undef,
 				pg_expand_array                => undef,
@@ -1732,7 +1731,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.99.9_2 of the DBD::Pg module
+This documents version 2.19.0 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
@@ -2786,7 +2785,7 @@ return the following:
 
   Value    Meaning
   --------------------------------------------------
-   -1      There is no connection to the database at all (e.g. after C<disconnect>)
+   -1      There is no connection to the database at all (e.g. after disconnect)
    -2      An unknown transaction status was returned (e.g. after forking)
    -3      The handle exists, but no data was returned from a test query.
 
@@ -3122,19 +3121,12 @@ DBD::Pg specific attribute. Defaults to false. When true, question marks inside 
 are not treated as L<placeholders|/Placeholders>. Useful for statements that contain unquoted question 
 marks, such as geometric operators.
 
-=head3 B<pg_utf8_strings> (boolean)
-
-DBD::Pg specific attribute. In normal use, this should not be needed, as it will be set 
-automatically according to the server encoding. SQL_ASCII will set this to false, while 
-everything else will set it to true. If you force it off, then everything will be returned 
-as byte soup, even data from UTF-8 databases, which is very likely not what you want. If 
-you force it on for SQL_ASCII databases, the results will be unpredictable. It is recommended 
-that you only use this attribute as a last resort and with a full understanding of what 
-it does.
-
 =head3 B<pg_enable_utf8> (boolean)
 
-Deprecated, please us pg_utf8_strings instead.
+DBD::Pg specific attribute. If true, then the C<utf8> flag will be turned on
+for returned character data (if the data is valid UTF-8). For details about
+the C<utf8> flag, see the C<Encode> module. This attribute is only relevant under
+perl 5.8 and later.
 
 =head3 B<pg_errorlevel> (integer)
 
@@ -3846,7 +3838,7 @@ of version 8.0 or greater) The basic usage is as follows:
   do_something_else();
   {
     if ($dbh->pg_ready()) {
-      $res = pg_result();
+      $res = $dbh->pg_result();
       print "Result of do(): $res\n";
     }
     print "Query is still running...\n";
@@ -4199,6 +4191,12 @@ or by manipulating the schema search path with C<SET search_path>, e.g.
 To report a bug, or view the current list of bugs, please visit 
 http://rt.cpan.org/Public/Dist/Display.html?Name=DBD-Pg
 
+=head1 DEVELOPMENT
+
+Patches can be submitted to rt.cpan.org. Detailed information on how to 
+help out with this module can be found in the README.dev file. The latest 
+development version can be obtained via: git clone git://bucardo.org/dbdpg.git
+
 =head1 AUTHORS
 
 DBI by Tim Bunce L<http://www.tim.bunce.name>
@@ -4218,7 +4216,7 @@ The current maintainers may be reached through the 'dbd-pg' mailing list:
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 1994-2011, Greg Sabino Mullane
+Copyright (C) 1994-2012, Greg Sabino Mullane
 
 This module (DBD::Pg) is free software; you can redistribute it and/or modify it 
 under the same terms as Perl 5.10.0. For more details, see the full text of the 
