@@ -1,7 +1,13 @@
 'GSM' is Greg Sabino Mullane, greg@turnstep.com
 
 
-Version 2.19.1  Released March 10, 2012
+Version 2.19.2  Released March 12, 2012
+
+  - Fix errors when multiple same-named placeholders are used. [GSM]
+    (CPAN bug #75713)
+
+
+Version 2.19.1  Released March 10, 2012 (git commit db6f6da00467c7ea28d32c4df97e93ccc4d38f2b)
 
   - Fix crash when passing in an array with undefined elements. [GSM]
 
