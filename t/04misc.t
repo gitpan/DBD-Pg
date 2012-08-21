@@ -18,7 +18,7 @@ my $dbh = connect_database();
 if (! $dbh) {
 	plan skip_all => 'Connection to database failed, cannot continue testing';
 }
-plan tests => 56;
+plan tests => 70;
 
 isnt ($dbh, undef, 'Connect to database for miscellaneous tests');
 
@@ -356,6 +356,37 @@ $sth = $dbh->prepare('COMMIT');
 $sth->execute();
 eval { $dbh->begin_work(); };
 is ($@, q{}, $t);
+
+## Check for problems in pg_st_split_statement by having it parse long strings
+my $problem;
+diag 'Checking pg_st_split_statement. This may take a while...';
+for my $length (0..16384) {
+    my $sql = sprintf 'SELECT %*d', $length + 3, $length;
+    my $cur_len = $dbh->selectrow_array($sql);
+	next if $cur_len == $length;
+	$problem = "length $length gave us a select of $cur_len";
+	last;
+}
+
+if (defined $problem) {
+	fail ("pg_st_split_statment failed: $problem");
+}
+else {
+	pass ('pg_st_split_statement gave no problems with various lengths');
+}
+
+## Check for problems with insane number of placeholders
+for my $ph (1..13) {
+	my $total = 2**$ph;
+	$t = "prepare/execute works with $total placeholders";
+	my $sql = 'SELECT count(*) FROM pg_class WHERE relpages IN (' . ('?,' x $total);
+	$sql =~ s/.$/\)/;
+	$sth = $dbh->prepare($sql);
+	my @arr = (1..$total);
+	my $count = $sth->execute(@arr);
+	is $count, 1, $t;
+	$sth->finish();
+}
 
 cleanup_database($dbh,'test');
 $dbh->disconnect();
