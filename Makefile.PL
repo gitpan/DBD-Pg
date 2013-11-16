@@ -2,10 +2,10 @@ use ExtUtils::MakeMaker;
 use Config;
 use strict;
 use warnings;
-use 5.006001;
+use 5.008001;
 
 ## No version.pm for this one, as the prereqs are not loaded yet.
-my $VERSION = '2.19.3';
+my $VERSION = '2.20.1_1';
 
 ## App::Info is stored inside t/lib
 ## Create a proper path so we can use it below
@@ -204,8 +204,8 @@ my %opts =
      ABSTRACT       => 'PostgreSQL database driver for the DBI module',
      PREREQ_PM      => {
                         'ExtUtils::MakeMaker' => '6.11',
-                        'DBI'                 => '1.52',
-                        'Test::More'          => '0.61',
+                        'DBI'                 => '1.54',
+                        'Test::More'          => '0.88',
                         'Time::HiRes'         => '0',
                         'version'             => '0',
                        },
@@ -214,6 +214,10 @@ my %opts =
      NEEDS_LINKING  => 1,
      NO_META        => 1,
      NORECURS       => 1,
+     PM             => {
+                        'Pg.pm' => '$(INST_LIBDIR)/Pg.pm',
+                        'lib/Bundle/DBD/Pg.pm' => '$(INST_LIB)/Bundle/DBD/Pg.pm',
+                       },
      clean          => { FILES => 'trace Pg.xsi README.testdatabase' },
      realclean      => { FILES => 'dbdpg_test_database/' },
 );

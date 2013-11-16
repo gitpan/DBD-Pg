@@ -1,13 +1,73 @@
 'GSM' is Greg Sabino Mullane, greg@turnstep.com
 
 
-Version 2.19.3  Released August 21, 2012
+Version 3.0.0?
+
+  - Major change in UTF-8 handling. If client_encoding is set to UTF-8, 
+    always mark returned Perl strings as utf8. See the docs for 
+    pg_enable_utf8 for more information.
+
+  - Bump DBI requirement to 1.54
+
+  - Bump Perl requirement to 5.8.1
+
+  - Map SQL_CHAR back to bpchar, not char. [GSM]
+
+  - Do not force oids to Perl ints (CPAN bug #85836)
+
+  - Return better sqlstate codes on fatal errors
+    [Rainer Weikusat]
+
+  - Better prepared statement names to avoid bug
+    [Spencer Sun] (CPAN bug #88827)
+
+  - Add pg_expression field to statistics_info output to show 
+    functional index information (CPAN bug #76608) [GSM]
+
+  - Adjust lo_import_with_oid check for 8.3 (CPAN bug #83145)
+
+  - Better handling of libpq errors to return SQLSTATE 08000
+    [Stephen Keller]
+
+  - Make sure CREATE TABLE .. AS SELECT returns rows in non do() cases. [GSM]
+
+  - Fix ORDINAL_POSITION in foreign_key_info
+    [Dagfinn Ilmari Mannsåker] (CPAN bug #88794)
+
+  - Fix foreign_key_info with unspecified schema
+    [Dagfinn Ilmari Mannsåker] (CPAN bug #88787)
+
+  - Remove math.h linking, as we no longer need it (CPAN bug #79256)
+
+  - Spelling fix per CPAN bug #78168
+
+  - Better wording for the AutoCommit docs (CPAN bug #82536)
+
+  - Change NOTICE to DEBUG1 in t/02attribs.t test for handle attribute "PrintWarn":
+    implicit index creation is now quieter in Postgres [Erik Rijkers]
+
+  - Use correct SQL_BIGINT constant for int8
+    [Dagfinn Ilmari Mannsåker]
+
+  - Fix assertion when binding array columns on debug perls >= 5.16
+    [Dagfinn Ilmari Mannsåker]
+
+  - Adjust test to use 3 digit exponential values (CPAN bug #59449)
+
+  - Avoid reinstalling driver methods in threads (CPAN bug #83638)
+    [Dagfinn Ilmari Mannsåker]
+
+Version 2.19.3  Released August 21, 2012 (git commit be018f10fdaf4163f98affcb7244046e8f47420d)
 
   - Fix bug in pg_st_split_statement causing segfaults
     (CPAN bug #79035)
 
+  - Make sure table_info() and other functions use pg_tablespace_location() 
+    instead of spclocation for Postgres servers 9.2 and greater. [GSM + others]
+    (CPAN bug #77042)
 
-Version 2.19.2  Released March 12, 2012
+
+Version 2.19.2  Released March 12, 2012 (git commit 52c80cc795855af8bf93eb0c81c76bd6f07a5f70)
 
   - Fix errors when multiple same-named placeholders are used. [GSM]
     (CPAN bug #75713)

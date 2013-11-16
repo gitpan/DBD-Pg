@@ -1,6 +1,6 @@
 #  -*-cperl-*-
 #
-#  Copyright (c) 2002-2012 Greg Sabino Mullane and others: see the Changes file
+#  Copyright (c) 2002-2013 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
 #  Portions Copyright (c) 1997-2001 Edmund Mergl
 #  Portions Copyright (c) 1994-1997 Tim Bunce
@@ -11,12 +11,12 @@
 
 use strict;
 use warnings;
-use 5.006001;
+use 5.008001;
 
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.19.3');
+	use version; our $VERSION = qv('2.20.1_1');
 
 	use DBI ();
 	use DynaLoader ();
@@ -30,33 +30,36 @@ use 5.006001;
 		 async => [qw(PG_ASYNC PG_OLDQUERY_CANCEL PG_OLDQUERY_WAIT)],
 		 pg_types => [qw(
 			PG_ABSTIME PG_ABSTIMEARRAY PG_ACLITEM PG_ACLITEMARRAY PG_ANY
-			PG_ANYARRAY PG_ANYELEMENT PG_ANYENUM PG_ANYNONARRAY PG_BIT
-			PG_BITARRAY PG_BOOL PG_BOOLARRAY PG_BOX PG_BOXARRAY
-			PG_BPCHAR PG_BPCHARARRAY PG_BYTEA PG_BYTEAARRAY PG_CHAR
-			PG_CHARARRAY PG_CID PG_CIDARRAY PG_CIDR PG_CIDRARRAY
-			PG_CIRCLE PG_CIRCLEARRAY PG_CSTRING PG_CSTRINGARRAY PG_DATE
-			PG_DATEARRAY PG_FDW_HANDLER PG_FLOAT4 PG_FLOAT4ARRAY PG_FLOAT8
-			PG_FLOAT8ARRAY PG_GTSVECTOR PG_GTSVECTORARRAY PG_INET PG_INETARRAY
-			PG_INT2 PG_INT2ARRAY PG_INT2VECTOR PG_INT2VECTORARRAY PG_INT4
-			PG_INT4ARRAY PG_INT8 PG_INT8ARRAY PG_INTERNAL PG_INTERVAL
-			PG_INTERVALARRAY PG_LANGUAGE_HANDLER PG_LINE PG_LINEARRAY PG_LSEG
+			PG_ANYARRAY PG_ANYELEMENT PG_ANYENUM PG_ANYNONARRAY PG_ANYRANGE
+			PG_BIT PG_BITARRAY PG_BOOL PG_BOOLARRAY PG_BOX
+			PG_BOXARRAY PG_BPCHAR PG_BPCHARARRAY PG_BYTEA PG_BYTEAARRAY
+			PG_CHAR PG_CHARARRAY PG_CID PG_CIDARRAY PG_CIDR
+			PG_CIDRARRAY PG_CIRCLE PG_CIRCLEARRAY PG_CSTRING PG_CSTRINGARRAY
+			PG_DATE PG_DATEARRAY PG_DATERANGE PG_DATERANGEARRAY PG_EVENT_TRIGGER
+			PG_FDW_HANDLER PG_FLOAT4 PG_FLOAT4ARRAY PG_FLOAT8 PG_FLOAT8ARRAY
+			PG_GTSVECTOR PG_GTSVECTORARRAY PG_INET PG_INETARRAY PG_INT2
+			PG_INT2ARRAY PG_INT2VECTOR PG_INT2VECTORARRAY PG_INT4 PG_INT4ARRAY
+			PG_INT4RANGE PG_INT4RANGEARRAY PG_INT8 PG_INT8ARRAY PG_INT8RANGE
+			PG_INT8RANGEARRAY PG_INTERNAL PG_INTERVAL PG_INTERVALARRAY PG_JSON
+			PG_JSONARRAY PG_LANGUAGE_HANDLER PG_LINE PG_LINEARRAY PG_LSEG
 			PG_LSEGARRAY PG_MACADDR PG_MACADDRARRAY PG_MONEY PG_MONEYARRAY
-			PG_NAME PG_NAMEARRAY PG_NUMERIC PG_NUMERICARRAY PG_OID
-			PG_OIDARRAY PG_OIDVECTOR PG_OIDVECTORARRAY PG_OPAQUE PG_PATH
-			PG_PATHARRAY PG_PG_ATTRIBUTE PG_PG_CLASS PG_PG_NODE_TREE PG_PG_PROC
-			PG_PG_TYPE PG_POINT PG_POINTARRAY PG_POLYGON PG_POLYGONARRAY
-			PG_RECORD PG_RECORDARRAY PG_REFCURSOR PG_REFCURSORARRAY PG_REGCLASS
-			PG_REGCLASSARRAY PG_REGCONFIG PG_REGCONFIGARRAY PG_REGDICTIONARY PG_REGDICTIONARYARRAY
-			PG_REGOPER PG_REGOPERARRAY PG_REGOPERATOR PG_REGOPERATORARRAY PG_REGPROC
-			PG_REGPROCARRAY PG_REGPROCEDURE PG_REGPROCEDUREARRAY PG_REGTYPE PG_REGTYPEARRAY
-			PG_RELTIME PG_RELTIMEARRAY PG_SMGR PG_TEXT PG_TEXTARRAY
-			PG_TID PG_TIDARRAY PG_TIME PG_TIMEARRAY PG_TIMESTAMP
-			PG_TIMESTAMPARRAY PG_TIMESTAMPTZ PG_TIMESTAMPTZARRAY PG_TIMETZ PG_TIMETZARRAY
-			PG_TINTERVAL PG_TINTERVALARRAY PG_TRIGGER PG_TSQUERY PG_TSQUERYARRAY
-			PG_TSVECTOR PG_TSVECTORARRAY PG_TXID_SNAPSHOT PG_TXID_SNAPSHOTARRAY PG_UNKNOWN
-			PG_UUID PG_UUIDARRAY PG_VARBIT PG_VARBITARRAY PG_VARCHAR
-			PG_VARCHARARRAY PG_VOID PG_XID PG_XIDARRAY PG_XML
-			PG_XMLARRAY
+			PG_NAME PG_NAMEARRAY PG_NUMERIC PG_NUMERICARRAY PG_NUMRANGE
+			PG_NUMRANGEARRAY PG_OID PG_OIDARRAY PG_OIDVECTOR PG_OIDVECTORARRAY
+			PG_OPAQUE PG_PATH PG_PATHARRAY PG_PG_ATTRIBUTE PG_PG_CLASS
+			PG_PG_NODE_TREE PG_PG_PROC PG_PG_TYPE PG_POINT PG_POINTARRAY
+			PG_POLYGON PG_POLYGONARRAY PG_RECORD PG_RECORDARRAY PG_REFCURSOR
+			PG_REFCURSORARRAY PG_REGCLASS PG_REGCLASSARRAY PG_REGCONFIG PG_REGCONFIGARRAY
+			PG_REGDICTIONARY PG_REGDICTIONARYARRAY PG_REGOPER PG_REGOPERARRAY PG_REGOPERATOR
+			PG_REGOPERATORARRAY PG_REGPROC PG_REGPROCARRAY PG_REGPROCEDURE PG_REGPROCEDUREARRAY
+			PG_REGTYPE PG_REGTYPEARRAY PG_RELTIME PG_RELTIMEARRAY PG_SMGR
+			PG_TEXT PG_TEXTARRAY PG_TID PG_TIDARRAY PG_TIME
+			PG_TIMEARRAY PG_TIMESTAMP PG_TIMESTAMPARRAY PG_TIMESTAMPTZ PG_TIMESTAMPTZARRAY
+			PG_TIMETZ PG_TIMETZARRAY PG_TINTERVAL PG_TINTERVALARRAY PG_TRIGGER
+			PG_TSQUERY PG_TSQUERYARRAY PG_TSRANGE PG_TSRANGEARRAY PG_TSTZRANGE
+			PG_TSTZRANGEARRAY PG_TSVECTOR PG_TSVECTORARRAY PG_TXID_SNAPSHOT PG_TXID_SNAPSHOTARRAY
+			PG_UNKNOWN PG_UUID PG_UUIDARRAY PG_VARBIT PG_VARBITARRAY
+			PG_VARCHAR PG_VARCHARARRAY PG_VOID PG_XID PG_XIDARRAY
+			PG_XML PG_XMLARRAY
 		)]
 	);
 
@@ -68,7 +71,7 @@ use 5.006001;
 	Exporter::export_ok_tags('pg_types', 'async');
 	@EXPORT = qw($DBDPG_DEFAULT PG_ASYNC PG_OLDQUERY_CANCEL PG_OLDQUERY_WAIT PG_BYTEA);
 
-	require_version DBI 1.52;
+	require_version DBI 1.54;
 
 	bootstrap DBD::Pg $VERSION;
 
@@ -104,6 +107,7 @@ use 5.006001;
 		return 'pg_catalog.';
 	}
 
+	my $methods_are_installed = 0;
 	sub driver {
 		return $drh if defined $drh;
 		my($class, $attr) = @_;
@@ -119,41 +123,45 @@ use 5.006001;
 			'Attribution' => "DBD::Pg $VERSION by Greg Sabino Mullane and others",
 		});
 
+		if (!$methods_are_installed) {
+			DBD::Pg::db->install_method('pg_cancel');
+			DBD::Pg::db->install_method('pg_endcopy');
+			DBD::Pg::db->install_method('pg_getline');
+			DBD::Pg::db->install_method('pg_getcopydata');
+			DBD::Pg::db->install_method('pg_getcopydata_async');
+			DBD::Pg::db->install_method('pg_notifies');
+			DBD::Pg::db->install_method('pg_putcopydata');
+			DBD::Pg::db->install_method('pg_putcopyend');
+			DBD::Pg::db->install_method('pg_ping');
+			DBD::Pg::db->install_method('pg_putline');
+			DBD::Pg::db->install_method('pg_ready');
+			DBD::Pg::db->install_method('pg_release');
+			DBD::Pg::db->install_method('pg_result'); ## NOT duplicated below!
+			DBD::Pg::db->install_method('pg_rollback_to');
+			DBD::Pg::db->install_method('pg_savepoint');
+			DBD::Pg::db->install_method('pg_server_trace');
+			DBD::Pg::db->install_method('pg_server_untrace');
+			DBD::Pg::db->install_method('pg_type_info');
 
-		DBD::Pg::db->install_method('pg_cancel');
-		DBD::Pg::db->install_method('pg_endcopy');
-		DBD::Pg::db->install_method('pg_getline');
-		DBD::Pg::db->install_method('pg_getcopydata');
-		DBD::Pg::db->install_method('pg_getcopydata_async');
-		DBD::Pg::db->install_method('pg_notifies');
-		DBD::Pg::db->install_method('pg_putcopydata');
-		DBD::Pg::db->install_method('pg_putcopyend');
-		DBD::Pg::db->install_method('pg_ping');
-		DBD::Pg::db->install_method('pg_putline');
-		DBD::Pg::db->install_method('pg_ready');
-		DBD::Pg::db->install_method('pg_release');
-		DBD::Pg::db->install_method('pg_result'); ## NOT duplicated below!
-		DBD::Pg::db->install_method('pg_rollback_to');
-		DBD::Pg::db->install_method('pg_savepoint');
-		DBD::Pg::db->install_method('pg_server_trace');
-		DBD::Pg::db->install_method('pg_server_untrace');
-		DBD::Pg::db->install_method('pg_type_info');
+			DBD::Pg::st->install_method('pg_cancel');
+			DBD::Pg::st->install_method('pg_result');
+			DBD::Pg::st->install_method('pg_ready');
 
-		DBD::Pg::st->install_method('pg_cancel');
-		DBD::Pg::st->install_method('pg_result');
-		DBD::Pg::st->install_method('pg_ready');
+			DBD::Pg::db->install_method('pg_lo_creat');
+			DBD::Pg::db->install_method('pg_lo_open');
+			DBD::Pg::db->install_method('pg_lo_write');
+			DBD::Pg::db->install_method('pg_lo_read');
+			DBD::Pg::db->install_method('pg_lo_lseek');
+			DBD::Pg::db->install_method('pg_lo_tell');
+			DBD::Pg::db->install_method('pg_lo_truncate');
+			DBD::Pg::db->install_method('pg_lo_close');
+			DBD::Pg::db->install_method('pg_lo_unlink');
+			DBD::Pg::db->install_method('pg_lo_import');
+			DBD::Pg::db->install_method('pg_lo_import_with_oid');
+			DBD::Pg::db->install_method('pg_lo_export');
 
-		DBD::Pg::db->install_method('pg_lo_creat');
-		DBD::Pg::db->install_method('pg_lo_open');
-		DBD::Pg::db->install_method('pg_lo_write');
-		DBD::Pg::db->install_method('pg_lo_read');
-		DBD::Pg::db->install_method('pg_lo_lseek');
-		DBD::Pg::db->install_method('pg_lo_tell');
-		DBD::Pg::db->install_method('pg_lo_close');
-		DBD::Pg::db->install_method('pg_lo_unlink');
-		DBD::Pg::db->install_method('pg_lo_import');
-		DBD::Pg::db->install_method('pg_lo_import_with_oid');
-		DBD::Pg::db->install_method('pg_lo_export');
+			$methods_are_installed++;
+		}
 
 		return $drh;
 
@@ -603,8 +611,9 @@ use 5.006001;
 		my $stats_sql = qq{
             SELECT
                 c.relname, i.indkey, i.indisunique, i.indisclustered, a.amname,
-                n.nspname, c.relpages, c.reltuples, i.indexprs,
-                pg_get_expr(i.indpred,i.indrelid) as predicate
+                n.nspname, c.relpages, c.reltuples, i.indexprs, i.indnatts, i.indexrelid,
+                pg_get_expr(i.indpred,i.indrelid) as predicate,
+                pg_get_expr(i.indexprs,i.indrelid, true) AS indexdef
             FROM
                 pg_catalog.pg_index i, pg_catalog.pg_class c,
                 pg_catalog.pg_class d, pg_catalog.pg_am a,
@@ -614,6 +623,14 @@ use 5.006001;
                 AND i.indexrelid = c.oid AND c.relam = a.oid
             ORDER BY
                 i.indisunique desc, a.amname, c.relname
+        };
+
+		my $indexdef_sql = qq{
+            SELECT
+                pg_get_indexdef(indexrelid,x,true)
+            FROM
+              pg_index
+            JOIN generate_series(1,?) s(x) ON indexrelid = ?
         };
 
 		my @output_rows;
@@ -637,6 +654,7 @@ use 5.006001;
 				$tst->{reltuples},# CARDINALITY
 				$tst->{relpages}, # PAGES
 				undef,            # FILTER_CONDITION
+                undef,            # pg_expression
 			]);
 		}
 
@@ -645,16 +663,16 @@ use 5.006001;
 		$colnames_sth->execute(@exe_args) or return undef;
 		my $colnames = $colnames_sth->fetchall_hashref('attnum');
 
+		# Fetch the individual parts of the index
+		my $sth_indexdef = $dbh->prepare($indexdef_sql);
+
 		# Fetch the index definitions
 		my $sth = $dbh->prepare($stats_sql);
 		$sth->execute(@exe_args) or return undef;
 
 		STAT_ROW:
-		#use Data::Dumper;
-		#warn Dumper $stats_sql;
 		while (my $row = $sth->fetchrow_hashref) {
-			#warn Dumper $row;
-			next if $row->{indexprs}; # We can't return these accurately via this interface ...
+
 			next if $unique_only and !$row->{indisunique};
 
 			my $indtype = $row->{indisclustered}
@@ -667,20 +685,25 @@ use 5.006001;
 			my $nonunique = $row->{indisunique} ? 0 : 1;
 
 			my @index_row = (
-				undef,             # TABLE_CAT
-				$row->{nspname},   # TABLE_SCHEM
-				$table,            # TABLE_NAME
-				$nonunique,        # NON_UNIQUE
-				undef,             # INDEX_QUALIFIER
-				$row->{relname},   # INDEX_NAME
-				$indtype,          # TYPE
-				undef,             # ORDINAL_POSITION
-				undef,             # COLUMN_NAME
-				'A',               # ASC_OR_DESC
-				$row->{reltuples}, # CARDINALITY
-				$row->{relpages},  # PAGES
-				$row->{predicate}, # FILTER_CONDITION
+				undef,             # TABLE_CAT         0
+				$row->{nspname},   # TABLE_SCHEM       1
+				$table,            # TABLE_NAME        2
+				$nonunique,        # NON_UNIQUE        3
+				undef,             # INDEX_QUALIFIER   4
+				$row->{relname},   # INDEX_NAME        5
+				$indtype,          # TYPE              6
+				undef,             # ORDINAL_POSITION  7
+				undef,             # COLUMN_NAME       8
+				'A',               # ASC_OR_DESC       9
+				$row->{reltuples}, # CARDINALITY      10
+				$row->{relpages},  # PAGES            11
+				$row->{predicate}, # FILTER_CONDITION 12
+                undef,             # pg_expression    13
 			);
+
+			## Grab expression information
+			$sth_indexdef->execute($row->{indnatts}, $row->{indexrelid});
+			my $expression = $sth_indexdef->fetchall_arrayref();
 
 			my $col_nums = $row->{indkey};
 			$col_nums =~ s/^\s+//;
@@ -689,15 +712,17 @@ use 5.006001;
 			my $ord_pos = 1;
 			for my $col_num (@col_nums) {
 				my @copy = @index_row;
-				$copy[7] = $ord_pos++; # ORDINAL_POSITION
+				$copy[7] = $ord_pos; # ORDINAL_POSITION
 				$copy[8] = $colnames->{$col_num}->{attname}; # COLUMN_NAME
+				$copy[13] = $expression->[$ord_pos-1][0];
 				push(@output_rows, \@copy);
+				$ord_pos++;
 			}
 		}
 
 		my @output_colnames = qw/ TABLE_CAT TABLE_SCHEM TABLE_NAME NON_UNIQUE INDEX_QUALIFIER
 					INDEX_NAME TYPE ORDINAL_POSITION COLUMN_NAME ASC_OR_DESC
-					CARDINALITY PAGES FILTER_CONDITION /;
+					CARDINALITY PAGES FILTER_CONDITION pg_expression /;
 
 		return _prepare_from_data('statistics_info', \@output_rows, \@output_colnames);
 	}
@@ -874,6 +899,9 @@ use 5.006001;
 				if (length $_->[1]) {
 					$SQL .= ' AND n.nspname = ' . $dbh->quote($_->[1]);
 				}
+				else {
+					$SQL .= ' AND pg_catalog.pg_table_is_visible(c.oid)'
+				}
 				my $info = $dbh->selectall_arrayref($SQL);
 				return undef if ! @$info;
 				$oid{$_->[2]} = $info->[0][0];
@@ -945,7 +973,13 @@ use 5.006001;
 
 		my $sth = $dbh->prepare($fk_sql);
 		$sth->execute();
+
+		## We have to make sure expand_array is on for the items below to work
+		my $oldexpand = $dbh->FETCH('pg_expand_array');
+		$oldexpand or $dbh->STORE('pg_expand_array', 1);
+
 		my $info = $sth->fetchall_arrayref({});
+		$oldexpand or $dbh->STORE('pg_expand_array', 0);
 		return undef if ! defined $info or ! @$info;
 
 		## Return undef if just ptable given but no fk found
@@ -1038,7 +1072,7 @@ use 5.006001;
 				# FK_COLUMN_NAME
 				$fkinfo->[$x][7] = $attinfo{$t->{'conrelid'}}{$conkey->[$y]}{'colname'};
 				# ORDINAL_POSITION
-				$fkinfo->[$x][8] = $conkey->[$y];
+				$fkinfo->[$x][8] = $y+1;
 				# UPDATE_RULE
 				$fkinfo->[$x][9] = "$t->{'update'}";
 				# DELETE_RULE
@@ -1339,8 +1373,8 @@ use 5.006001;
              SQL_FLOAT,                                                                    $UN, $UN, $UN ],
 ['float8',   SQL_REAL,          15,   $UN,$UN,   $PS,  1,0,2, 0,0,0,   'REAL',      0,15,
              SQL_REAL,                                                                     $UN, $UN, $UN ],
-['int8',     SQL_DOUBLE,        20,   $UN,$UN,   $UN,  1,0,2, 0,0,0,   'LONGINT',   0,0,
-             SQL_DOUBLE,                                                                   $UN, $UN, $UN ],
+['int8',     SQL_BIGINT,        20,   $UN,$UN,   $UN,  1,0,2, 0,0,0,   'LONGINT',   0,0,
+             SQL_BIGINT,                                                                   $UN, $UN, $UN ],
 ['date',     SQL_DATE,          10,   q{'},q{'}, $UN,  1,0,2, $UN,0,0, 'DATE',      0,0,
              SQL_DATE,                                                                     $UN, $UN, $UN ],
 ['tinterval',SQL_TIME,          18,   q{'},q{'}, $UN,  1,0,2, $UN,0,0, 'TINTERVAL', 0,6,
@@ -1380,7 +1414,7 @@ use 5.006001;
 
 	# Set up lookup for SQL types we don't want to escape.
 	my %no_escape = map { $_ => 1 }
-		DBI::SQL_INTEGER, DBI::SQL_SMALLINT, DBI::SQL_DECIMAL,
+		DBI::SQL_INTEGER, DBI::SQL_SMALLINT, DBI::SQL_BIGINT, DBI::SQL_DECIMAL,
 		DBI::SQL_FLOAT, DBI::SQL_REAL, DBI::SQL_DOUBLE, DBI::SQL_NUMERIC;
 
 	sub get_info {
@@ -1633,6 +1667,7 @@ use 5.006001;
 				pg_db                          => undef,
 				pg_default_port                => undef,
 				pg_enable_utf8                 => undef,
+				pg_utf8_flag                   => undef,
 				pg_errorlevel                  => undef,
 				pg_expand_array                => undef,
 				pg_host                        => undef,
@@ -1672,7 +1707,7 @@ use 5.006001;
 		my $sth = shift;
 		my ($p_id, $value_array, $attr) = @_;
 
-		## Bail if the second arg is not undef or an an arrayref
+		## Bail if the second arg is not undef or an arrayref
 		return $sth->set_err(1, "Value for parameter $p_id must be a scalar or an arrayref, not a ".ref($value_array))
 			if defined $value_array and ref $value_array and ref $value_array ne 'ARRAY';
 
@@ -1680,7 +1715,7 @@ use 5.006001;
 		return $sth->set_err(1, q{Can't use named placeholders for non-driver supported bind_param_array})
 			unless DBI::looks_like_number($p_id); # because we rely on execute(@ary) here
 
-		## Store the list of items in the hash (will be undef or an arayref)
+		## Store the list of items in the hash (will be undef or an arrayref)
 		$sth->{ParamArrays}{$p_id} = $value_array;
 
 		## If any attribs were passed in, we need to call bind_param
@@ -1738,7 +1773,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.19.3 of the DBD::Pg module
+This documents version 2.20.1_1 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
@@ -1900,7 +1935,7 @@ handle. This is a number used by libpq and is one of:
 
   0  Empty query string
   1  A command that returns no data successfully completed.
-  2  A command that returns data sucessfully completed.
+  2  A command that returns data successfully completed.
   3  A COPY OUT command is still in progress.
   4  A COPY IN command is still in progress.
   5  A bad response was received from the backend.
@@ -2133,6 +2168,13 @@ location and C<undef> upon failure. This function cannot be used if AutoCommit i
 Returns the current read or write location on the large object C<$lobj_fd> and C<undef> upon failure.
 This function cannot be used if AutoCommit is enabled.
 
+=item lo_truncate
+
+  $loc = $dbh->pg_lo_truncate($lobj_fd, $len);
+
+Truncates the given large object to the new size. Returns C<undef> on failure, and 0 on success.
+This function cannot be used if AutoCommit is enabled.
+
 =item lo_close
 
   $lobj_fd = $dbh->pg_lo_close($lobj_fd);
@@ -2199,7 +2241,7 @@ Postgres backend are only handled by one of the processes. If you don't set thin
 properly, you will see messages such as "I<server closed the connection unexpectedly>", 
 and "I<message type 0x32 arrived from server while idle>". The best solution is to either 
 have the child process reconnect to the database with a fresh database handle, or to 
-rewrite your application not to use use forking. See the section on L</Asynchronous Queries> 
+rewrite your application not to use forking. See the section on L</Asynchronous Queries> 
 for a way to have your script continue to work while the database is processing a request.
 
 =head3 B<RaiseError> (boolean, inherited)
@@ -2641,7 +2683,7 @@ If you did not want to worry about the sequence name:
 Issues a COMMIT to the server, indicating that the current transaction is finished and that 
 all changes made will be visible to other processes. If AutoCommit is enabled, then 
 a warning is given and no COMMIT is issued. Returns true on success, false on error.
-See also the the section on L</Transactions>.
+See also the section on L</Transactions>.
 
 =head3 B<rollback>
 
@@ -2964,10 +3006,23 @@ Returns a statement handle that can be fetched from to give statistics informati
 on a specific table and its indexes. The C<$table> argument is mandatory. The 
 C<$schema> argument is optional but recommended. The C<$unique_only> argument, if true, 
 causes only information about unique indexes to be returned. The C<$quick> argument is 
-not used by DBD::Pg. For information on the format of the rows returned, please see the DBI 
-documentation.
+not used by DBD::Pg. For information on the format of the standard rows returned, please 
+see the DBI documentation.
 
 =for html <a href="http://search.cpan.org/~timb/DBI/DBI.pm#statistics_info">DBI section on statistics_info</a>
+
+In addition, the following Postgres specific columns are returned:
+
+=over 4
+
+=item pg_expression
+
+Postgres allows indexes on functions and scalar expressions based on one or more columns. This field 
+will always be populated if an index, but the lack of an entry in the COLUMN_NAME should indicate 
+that this is an index expression.
+
+=back
+
 
 =head3 B<tables>
 
@@ -2999,7 +3054,7 @@ according to the following table:
   | varchar       | VARCHAR(n)                         |
   | int2          | SMALLINT                           |
   | int4          | INT                                |
-  | int8          | /                                  |
+  | int8          | BIGINT                             |
   | money         | /                                  |
   | float4        | FLOAT(p)   p<7=float4, p<16=float8 |
   | float8        | REAL                               |
@@ -3114,7 +3169,7 @@ Please not that this method is not foolproof: there are still ways to update the
 database. Consider this a safety net to catch applications that should not be 
 issuing commands such as INSERT, UPDATE, or DELETE.
 
-This method method requires DBI version 1.55 or better.
+This method requires DBI version 1.55 or better.
 
 =head3 B<pg_server_prepare> (integer)
 
@@ -3128,12 +3183,26 @@ DBD::Pg specific attribute. Defaults to false. When true, question marks inside 
 are not treated as L<placeholders|/Placeholders>. Useful for statements that contain unquoted question 
 marks, such as geometric operators.
 
-=head3 B<pg_enable_utf8> (boolean)
+=head3 B<pg_enable_utf8> (integer)
 
-DBD::Pg specific attribute. If true, then the C<utf8> flag will be turned on
-for returned character data (if the data is valid UTF-8). For details about
-the C<utf8> flag, see the C<Encode> module. This attribute is only relevant under
-perl 5.8 and later.
+DBD::Pg specific attribute. The behavior of DBD::Pg with regards to this flag has 
+changed as of version 3.0.0. The default value for this attribute, -1, indicates 
+that the internal Perl C<utf8> flag will be turned on for all strings coming back 
+from the database if the client_encoding is set to 'UTF8'. Use of this default 
+is highly encouraged. If your code was previously using pg_enable_utf8, you can 
+probably remove mention of it entirely.
+
+If this attribute is set to 0, then the internal C<utf8> flag will *never* be 
+turned on for returned data, regardless of the current client_encoding. 
+
+If this attribute is set to 1, then the internal C<utf8> flag will *always* 
+be turned on for returned data, regardless of the current client_encoding 
+(with the exception of bytea data).
+
+Note that the value of client_encoding is only checked on connection time. If 
+you change the client_encoding to/from 'UTF8' after connecting, you can set 
+pg_enable_utf8 to -1 to force DBD::Pg to read in the new client_encoding and 
+act accordingly.
 
 =head3 B<pg_errorlevel> (integer)
 
@@ -3309,16 +3378,18 @@ key in the hash passed to L</bind_param>.
 The current list of Postgres data types exported is:
 
  PG_ABSTIME PG_ABSTIMEARRAY PG_ACLITEM PG_ACLITEMARRAY PG_ANY PG_ANYARRAY
- PG_ANYELEMENT PG_ANYENUM PG_ANYNONARRAY PG_BIT PG_BITARRAY PG_BOOL
- PG_BOOLARRAY PG_BOX PG_BOXARRAY PG_BPCHAR PG_BPCHARARRAY PG_BYTEA
- PG_BYTEAARRAY PG_CHAR PG_CHARARRAY PG_CID PG_CIDARRAY PG_CIDR
- PG_CIDRARRAY PG_CIRCLE PG_CIRCLEARRAY PG_CSTRING PG_CSTRINGARRAY PG_DATE
- PG_DATEARRAY PG_FDW_HANDLER PG_FLOAT4 PG_FLOAT4ARRAY PG_FLOAT8 PG_FLOAT8ARRAY
- PG_GTSVECTOR PG_GTSVECTORARRAY PG_INET PG_INETARRAY PG_INT2 PG_INT2ARRAY
- PG_INT2VECTOR PG_INT2VECTORARRAY PG_INT4 PG_INT4ARRAY PG_INT8 PG_INT8ARRAY
- PG_INTERNAL PG_INTERVAL PG_INTERVALARRAY PG_LANGUAGE_HANDLER PG_LINE PG_LINEARRAY
- PG_LSEG PG_LSEGARRAY PG_MACADDR PG_MACADDRARRAY PG_MONEY PG_MONEYARRAY
- PG_NAME PG_NAMEARRAY PG_NUMERIC PG_NUMERICARRAY PG_OID PG_OIDARRAY
+ PG_ANYELEMENT PG_ANYENUM PG_ANYNONARRAY PG_ANYRANGE PG_BIT PG_BITARRAY
+ PG_BOOL PG_BOOLARRAY PG_BOX PG_BOXARRAY PG_BPCHAR PG_BPCHARARRAY
+ PG_BYTEA PG_BYTEAARRAY PG_CHAR PG_CHARARRAY PG_CID PG_CIDARRAY
+ PG_CIDR PG_CIDRARRAY PG_CIRCLE PG_CIRCLEARRAY PG_CSTRING PG_CSTRINGARRAY
+ PG_DATE PG_DATEARRAY PG_DATERANGE PG_DATERANGEARRAY PG_EVENT_TRIGGER PG_FDW_HANDLER
+ PG_FLOAT4 PG_FLOAT4ARRAY PG_FLOAT8 PG_FLOAT8ARRAY PG_GTSVECTOR PG_GTSVECTORARRAY
+ PG_INET PG_INETARRAY PG_INT2 PG_INT2ARRAY PG_INT2VECTOR PG_INT2VECTORARRAY
+ PG_INT4 PG_INT4ARRAY PG_INT4RANGE PG_INT4RANGEARRAY PG_INT8 PG_INT8ARRAY
+ PG_INT8RANGE PG_INT8RANGEARRAY PG_INTERNAL PG_INTERVAL PG_INTERVALARRAY PG_JSON
+ PG_JSONARRAY PG_LANGUAGE_HANDLER PG_LINE PG_LINEARRAY PG_LSEG PG_LSEGARRAY
+ PG_MACADDR PG_MACADDRARRAY PG_MONEY PG_MONEYARRAY PG_NAME PG_NAMEARRAY
+ PG_NUMERIC PG_NUMERICARRAY PG_NUMRANGE PG_NUMRANGEARRAY PG_OID PG_OIDARRAY
  PG_OIDVECTOR PG_OIDVECTORARRAY PG_OPAQUE PG_PATH PG_PATHARRAY PG_PG_ATTRIBUTE
  PG_PG_CLASS PG_PG_NODE_TREE PG_PG_PROC PG_PG_TYPE PG_POINT PG_POINTARRAY
  PG_POLYGON PG_POLYGONARRAY PG_RECORD PG_RECORDARRAY PG_REFCURSOR PG_REFCURSORARRAY
@@ -3328,9 +3399,10 @@ The current list of Postgres data types exported is:
  PG_SMGR PG_TEXT PG_TEXTARRAY PG_TID PG_TIDARRAY PG_TIME
  PG_TIMEARRAY PG_TIMESTAMP PG_TIMESTAMPARRAY PG_TIMESTAMPTZ PG_TIMESTAMPTZARRAY PG_TIMETZ
  PG_TIMETZARRAY PG_TINTERVAL PG_TINTERVALARRAY PG_TRIGGER PG_TSQUERY PG_TSQUERYARRAY
- PG_TSVECTOR PG_TSVECTORARRAY PG_TXID_SNAPSHOT PG_TXID_SNAPSHOTARRAY PG_UNKNOWN PG_UUID
- PG_UUIDARRAY PG_VARBIT PG_VARBITARRAY PG_VARCHAR PG_VARCHARARRAY PG_VOID
- PG_XID PG_XIDARRAY PG_XML PG_XMLARRAY
+ PG_TSRANGE PG_TSRANGEARRAY PG_TSTZRANGE PG_TSTZRANGEARRAY PG_TSVECTOR PG_TSVECTORARRAY
+ PG_TXID_SNAPSHOT PG_TXID_SNAPSHOTARRAY PG_UNKNOWN PG_UUID PG_UUIDARRAY PG_VARBIT
+ PG_VARBITARRAY PG_VARCHAR PG_VARCHARARRAY PG_VOID PG_XID PG_XIDARRAY
+ PG_XML PG_XMLARRAY
 
 Data types are "sticky," in that once a data type is set to a certain placeholder,
 it will remain for that placeholder, unless it is explicitly set to something
@@ -3494,7 +3566,7 @@ a reference to a list. Do not use this in a scalar context.
   $hash_ref = $sth->fetchrow_hashref($name);
 
 Fetches the next row of data and returns a hashref containing the name of the columns as the keys 
-and the data itself as the values. Any NULL value is returned as as undef value.
+and the data itself as the values. Any NULL value is returned as an undef value.
 
 If there are no more rows or if an error occurs, the this method return undef. You should 
 check C<< $sth->err >> afterwards (or use the L</RaiseError> attribute) to discover if the undef returned 
@@ -3794,10 +3866,8 @@ complete definition of C<AutoCommit> please refer to the DBI documentation.
 
 According to the DBI specification the default for C<AutoCommit> is a true
 value. In this mode, any change to the database becomes valid immediately. Any
-C<BEGIN>, C<COMMIT> or C<ROLLBACK> statements will be rejected. DBD::Pg
-implements C<AutoCommit> by issuing a C<BEGIN> statement immediately before
-executing a statement, and a C<COMMIT> afterwards. Note that preparing a 
-statement is not always enough to trigger the first C<BEGIN>, as the actual 
+C<BEGIN>, C<COMMIT> or C<ROLLBACK> statements will be rejected. Note that 
+preparing a statement does not always contact the server, as the actual 
 C<PREPARE> is usually postponed until the first call to L</execute>.
 
 =head2 Savepoints
@@ -4219,11 +4289,12 @@ Parts of this package were originally copied from DBI and DBD-Oracle.
 B<Mailing List>
 
 The current maintainers may be reached through the 'dbd-pg' mailing list:
-<dbd-pg@perl.org>
+<dbd-pg@perl.org>. Subscribe by sending an email to dbd-pg-subscribe@perl.org. 
+Visit the archives at http://grokbase.com/g/perl/dbd-pg
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 1994-2012, Greg Sabino Mullane
+Copyright (C) 1994-2013, Greg Sabino Mullane
 
 This module (DBD::Pg) is free software; you can redistribute it and/or modify it 
 under the same terms as Perl 5.10.0. For more details, see the full text of the 

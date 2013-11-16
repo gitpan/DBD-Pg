@@ -1,6 +1,6 @@
 /*
 
-  Copyright (c) 2000-2012 Greg Sabino Mullane and others: see the Changes file
+  Copyright (c) 2000-2013 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 1997-2000 Edmund Mergl
   Portions Copyright (c) 1994-1997 Tim Bunce
 
@@ -33,6 +33,7 @@ constant(name=Nullch)
 	PG_ANYELEMENT         = 2283
 	PG_ANYENUM            = 3500
 	PG_ANYNONARRAY        = 2776
+	PG_ANYRANGE           = 3831
 	PG_BIT                = 1560
 	PG_BITARRAY           = 1561
 	PG_BOOL               = 16
@@ -55,6 +56,9 @@ constant(name=Nullch)
 	PG_CSTRINGARRAY       = 1263
 	PG_DATE               = 1082
 	PG_DATEARRAY          = 1182
+	PG_DATERANGE          = 3912
+	PG_DATERANGEARRAY     = 3913
+	PG_EVENT_TRIGGER      = 3838
 	PG_FDW_HANDLER        = 3115
 	PG_FLOAT4             = 700
 	PG_FLOAT4ARRAY        = 1021
@@ -70,11 +74,17 @@ constant(name=Nullch)
 	PG_INT2VECTORARRAY    = 1006
 	PG_INT4               = 23
 	PG_INT4ARRAY          = 1007
+	PG_INT4RANGE          = 3904
+	PG_INT4RANGEARRAY     = 3905
 	PG_INT8               = 20
 	PG_INT8ARRAY          = 1016
+	PG_INT8RANGE          = 3926
+	PG_INT8RANGEARRAY     = 3927
 	PG_INTERNAL           = 2281
 	PG_INTERVAL           = 1186
 	PG_INTERVALARRAY      = 1187
+	PG_JSON               = 114
+	PG_JSONARRAY          = 199
 	PG_LANGUAGE_HANDLER   = 2280
 	PG_LINE               = 628
 	PG_LINEARRAY          = 629
@@ -88,6 +98,8 @@ constant(name=Nullch)
 	PG_NAMEARRAY          = 1003
 	PG_NUMERIC            = 1700
 	PG_NUMERICARRAY       = 1231
+	PG_NUMRANGE           = 3906
+	PG_NUMRANGEARRAY      = 3907
 	PG_OID                = 26
 	PG_OIDARRAY           = 1028
 	PG_OIDVECTOR          = 30
@@ -144,6 +156,10 @@ constant(name=Nullch)
 	PG_TRIGGER            = 2279
 	PG_TSQUERY            = 3615
 	PG_TSQUERYARRAY       = 3645
+	PG_TSRANGE            = 3908
+	PG_TSRANGEARRAY       = 3909
+	PG_TSTZRANGE          = 3910
+	PG_TSTZRANGEARRAY     = 3911
 	PG_TSVECTOR           = 3614
 	PG_TSVECTORARRAY      = 3643
 	PG_TXID_SNAPSHOT      = 2970
@@ -456,6 +472,16 @@ pg_lo_tell(dbh, fd)
 	int fd
 	CODE:
 		const int ret = pg_db_lo_tell(dbh, fd);
+		ST(0) = (ret >= 0) ? sv_2mortal(newSViv(ret)) : &PL_sv_undef;
+
+
+void
+pg_lo_truncate(dbh, fd, len)
+	SV * dbh
+	int fd
+    size_t len
+	CODE:
+		const int ret = pg_db_lo_truncate(dbh, fd, len);
 		ST(0) = (ret >= 0) ? sv_2mortal(newSViv(ret)) : &PL_sv_undef;
 
 

@@ -26,12 +26,12 @@ my $dbh = connect_database();
 if (! $dbh) {
 	plan skip_all => 'Connection to database failed, cannot continue testing';
 }
-plan tests => 534;
+plan tests => 538;
 
 isnt ($dbh, undef, 'Connect to database for database handle method testing');
 
 my ($pglibversion,$pgversion) = ($dbh->{pg_lib_version},$dbh->{pg_server_version});
-my ($schema,$schema2) = ('dbd_pg_testschema', 'dbd_pg_testschema2');
+my ($schema,$schema2,$schema3) = ('dbd_pg_testschema', 'dbd_pg_testschema2', 'dbd_pg_testschema3');
 my ($table1,$table2,$table3) = ('dbd_pg_test1','dbd_pg_test2','dbd_pg_test3');
 my ($sequence2,$sequence3,$sequence4) = ('dbd_pg_testsequence2','dbd_pg_testsequence3','dbd_pg_testsequence4');
 
@@ -103,9 +103,18 @@ eval {
 };
 like ($@, qr{last_insert_id}, $t);
 
+$SQL = 'CREATE TEMP TABLE foobar AS SELECT * FROM pg_class LIMIT 3';
+
 $t='DB handle method "do" returns correct count with CREATE AS SELECT';
 $dbh->rollback();
-$result = $dbh->do('CREATE TEMP TABLE foobar AS SELECT * FROM pg_class LIMIT 3');
+$result = $dbh->do($SQL);
+$expected = $pgversion >= 90000 ? 3 : '0E0';
+is ($result, $expected, $t);
+
+$t='DB handle method "execute" returns correct count with CREATE AS SELECT';
+$dbh->rollback();
+$sth = $dbh->prepare($SQL);
+$result = $sth->execute();
 $expected = $pgversion >= 90000 ? 3 : '0E0';
 is ($result, $expected, $t);
 
@@ -672,15 +681,22 @@ $t='DB handle method "statistics_info" returns undef: bad table';
 $sth = $dbh->statistics_info(undef,undef,'dbd_pg_test9',undef,undef);
 is ($sth, undef, $t);
 
+
 ## Create some tables with various indexes
 {
 	local $SIG{__WARN__} = sub {};
+
+	## Drop the third schema
+	$dbh->do("DROP SCHEMA IF EXISTS $schema3 CASCADE");
+
 	$dbh->do("CREATE TABLE $table1 (a INT, b INT NOT NULL, c INT NOT NULL, ".
 			 'CONSTRAINT dbd_pg_test1_pk PRIMARY KEY (a))');
 	$dbh->do("ALTER TABLE $table1 ADD CONSTRAINT dbd_pg_test1_uc1 UNIQUE (b)");
 	$dbh->do("CREATE UNIQUE INDEX dbd_pg_test1_index_c ON $table1(c)");
+
 	$dbh->do("CREATE TABLE $table2 (a INT, b INT, c INT, PRIMARY KEY(a,b), UNIQUE(b,c))");
-	$dbh->do("CREATE INDEX dbd_pg_test2_skipme ON $table2(c,(a+b))");
+	$dbh->do("CREATE INDEX dbd_pg_test2_expr ON $table2(c,(a+b))");
+
 	$dbh->do("CREATE TABLE $table3 (a INT, b INT, c INT, PRIMARY KEY(a)) WITH OIDS");
 	$dbh->do("CREATE UNIQUE INDEX dbd_pg_test3_index_b ON $table3(b)");
 	$dbh->do("CREATE INDEX dbd_pg_test3_index_c ON $table3 USING hash(c)");
@@ -691,30 +707,32 @@ is ($sth, undef, $t);
 
 my $correct_stats = {
 one => [
-	[ undef, $schema, $table1, undef, undef, undef, 'table', undef, undef, undef, '0', '0', undef ],
-	[ undef, $schema, $table1, '0', undef, 'dbd_pg_test1_index_c', 'btree',  1, 'c', 'A', '0', '1', undef ],
-	[ undef, $schema, $table1, '0', undef, 'dbd_pg_test1_pk',      'btree',  1, 'a', 'A', '0', '1', undef ],
-	[ undef, $schema, $table1, '0', undef, 'dbd_pg_test1_uc1',     'btree',  1, 'b', 'A', '0', '1', undef ],
+	[ undef, $schema, $table1, undef, undef, undef, 'table', undef, undef, undef, '0', '0', undef, undef ],
+	[ undef, $schema, $table1, '0', undef, 'dbd_pg_test1_index_c', 'btree',  1, 'c', 'A', '0', '1', undef, 'c' ],
+	[ undef, $schema, $table1, '0', undef, 'dbd_pg_test1_pk',      'btree',  1, 'a', 'A', '0', '1', undef, 'a' ],
+	[ undef, $schema, $table1, '0', undef, 'dbd_pg_test1_uc1',     'btree',  1, 'b', 'A', '0', '1', undef, 'b' ],
 	],
 	two => [
-	[ undef, $schema, $table2, undef, undef, undef, 'table', undef, undef, undef, '0', '0', undef ],
-	[ undef, $schema, $table2, '0', undef, 'dbd_pg_test2_b_key',   'btree',  1, 'b', 'A', '0', '1', undef ],
-	[ undef, $schema, $table2, '0', undef, 'dbd_pg_test2_b_key',   'btree',  2, 'c', 'A', '0', '1', undef ],
-	[ undef, $schema, $table2, '0', undef, 'dbd_pg_test2_pkey',    'btree',  1, 'a', 'A', '0', '1', undef ],
-	[ undef, $schema, $table2, '0', undef, 'dbd_pg_test2_pkey',    'btree',  2, 'b', 'A', '0', '1', undef ],
+	[ undef, $schema, $table2, undef, undef, undef, 'table', undef, undef, undef, '0', '0', undef, undef ],
+	[ undef, $schema, $table2, '0', undef, 'dbd_pg_test2_b_key',   'btree',  1, 'b', 'A', '0', '1', undef, 'b' ],
+	[ undef, $schema, $table2, '0', undef, 'dbd_pg_test2_b_key',   'btree',  2, 'c', 'A', '0', '1', undef, 'c' ],
+	[ undef, $schema, $table2, '0', undef, 'dbd_pg_test2_pkey',    'btree',  1, 'a', 'A', '0', '1', undef, 'a' ],
+	[ undef, $schema, $table2, '0', undef, 'dbd_pg_test2_pkey',    'btree',  2, 'b', 'A', '0', '1', undef, 'b' ],
+	[ undef, $schema, $table2, '1', undef, 'dbd_pg_test2_expr',    'btree',  1, 'c', 'A', '0', '1', undef, 'c' ],
+	[ undef, $schema, $table2, '1', undef, 'dbd_pg_test2_expr',    'btree',  2, undef, 'A', '0', '1', undef, '(a + b)' ],
 	],
 	three => [
-	[ undef, $schema, $table3, undef, undef, undef, 'table', undef, undef, undef, '0', '0', undef ],
-	[ undef, $schema, $table3, '0', undef, 'dbd_pg_test3_index_b', 'btree',  1, 'b', 'A', '0', '1', undef ],
-	[ undef, $schema, $table3, '0', undef, 'dbd_pg_test3_pkey',    'btree',  1, 'a', 'A', '0', '1', undef ],
-	[ undef, $schema, $table3, '0', undef, 'dbd_pg_test3_pred',    'btree',  1, 'c', 'A', '0', '1', '((c > 0) AND (c < 45))' ],
-	[ undef, $schema, $table3, '1', undef, 'dbd_pg_test3_oid',     'btree',  1, 'oid', 'A', '0', '1', undef ],
-	[ undef, $schema, $table3, '1', undef, 'dbd_pg_test3_index_c', 'hashed', 1, 'c', 'A', '0', '4', undef ],
+	[ undef, $schema, $table3, undef, undef, undef, 'table', undef, undef, undef, '0', '0', undef, undef ],
+	[ undef, $schema, $table3, '0', undef, 'dbd_pg_test3_index_b', 'btree',  1, 'b', 'A', '0', '1', undef, 'b' ],
+	[ undef, $schema, $table3, '0', undef, 'dbd_pg_test3_pkey',    'btree',  1, 'a', 'A', '0', '1', undef, 'a' ],
+	[ undef, $schema, $table3, '0', undef, 'dbd_pg_test3_pred',    'btree',  1, 'c', 'A', '0', '1', '((c > 0) AND (c < 45))', 'c' ],
+	[ undef, $schema, $table3, '1', undef, 'dbd_pg_test3_oid',     'btree',  1, 'oid', 'A', '0', '1', undef, 'oid' ],
+	[ undef, $schema, $table3, '1', undef, 'dbd_pg_test3_index_c', 'hashed', 1, 'c', 'A', '0', '4', undef, 'c' ],
 ],
 	three_uo => [
-	[ undef, $schema, $table3, '0', undef, 'dbd_pg_test3_index_b', 'btree',  1, 'b', 'A', '0', '1', undef ],
-	[ undef, $schema, $table3, '0', undef, 'dbd_pg_test3_pkey',    'btree',  1, 'a', 'A', '0', '1', undef ],
-	[ undef, $schema, $table3, '0', undef, 'dbd_pg_test3_pred',    'btree',  1, 'c', 'A', '0', '1', '((c > 0) AND (c < 45))' ],
+	[ undef, $schema, $table3, '0', undef, 'dbd_pg_test3_index_b', 'btree',  1, 'b', 'A', '0', '1', undef, 'b' ],
+	[ undef, $schema, $table3, '0', undef, 'dbd_pg_test3_pkey',    'btree',  1, 'a', 'A', '0', '1', undef, 'a' ],
+	[ undef, $schema, $table3, '0', undef, 'dbd_pg_test3_pred',    'btree',  1, 'c', 'A', '0', '1', '((c > 0) AND (c < 45))', 'c' ],
 	],
 };
 
@@ -779,7 +797,6 @@ $dbh->do("DROP TABLE $table1");
 
 } ## end of statistics_info tests
 
-
 #
 # Test of the "foreign_key_info" database handle method
 #
@@ -791,7 +808,7 @@ is ($sth, undef, $t);
 
 # Drop any tables that may exist
 my $fktables = join ',' => map { "'dbd_pg_test$_'" } (1..3);
-$SQL = "SELECT relname FROM pg_catalog.pg_class WHERE relkind='r' AND relname IN ($fktables)";
+$SQL = "SELECT n.nspname||'.'||r.relname FROM pg_catalog.pg_class r, pg_catalog.pg_namespace n WHERE relkind='r' AND r.relnamespace = n.oid AND r.relname IN ($fktables)";
 {
 	local $SIG{__WARN__} = sub {};
 	for (@{$dbh->selectall_arrayref($SQL)}) {
@@ -814,14 +831,26 @@ $sth = $dbh->foreign_key_info(undef,undef,'dbd_pg_test9',undef,undef,'dbd_pg_tes
 is ($sth, undef, $t);
 
 ## Create a pk table
-{
+
+# The order of the tables returned by the OID query in foreign_key_info
+# seems to be influenced by schema creation order, so create the schemas
+# in the opposite order of the search_path, so we have at least a vague
+# chance of testing that we respect the search_path order. Also create
+# the tables in the opposite order, for good measure
+$dbh->do("CREATE SCHEMA $schema3");
+$dbh->do("CREATE SCHEMA $schema2");
+$dbh->do("SET search_path = $schema2,$schema3");
+for my $s ($schema3, $schema2) {
 	local $SIG{__WARN__} = sub {};
-	$dbh->do('CREATE TABLE dbd_pg_test1 (a INT, b INT NOT NULL, c INT NOT NULL, '.
+	$dbh->do("CREATE TABLE $s.dbd_pg_test1 (a INT, b INT NOT NULL, c INT NOT NULL, ".
 			 'CONSTRAINT dbd_pg_test1_pk PRIMARY KEY (a))');
-	$dbh->do('ALTER TABLE dbd_pg_test1 ADD CONSTRAINT dbd_pg_test1_uc1 UNIQUE (b)');
-	$dbh->do('CREATE UNIQUE INDEX dbd_pg_test1_index_c ON dbd_pg_test1(c)');
+	$dbh->do("ALTER TABLE $s.dbd_pg_test1 ADD CONSTRAINT dbd_pg_test1_uc1 UNIQUE (b)");
+	$dbh->do("CREATE UNIQUE INDEX dbd_pg_test1_index_c ON $s.dbd_pg_test1(c)");
 	$dbh->commit();
 }
+
+## Make sure the foreign_key_info is turning this back on internally:
+$dbh->{pg_expand_array} = 0;
 
 ## Good primary with no foreign keys
 $t='DB handle method "foreign_key_info" returns undef: good pk (but unreferenced)';
@@ -829,10 +858,10 @@ $sth = $dbh->foreign_key_info(undef,undef,$table1,undef,undef,undef);
 is ($sth, undef, $t);
 
 ## Create a simple foreign key table
-{
+for my $s ($schema3, $schema2) {
 	local $SIG{__WARN__} = sub {};
-	$dbh->do('CREATE TABLE dbd_pg_test2 (f1 INT PRIMARY KEY, f2 INT NOT NULL, f3 INT NOT NULL)');
-	$dbh->do('ALTER TABLE dbd_pg_test2 ADD CONSTRAINT dbd_pg_test2_fk1 FOREIGN KEY(f2) REFERENCES dbd_pg_test1(a)');
+	$dbh->do("CREATE TABLE $s.dbd_pg_test2 (f1 INT PRIMARY KEY, f2 INT NOT NULL, f3 INT NOT NULL)");
+	$dbh->do("ALTER TABLE $s.dbd_pg_test2 ADD CONSTRAINT dbd_pg_test2_fk1 FOREIGN KEY(f2) REFERENCES $s.dbd_pg_test1(a)");
 	$dbh->commit();
 }
 
@@ -871,20 +900,23 @@ for my $r (@$result) {
 }
 is_deeply (\%missing, {}, $t);
 
+$t='Calling foreign_key_info does not change pg_expand_array';
+is ($dbh->{pg_expand_array}, 0, $t);
+
 ## Good primary
 $t='DB handle method "foreign_key_info" works for good pk';
 $sth = $dbh->foreign_key_info(undef,undef,$table1,undef,undef,undef);
 $result = $sth->fetchall_arrayref();
 my $fk1 = [
 					 undef, ## Catalog
-					 $schema, ## Schema
+					 $schema2, ## Schema
 					 $table1, ## Table
 					 'a', ## Column
 					 undef, ## FK Catalog
-					 $schema, ## FK Schema
+					 $schema2, ## FK Schema
 					 $table2, ## FK Table
 					 'f2', ## FK Table
-					 2, ## Ordinal position
+					 1, ## Ordinal position
 					 3, ## Update rule
 					 3, ## Delete rule
 					 'dbd_pg_test2_fk1', ## FK name
@@ -920,14 +952,14 @@ $sth = $dbh->foreign_key_info(undef,undef,$table1,undef,undef,undef);
 $result = $sth->fetchall_arrayref();
 my $fk2 = [
 					 undef,
-					 $schema,
+					 $schema2,
 					 $table1,
 					 'b',
 					 undef,
-					 $schema,
+					 $schema2,
 					 $table2,
 					 'f3',
-					 '3',
+					 '1',
 					 '0', ## cascade
 					 '2', ## set null
 					 'dbd_pg_test2_fk2',
@@ -951,14 +983,14 @@ $sth = $dbh->foreign_key_info(undef,undef,$table1,undef,undef,undef);
 $result = $sth->fetchall_arrayref();
 my $fk3 = [
 					 undef,
-					 $schema,
+					 $schema2,
 					 $table1,
 					 'c',
 					 undef,
-					 $schema,
+					 $schema2,
 					 $table2,
 					 'f3',
-					 '3',
+					 '1',
 					 '4', ## set default
 					 '1', ## restrict
 					 'dbd_pg_test2_aafk3',
@@ -973,10 +1005,10 @@ is_deeply ($result, $expected, $t);
 
 ## Create another foreign key table to point to the first (primary) table
 $t='DB handle method "foreign_key_info" works for multiple fks';
-{
+for my $s ($schema3, $schema2) {
 	local $SIG{__WARN__} = sub {};
-	$dbh->do('CREATE TABLE dbd_pg_test3 (ff1 INT NOT NULL)');
-	$dbh->do('ALTER TABLE dbd_pg_test3 ADD CONSTRAINT dbd_pg_test3_fk1 FOREIGN KEY(ff1) REFERENCES dbd_pg_test1(a)');
+	$dbh->do("CREATE TABLE $s.dbd_pg_test3 (ff1 INT NOT NULL)");
+	$dbh->do("ALTER TABLE $s.dbd_pg_test3 ADD CONSTRAINT dbd_pg_test3_fk1 FOREIGN KEY(ff1) REFERENCES $s.dbd_pg_test1(a)");
 	$dbh->commit();
 }
 
@@ -984,11 +1016,11 @@ $sth = $dbh->foreign_key_info(undef,undef,$table1,undef,undef,undef);
 $result = $sth->fetchall_arrayref();
 my $fk4 = [
 					 undef,
-					 $schema,
+					 $schema2,
 					 $table1,
 					 'a',
 					 undef,
-					 $schema,
+					 $schema2,
 					 $table3,
 					 'ff1',
 					 '1',
@@ -1025,11 +1057,11 @@ $result = $sth->fetchall_arrayref();
 ## "dbd_pg_test2_fk4" FOREIGN KEY (f1, f3, f2) REFERENCES dbd_pg_test1(c, a, b)
 my $fk5 = [
 					 undef,
-					 $schema,
+					 $schema2,
 					 $table1,
 					 'c',
 					 undef,
-					 $schema,
+					 $schema2,
 					 $table2,
 					 'f1',
 					 '1',
@@ -1046,8 +1078,8 @@ my $fk5 = [
 # primary column name [3]
 # foreign column name [7]
 # ordinal position [8]
-my @fk6 = @$fk5; my $fk6 = \@fk6; $fk6->[3] = 'a'; $fk6->[7] = 'f3'; $fk6->[8] = 3;
-my @fk7 = @$fk5; my $fk7 = \@fk7; $fk7->[3] = 'b'; $fk7->[7] = 'f2'; $fk7->[8] = 2;
+my @fk6 = @$fk5; my $fk6 = \@fk6; $fk6->[3] = 'a'; $fk6->[7] = 'f3'; $fk6->[8] = 2;
+my @fk7 = @$fk5; my $fk7 = \@fk7; $fk7->[3] = 'b'; $fk7->[7] = 'f2'; $fk7->[8] = 3;
 $expected = [$fk3,$fk1,$fk2,$fk5,$fk6,$fk7];
 is_deeply ($result, $expected, $t);
 
@@ -1074,12 +1106,15 @@ $result = $sth->fetchrow_hashref();
 ok (exists $result->{'FK_TABLE_NAME'}, $t);
 
 # Clean everything up
-{
-	$dbh->do('DROP TABLE dbd_pg_test3');
-	$dbh->do('DROP TABLE dbd_pg_test2');
-	$dbh->do('DROP TABLE dbd_pg_test1');
+for my $s ($schema3, $schema2) {
+	$dbh->do("DROP TABLE $s.dbd_pg_test3");
+	$dbh->do("DROP TABLE $s.dbd_pg_test2");
+	$dbh->do("DROP TABLE $s.dbd_pg_test1");
 }
+$dbh->do("DROP SCHEMA $schema2");
+$dbh->do("DROP SCHEMA $schema3");
 
+$dbh->do("SET search_path = $schema");
 #
 # Test of the "tables" database handle method
 #
@@ -1403,13 +1438,29 @@ $t='DB handle method "pg_lo_tell" works';
 $result = $dbh->pg_lo_tell($handle);
 is ($result, 11, $t);
 
-$t='DB handle method "pg_lo_read" read back the same data that was written';
+$t='DB handle method "pg_lo_read" reads back the same data that was written';
 $dbh->pg_lo_lseek($handle, 0, 0);
 my ($buf2,$data) = ('','');
 while ($dbh->pg_lo_read($handle, $data, 513)) {
 	$buf2 .= $data;
 }
 is (length($buf), length($buf2), $t);
+
+SKIP: {
+
+	#$pgversion < 80300 and skip ('Server version 8.3 or greater needed for pg_lo_truncate tests', 2);
+	skip ('pg_lo_truncate is not working yet', 2);
+	$t='DB handle method "pg_lo_truncate" works';
+	$result = $dbh->pg_lo_truncate($handle, 4);
+	is ($result, 0, $t);
+
+	$dbh->pg_lo_lseek($handle, 0, 0);
+	($buf2,$data) = ('','');
+	while ($dbh->pg_lo_read($handle, $data, 100)) {
+		$buf2 .= $data;
+	}
+	is (length($buf2), 4, $t);
+}
 
 $t='DB handle method "pg_lo_close" works after read';
 $result = $dbh->pg_lo_close($handle);

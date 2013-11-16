@@ -1,6 +1,6 @@
 /*
 
-  Copyright (c) 2002-2012 Greg Sabino Mullane and others: see the Changes file
+  Copyright (c) 2002-2013 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
   Portions Copyright (c) 1997-2000 Edmund Mergl
   Portions Copyright (c) 1994-1997 Tim Bunce
@@ -50,8 +50,7 @@ void PQfreeCancel(PGcancel *cancel) {
 
 #endif
 
-#if PGLIBVERSION <= 80300
-
+#if PGLIBVERSION < 90000
 Oid lo_import_with_oid (PGconn *conn, char *filename, unsigned int lobjId);
 Oid lo_import_with_oid (PGconn *conn, char *filename, unsigned int lobjId) {
 	croak ("Cannot use lo_import_with_oid unless compiled against Postgres 8.4 or later");
@@ -75,6 +74,7 @@ typedef enum
 static void pg_error(pTHX_ SV *h, int error_num, const char *error_msg);
 static void pg_warn (void * arg, const char * message);
 static ExecStatusType _result(pTHX_ imp_dbh_t *imp_dbh, const char *sql);
+static void _fatal_sqlstate(pTHX_ imp_dbh_t *imp_dbh);
 static ExecStatusType _sqlstate(pTHX_ imp_dbh_t *imp_dbh, PGresult *result);
 static int pg_db_rollback_commit (pTHX_ SV *dbh, imp_dbh_t *imp_dbh, int action);
 static void pg_st_split_statement (pTHX_ imp_sth_t *imp_sth, int version, char *statement);
@@ -224,8 +224,15 @@ int dbd_db_login6 (SV * dbh, imp_dbh_t * imp_dbh, char * dbname, char * uid, cha
 		}
 	}
 
-	imp_dbh->pg_bool_tf      = DBDPG_FALSE;
-	imp_dbh->pg_enable_utf8  = DBDPG_FALSE;
+	imp_dbh->client_encoding_utf8 =
+		(0 == strncmp(PQparameterStatus(imp_dbh->conn, "client_encoding"), "UTF8", 4))
+		? DBDPG_TRUE : DBDPG_FALSE;
+
+	/* If the client_encoding is UTF8, flip the utf8 flag until convinced otherwise */
+	imp_dbh->pg_utf8_flag = imp_dbh->client_encoding_utf8;
+
+	imp_dbh->pg_enable_utf8  = -1;
+
  	imp_dbh->prepare_now     = DBDPG_FALSE;
 	imp_dbh->done_begin      = DBDPG_FALSE;
 	imp_dbh->dollaronly      = DBDPG_FALSE;
@@ -278,10 +285,8 @@ static void pg_error (pTHX_ SV * h, int error_num, const char * error_msg)
 	sv_setpv(DBIc_STATE(imp_xxh), (char*)imp_dbh->sqlstate);
 
 	/* Set as utf-8 */
-#ifdef is_utf8_string
-	if (imp_dbh->pg_enable_utf8)
+	if (imp_dbh->pg_utf8_flag)
 		SvUTF8_on(DBIc_ERRSTR(imp_xxh));
-#endif
 
 	if (TEND_slow) TRC(DBILOGFP, "%sEnd pg_error\n", THEADER_slow);
 
@@ -358,13 +363,25 @@ static ExecStatusType _result(pTHX_ imp_dbh_t * imp_dbh, const char * sql)
 
 
 /* ================================================================== */
+/* Set the SQLSTATE for a 'fatal' error */
+static void _fatal_sqlstate(pTHX_ imp_dbh_t * imp_dbh)
+{
+	char *sqlstate;
+
+	sqlstate = PQstatus(imp_dbh->conn) == CONNECTION_BAD ?
+		"08000" :	/* CONNECTION EXCEPTION */
+		"22000";	/* DATA EXCEPTION */
+	strncpy(imp_dbh->sqlstate, sqlstate, 6);
+}
+
+/* ================================================================== */
 /*
   Set the SQLSTATE based on a result, returns the status
 */
 static ExecStatusType _sqlstate(pTHX_ imp_dbh_t * imp_dbh, PGresult * result)
 {
+	char *sqlstate;
 	ExecStatusType status   = PGRES_FATAL_ERROR; /* until proven otherwise */
-	bool           stateset = DBDPG_FALSE;
 
 	if (TSTART_slow) TRC(DBILOGFP, "%sBegin _sqlstate\n", THEADER_slow);
 
@@ -373,6 +390,8 @@ static ExecStatusType _sqlstate(pTHX_ imp_dbh_t * imp_dbh, PGresult * result)
 		status = PQresultStatus(result);
 	}
 
+	sqlstate = NULL;
+
 	/*
 	  Because PQresultErrorField may not work completely when an error occurs, and 
 	  we are connecting over TCP/IP, only set it here if non-null, and fall through 
@@ -380,14 +399,10 @@ static ExecStatusType _sqlstate(pTHX_ imp_dbh_t * imp_dbh, PGresult * result)
 	*/
 	if (result) {
 		TRACE_PQRESULTERRORFIELD;
-		if (NULL != PQresultErrorField(result,PG_DIAG_SQLSTATE)) {
-			TRACE_PQRESULTERRORFIELD;
-			strncpy(imp_dbh->sqlstate, PQresultErrorField(result,PG_DIAG_SQLSTATE), 5);
-			imp_dbh->sqlstate[5] = '\0';
-			stateset = DBDPG_TRUE;
-		}
+		sqlstate = PQresultErrorField(result, PG_DIAG_SQLSTATE);
 	}
-	if (!stateset) {
+	
+	if (!sqlstate) {
 		/* Do our best to map the status result to a sqlstate code */
 		switch (status) {
 		case PGRES_EMPTY_QUERY:
@@ -396,23 +411,27 @@ static ExecStatusType _sqlstate(pTHX_ imp_dbh_t * imp_dbh, PGresult * result)
 		case PGRES_COPY_OUT:
 		case PGRES_COPY_IN:
         case PGRES_COPY_BOTH:
-			strncpy(imp_dbh->sqlstate, "00000", 6); /* SUCCESSFUL COMPLETION */
+			sqlstate = "00000"; /* SUCCESSFUL COMPLETION */
 			break;
 		case PGRES_BAD_RESPONSE:
 		case PGRES_NONFATAL_ERROR:
-			strncpy(imp_dbh->sqlstate, "01000", 6); /* WARNING */
+			sqlstate = "01000"; /* WARNING */
 			break;
 		case PGRES_FATAL_ERROR:
-			if (!result) { /* libpq returned null - some sort of connection problem */
-				strncpy(imp_dbh->sqlstate, "08000", 6); /* CONNECTION EXCEPTION */
+			/* libpq returns NULL result in case of connection failures */
+			if (!result || PQstatus(imp_dbh->conn) == CONNECTION_BAD) {
+				sqlstate = "08000";	/* CONNECTION EXCEPTION */
 				break;
 			}
 			/*@fallthrough@*/
 		default:
-			strncpy(imp_dbh->sqlstate, "22000", 6); /* DATA EXCEPTION */
+			sqlstate = "22000"; /* DATA EXCEPTION */
 			break;
 		}
 	}
+
+	strncpy(imp_dbh->sqlstate, sqlstate, 5);
+	imp_dbh->sqlstate[5] = 0;
 
 	if (TEND_slow) TRC(DBILOGFP, "%sEnd _sqlstate (imp_dbh->sqlstate: %s)\n",
 				  THEADER_slow, imp_dbh->sqlstate);
@@ -723,10 +742,12 @@ SV * dbd_db_FETCH_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv)
 			retsv = newSViv((IV)imp_dbh->pg_protocol);
 		break;
 
-	case 12: /* pg_INV_WRITE */
+	case 12: /* pg_INV_WRITE pg_utf8_flag */
 
 		if (strEQ("pg_INV_WRITE", key))
 			retsv = newSViv((IV) INV_WRITE );
+		else if (strEQ("pg_utf8_flag", key))
+			retsv = newSViv((IV)imp_dbh->pg_utf8_flag);
 		break;
 
 	case 13: /* pg_errorlevel */
@@ -741,10 +762,8 @@ SV * dbd_db_FETCH_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv)
 			retsv = newSViv((IV) PGLIBVERSION );
 		else if (strEQ("pg_prepare_now", key))
 			retsv = newSViv((IV)imp_dbh->prepare_now);
-#ifdef is_utf8_string
 		else if (strEQ("pg_enable_utf8", key))
 			retsv = newSViv((IV)imp_dbh->pg_enable_utf8);
-#endif
 		break;
 
 	case 15: /* pg_default_port pg_async_status pg_expand_array */
@@ -863,12 +882,39 @@ int dbd_db_STORE_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv, SV * valuesv
 			retval = 1;
 		}
 
-#ifdef is_utf8_string
+		/* 
+		   We don't want to check the client_encoding every single time we talk to the database,
+		   so we only do it here, which allows people to signal DBD::Pg that something 
+		   may have changed, so could you please rescan client_encoding?
+		*/
 		else if (strEQ("pg_enable_utf8", key)) {
-			imp_dbh->pg_enable_utf8 = newval!=0 ? DBDPG_TRUE : DBDPG_FALSE;
+			/* Technically, we only allow -1, 0, and 1 */
+			if (SvOK(valuesv)) {
+				newval = (unsigned)SvIV(valuesv);
+			}
+			imp_dbh->pg_enable_utf8 = newval;
+
+			/* Never use the utf8 flag, no matter what */
+			if (0 == imp_dbh->pg_enable_utf8) {
+				imp_dbh->pg_utf8_flag = DBDPG_FALSE;
+			}
+			/* Always use the flag, no matter what */
+			else if (1 == imp_dbh->pg_enable_utf8) {
+				imp_dbh->pg_utf8_flag = DBDPG_TRUE;
+			}
+			/* Do The Right Thing */
+			else if (-1 == imp_dbh->pg_enable_utf8) {
+				imp_dbh->client_encoding_utf8 =
+					(0 == strncmp(PQparameterStatus(imp_dbh->conn, "client_encoding"), "UTF8", 4))
+					? DBDPG_TRUE : DBDPG_FALSE;
+				imp_dbh->pg_enable_utf8 = -1;
+				imp_dbh->pg_utf8_flag = imp_dbh->client_encoding_utf8;
+			}
+			else {
+				warn("The pg_enable_utf8 setting can only be set to 0, 1, or -1");
+			}
 			retval = 1;
 		}
-#endif
 		break;
 
 	case 15: /* pg_expand_array */
@@ -1082,10 +1128,8 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 				TRACE_PQFNAME;
 				fieldname = PQfname(imp_sth->result, fields);
 				sv_fieldname = newSVpv(fieldname,0);
-#ifdef is_utf8_string
 				if (is_high_bit_set(aTHX_ (unsigned char *)fieldname, strlen(fieldname)) && is_utf8_string((unsigned char *)fieldname, strlen(fieldname)))
 					SvUTF8_on(sv_fieldname);
-#endif
 				(void)av_store(av, fields, sv_fieldname);
 			}
 		}
@@ -1382,7 +1426,9 @@ SV * pg_db_pg_notifies (SV * dbh, imp_dbh_t * imp_dbh)
 
 	TRACE_PQCONSUMEINPUT;
 	status = PQconsumeInput(imp_dbh->conn);
-	if (0 == status) { 
+	if (0 == status) {
+		_fatal_sqlstate(aTHX_ imp_dbh);
+		
 		TRACE_PQERRORMESSAGE;
 		pg_error(aTHX_ dbh, PGRES_FATAL_ERROR, PQerrorMessage(imp_dbh->conn));
 		if (TEND_slow) TRC(DBILOGFP, "%sEnd pg_db_pg_notifies (error)\n", THEADER_slow);
@@ -2090,7 +2136,7 @@ static int pg_st_prepare_statement (pTHX_ SV * sth, imp_sth_t * imp_sth)
 	Renew(imp_sth->prepare_name, 25, char); /* freed in dbd_st_destroy */
 
 	/* Name is "dbdpg_xPID_#", where x is 'p'ositive or 'n'egative */
-	sprintf(imp_sth->prepare_name,"dbdpg_%c%d_%d",
+	sprintf(imp_sth->prepare_name,"dbdpg_%c%d_%x",
 			(imp_dbh->pid_number < 0 ? 'n' : 'p'),
 			abs(imp_dbh->pid_number),
 			imp_dbh->prepare_number);
@@ -2675,14 +2721,9 @@ static SV * pg_destringify_array(pTHX_ imp_dbh_t *imp_dbh, unsigned char * input
 					av_push(currentav, newSViv('t' == *string ? 1 : 0));
 				else {
 					SV *sv = newSVpvn(string, section_size);
-#ifdef is_utf8_string
-					if (imp_dbh->pg_enable_utf8) {
-						SvUTF8_off(sv);
-						if (is_high_bit_set(aTHX_ (unsigned char *)string, section_size) && is_utf8_string((unsigned char*)string, section_size)) {
-							SvUTF8_on(sv);
-						}
+					if (imp_dbh->pg_utf8_flag) {
+						SvUTF8_on(sv);
 					}
-#endif
 					av_push(currentav, sv);
 
 				}
@@ -2796,6 +2837,8 @@ int pg_quickexec (SV * dbh, const char * sql, const int asyncflag)
 		TRACE_PQSENDQUERY;
 		if (! PQsendQuery(imp_dbh->conn, sql)) {
 			if (TRACE4_slow) TRC(DBILOGFP, "%sPQsendQuery failed\n", THEADER_slow);
+			_fatal_sqlstate(aTHX_ imp_dbh);
+
 			TRACE_PQERRORMESSAGE;
 			pg_error(aTHX_ dbh, status, PQerrorMessage(imp_dbh->conn));
 			if (TEND_slow) TRC(DBILOGFP, "%sEnd pg_quickexec (error: async do failed)\n", THEADER_slow);
@@ -3313,7 +3356,8 @@ int dbd_st_execute (SV * sth, imp_sth_t * imp_sth)
 				gotrows = DBDPG_TRUE;
 			}
 			else if (0 == strncmp(cmdStatus, "DELETE", 6)
-					 || 0 == strncmp(cmdStatus, "UPDATE", 6)) {
+					 || 0 == strncmp(cmdStatus, "UPDATE", 6)
+					 || 0 == strncmp(cmdStatus, "SELECT", 6)) {
 				ret = atoi(cmdStatus + 7);
 				gotrows = DBDPG_TRUE;
 			}
@@ -3393,8 +3437,9 @@ AV * dbd_st_fetch (SV * sth, imp_sth_t * imp_sth)
 		if (TEND_slow) TRC(DBILOGFP, "%sEnd dbd_st_fetch (error: no statement)\n", THEADER_slow);
 		return Nullav;
 	}
-	
+
 	TRACE_PQNTUPLES;
+
 	if (imp_sth->cur_tuple == imp_sth->rows) {
 		if (TRACE5_slow)
 			TRC(DBILOGFP, "%sFetched the last tuple (%d)\n", THEADER_slow, imp_sth->cur_tuple);
@@ -3447,7 +3492,7 @@ AV * dbd_st_fetch (SV * sth, imp_sth_t * imp_sth)
 			if (type_info
 				&& 0 == strncmp(type_info->arrayout, "array", 5)
 				&& imp_dbh->expand_array) {
-				sv_replace(sv, pg_destringify_array(aTHX_ imp_dbh, value, type_info));
+				sv_setsv(sv, pg_destringify_array(aTHX_ imp_dbh, value, type_info));
 			}
 			else {
 				if (type_info) {
@@ -3462,7 +3507,6 @@ AV * dbd_st_fetch (SV * sth, imp_sth_t * imp_sth)
 						else
 							sv_setiv(sv, '1' == *value ? 1 : 0);
 						break;
-					case PG_OID:
 					case PG_INT4:
 					case PG_INT2:
 						sv_setiv(sv, atol((char *)value));
@@ -3487,23 +3531,18 @@ AV * dbd_st_fetch (SV * sth, imp_sth_t * imp_sth)
 					}
 				}
 			}
-#ifdef is_utf8_string
-			if (imp_dbh->pg_enable_utf8 && type_info) {
-				SvUTF8_off(sv);
-				switch (type_info->type_id) {
-				case PG_CHAR:
-				case PG_TEXT:
-				case PG_BPCHAR:
-				case PG_VARCHAR:
-					if (is_high_bit_set(aTHX_ value, value_len) && is_utf8_string((unsigned char*)value, value_len)) {
-						SvUTF8_on(sv);
-					}
-					break;
-				default:
-					break;
+			if (imp_dbh->pg_utf8_flag) {
+				/*
+				  The only exception to our rule about setting utf8 if the client_encoding
+				  is set to UTF8 is bytea.
+				*/
+				if (type_info && PG_BYTEA == type_info->type_id) {
+					SvUTF8_off(sv);
+				}
+				else {
+					SvUTF8_on(sv);
 				}
 			}
-#endif
 		}
 	}
 	
@@ -3785,6 +3824,8 @@ int pg_db_putline (SV * dbh, const char * buffer)
 	TRACE_PQPUTCOPYDATA;
 	copystatus = PQputCopyData(imp_dbh->conn, buffer, (int)strlen(buffer));
 	if (-1 == copystatus) {
+		_fatal_sqlstate(aTHX_ imp_dbh);
+		
 		TRACE_PQERRORMESSAGE;
 		pg_error(aTHX_ dbh, PGRES_FATAL_ERROR, PQerrorMessage(imp_dbh->conn));
 		if (TEND_slow) TRC(DBILOGFP, "%sEnd pg_db_putline (error: copystatus not -1)\n", THEADER_slow);
@@ -3832,6 +3873,8 @@ int pg_db_getline (SV * dbh, SV * svbuf, int length)
 		return -1;
 	}
 	else if (copystatus < 1) {
+		_fatal_sqlstate(aTHX_ imp_dbh);
+		
 		TRACE_PQERRORMESSAGE;
 		pg_error(aTHX_ dbh, PGRES_FATAL_ERROR, PQerrorMessage(imp_dbh->conn));
 	}
@@ -3867,16 +3910,16 @@ int pg_db_getcopydata (SV * dbh, SV * dataline, int async)
 
 	if (copystatus > 0) {
 		sv_setpv(dataline, tempbuf);
-#ifdef is_utf8_string
-		if (imp_dbh->pg_enable_utf8)
+		if (imp_dbh->pg_utf8_flag)
 			SvUTF8_on(dataline);
-#endif
 		TRACE_PQFREEMEM;
 		PQfreemem(tempbuf);
 	}
 	else if (0 == copystatus) { /* async and still in progress: consume and return */
 		TRACE_PQCONSUMEINPUT;
 		if (!PQconsumeInput(imp_dbh->conn)) {
+			_fatal_sqlstate(aTHX_ imp_dbh);
+			
 			TRACE_PQERRORMESSAGE;
 			pg_error(aTHX_ dbh, PGRES_FATAL_ERROR, PQerrorMessage(imp_dbh->conn));
 			if (TEND_slow) TRC(DBILOGFP, "%sEnd pg_db_getcopydata (error: async in progress)\n", THEADER_slow);
@@ -3902,6 +3945,8 @@ int pg_db_getcopydata (SV * dbh, SV * dataline, int async)
 		}
 	}
 	else {
+		_fatal_sqlstate(aTHX_ imp_dbh);
+		
 		TRACE_PQERRORMESSAGE;
 		pg_error(aTHX_ dbh, PGRES_FATAL_ERROR, PQerrorMessage(imp_dbh->conn));
 	}
@@ -3938,6 +3983,8 @@ int pg_db_putcopydata (SV * dbh, SV * dataline)
 	else if (0 == copystatus) { /* non-blocking mode only */
 	}
 	else {
+		_fatal_sqlstate(aTHX_ imp_dbh);
+		
 		TRACE_PQERRORMESSAGE;
 		pg_error(aTHX_ dbh, PGRES_FATAL_ERROR, PQerrorMessage(imp_dbh->conn));
 	}
@@ -4004,6 +4051,8 @@ int pg_db_putcopyend (SV * dbh)
 		return 0;
 	}
 	else {
+		_fatal_sqlstate(aTHX_ imp_dbh);
+		
 		TRACE_PQERRORMESSAGE;
 		pg_error(aTHX_ dbh, PGRES_FATAL_ERROR, PQerrorMessage(imp_dbh->conn));
 		if (TEND_slow) TRC(DBILOGFP, "%sEnd pg_db_putcopyend (error: copystatus unknown)\n", THEADER_slow);
@@ -4031,6 +4080,8 @@ int pg_db_endcopy (SV * dbh)
 		TRACE_PQPUTCOPYEND;
 		copystatus = PQputCopyEnd(imp_dbh->conn, NULL);
 		if (-1 == copystatus) {
+			_fatal_sqlstate(aTHX_ imp_dbh);
+			
 			TRACE_PQERRORMESSAGE;
 			pg_error(aTHX_ dbh, PGRES_FATAL_ERROR, PQerrorMessage(imp_dbh->conn));
 			if (TEND_slow) TRC(DBILOGFP, "%sEnd pg_db_endcopy (error)\n", THEADER_slow);
@@ -4426,6 +4477,7 @@ int pg_db_lo_lseek (SV * dbh, int fd, int offset, int whence)
 
 }
 
+
 /* ================================================================== */
 int pg_db_lo_tell (SV * dbh, int fd)
 {
@@ -4447,6 +4499,31 @@ int pg_db_lo_tell (SV * dbh, int fd)
 	}
 
 	return lo_tell(imp_dbh->conn, fd); /* current position, <0 on error */
+
+}
+
+/* ================================================================== */
+int pg_db_lo_truncate (SV * dbh, int fd, size_t len)
+{
+
+	dTHX;
+	D_imp_dbh(dbh);
+
+	if (TSTART_slow) TRC(DBILOGFP, "%sBegin pg_db_lo_truncate (fd: %d length: %d)\n",
+						 THEADER_slow, fd, (int)len);
+
+	if (DBIc_has(imp_dbh, DBIcf_AutoCommit)) {
+		croak("Cannot call pg_lo_truncate when AutoCommit is on");
+	}
+
+	if (!pg_db_start_txn(aTHX_ dbh,imp_dbh))
+		return -1;
+
+	if (TLIBPQ_slow) {
+		TRC(DBILOGFP, "%slo_truncate\n", THEADER_slow);
+	}
+
+	return lo_truncate(imp_dbh->conn, fd, len); /* 0 success, <0 on error */
 
 }
 
@@ -4705,7 +4782,8 @@ int pg_db_result (SV *h, imp_dbh_t *imp_dbh)
 				rows = atoi(cmdStatus + 5);
 			}
 			else if (0 == strncmp(cmdStatus, "DELETE", 6)
-					 || 0 == strncmp(cmdStatus, "UPDATE", 6)) {
+					 || 0 == strncmp(cmdStatus, "UPDATE", 6)
+					 || 0 == strncmp(cmdStatus, "SELECT", 6)) {
 				rows = atoi(cmdStatus + 7);
 			}
 			break;
@@ -4780,6 +4858,8 @@ int pg_db_ready(SV *h, imp_dbh_t *imp_dbh)
 
 	TRACE_PQCONSUMEINPUT;
 	if (!PQconsumeInput(imp_dbh->conn)) {
+		_fatal_sqlstate(aTHX_ imp_dbh);
+		
 		TRACE_PQERRORMESSAGE;
 		pg_error(aTHX_ h, PGRES_FATAL_ERROR, PQerrorMessage(imp_dbh->conn));
 		if (TEND_slow) TRC(DBILOGFP, "%sEnd pg_db_ready (error: consume failed)\n", THEADER_slow);
@@ -4833,6 +4913,7 @@ int pg_db_cancel(SV *h, imp_dbh_t *imp_dbh)
 		TRACE_PQFREECANCEL;
 		PQfreeCancel(cancel);
 		if (TRACEWARN_slow) { TRC(DBILOGFP, "%sPQcancel failed: %s\n", THEADER_slow, errbuf); }
+		_fatal_sqlstate(aTHX_ imp_dbh);
 		pg_error(aTHX_ h, PGRES_FATAL_ERROR, "PQcancel failed");
 		if (TEND_slow) TRC(DBILOGFP, "%sEnd pg_db_cancel (error: cancel failed)\n", THEADER_slow);
 		return DBDPG_FALSE;
@@ -4848,13 +4929,12 @@ int pg_db_cancel(SV *h, imp_dbh_t *imp_dbh)
 	/* Read in the result - assume only one */
 	TRACE_PQGETRESULT;
 	result = PQgetResult(imp_dbh->conn);
+	status = _sqlstate(aTHX_ imp_dbh, result);
 	if (!result) {
 		pg_error(aTHX_ h, PGRES_FATAL_ERROR, "Failed to get a result after PQcancel");
 		if (TEND_slow) TRC(DBILOGFP, "%sEnd pg_db_cancel (error: no result)\n", THEADER_slow);
 		return DBDPG_FALSE;
 	}
-
-	status = _sqlstate(aTHX_ imp_dbh, result);
 
 	TRACE_PQCLEAR;
 	PQclear(result);
@@ -4926,6 +5006,7 @@ static int handle_old_async(pTHX_ SV * handle, imp_dbh_t * imp_dbh, const int as
 			cresult = PQcancel(cancel,errbuf,255);
 			if (! cresult) {
 				if (TRACEWARN_slow) { TRC(DBILOGFP, "%sPQcancel failed: %s\n", THEADER_slow, errbuf); }
+				_fatal_sqlstate(aTHX_ imp_dbh);
 				pg_error(aTHX_ handle, PGRES_FATAL_ERROR, "Could not cancel previous command");
 				if (TEND_slow) TRC(DBILOGFP, "%sEnd handle_old_async (error: could not cancel)\n", THEADER_slow);
 				return -2;
