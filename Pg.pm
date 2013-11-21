@@ -16,7 +16,7 @@ use 5.008001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.20.1_1');
+	use version; our $VERSION = qv('2.20.1_2');
 
 	use DBI ();
 	use DynaLoader ();
@@ -71,7 +71,7 @@ use 5.008001;
 	Exporter::export_ok_tags('pg_types', 'async');
 	@EXPORT = qw($DBDPG_DEFAULT PG_ASYNC PG_OLDQUERY_CANCEL PG_OLDQUERY_WAIT PG_BYTEA);
 
-	require_version DBI 1.54;
+	require_version DBI 1.614;
 
 	bootstrap DBD::Pg $VERSION;
 
@@ -1773,7 +1773,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.20.1_1 of the DBD::Pg module
+This documents version 2.20.1_2 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
@@ -2243,6 +2243,13 @@ and "I<message type 0x32 arrived from server while idle>". The best solution is 
 have the child process reconnect to the database with a fresh database handle, or to 
 rewrite your application not to use forking. See the section on L</Asynchronous Queries> 
 for a way to have your script continue to work while the database is processing a request.
+
+=head3 B<AutoInactiveDestroy> (boolean)
+
+The InactiveDestroy attribute, described above, needs to be explicitly set in the child 
+process after a fork. If the code that performs the fork is in a third party module such 
+as Sys::Syslog, this can present a problem. Use AutoInactiveDestroy to get around this 
+problem.
 
 =head3 B<RaiseError> (boolean, inherited)
 

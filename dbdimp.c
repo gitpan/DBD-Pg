@@ -50,7 +50,7 @@ void PQfreeCancel(PGcancel *cancel) {
 
 #endif
 
-#if PGLIBVERSION < 90000
+#if PGLIBVERSION < 80400
 Oid lo_import_with_oid (PGconn *conn, char *filename, unsigned int lobjId);
 Oid lo_import_with_oid (PGconn *conn, char *filename, unsigned int lobjId) {
 	croak ("Cannot use lo_import_with_oid unless compiled against Postgres 8.4 or later");
@@ -3736,6 +3736,16 @@ void dbd_st_destroy (SV * sth, imp_sth_t * imp_sth)
 
 	if (NULL == imp_sth->seg) /* Already been destroyed! */
 		croak("dbd_st_destroy called twice!");
+
+	/* If the AutoInactiveDestroy flag has been set, we go no further */
+	if (DBIc_AIADESTROY(imp_dbh)) {
+		if (TRACE4_slow) {
+			TRC(DBILOGFP, "%sskipping sth destroy due to AutoInactiveDestroy\n", THEADER_slow);
+		}
+		DBIc_IMPSET_off(imp_sth); /* let DBI know we've done it */
+		if (TEND_slow) TRC(DBILOGFP, "%sEnd dbd_st_destroy (AutoInactiveDestroy set)\n", THEADER_slow);
+		return;
+	}
 
 	/* If the InactiveDestroy flag has been set, we go no further */
 	if (DBIc_IADESTROY(imp_dbh)) {
