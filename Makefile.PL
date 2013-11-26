@@ -5,7 +5,7 @@ use warnings;
 use 5.008001;
 
 ## No version.pm for this one, as the prereqs are not loaded yet.
-my $VERSION = '2.20.1_2';
+my $VERSION = '2.20.1_3';
 
 ## App::Info is stored inside t/lib
 ## Create a proper path so we can use it below
@@ -72,8 +72,14 @@ my $POSTGRES_LIB;
 # We need the version information to properly set compiler options later
 # Use App::Info to get the data we need.
 require App::Info::RDBMS::PostgreSQL;
-require App::Info::Handler::Prompt;
-my $p = App::Info::Handler::Prompt->new;
+my $p = $ENV{PERL_MM_USE_DEFAULT} || $ENV{AUTOMATED_TESTING} ? do {
+    require App::Info::Handler::Print;
+    App::Info::Handler::Print->new;
+} : do {
+    require App::Info::Handler::Prompt;
+    App::Info::Handler::Prompt->new;
+};
+
 my $pg = App::Info::RDBMS::PostgreSQL->new(on_unknown => $p);
 my ($major_ver, $minor_ver, $patch, $conf, $bindir) = map {$pg->$_}
     qw/major_version minor_version patch_version configure bin_dir/;
