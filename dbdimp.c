@@ -1151,8 +1151,7 @@ SV * dbd_st_FETCH_attrib (SV * sth, imp_sth_t * imp_sth, SV * keysv)
 				TRACE_PQFNAME;
 				fieldname = PQfname(imp_sth->result, fields);
 				sv_fieldname = newSVpv(fieldname,0);
-				if (is_high_bit_set(aTHX_ (unsigned char *)fieldname, strlen(fieldname)) && is_utf8_string((unsigned char *)fieldname, strlen(fieldname)))
-					SvUTF8_on(sv_fieldname);
+				SvUTF8_on(sv_fieldname);
 				(void)av_store(av, fields, sv_fieldname);
 			}
 		}
@@ -3571,8 +3570,8 @@ AV * dbd_st_fetch (SV * sth, imp_sth_t * imp_sth)
 			}
 			if (imp_dbh->pg_utf8_flag) {
 				/*
-				  The only exception to our rule about setting utf8 if the client_encoding
-				  is set to UTF8 is bytea.
+				  The only exception to our rule about setting utf8 (when the client_encoding
+				  is set to UTF8) is bytea.
 				*/
 				if (type_info && PG_BYTEA == type_info->type_id) {
 					SvUTF8_off(sv);

@@ -16,7 +16,7 @@ use 5.008001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('2.20.1_4');
+	use version; our $VERSION = qv('2.20.1_6');
 
 	use DBI ();
 	use DynaLoader ();
@@ -1373,7 +1373,7 @@ use 5.008001;
              SQL_FLOAT,                                                                    $UN, $UN, $UN ],
 ['float8',   SQL_REAL,          15,   $UN,$UN,   $PS,  1,0,2, 0,0,0,   'REAL',      0,15,
              SQL_REAL,                                                                     $UN, $UN, $UN ],
-['int8',     SQL_BIGINT,        20,   $UN,$UN,   $UN,  1,0,2, 0,0,0,   'LONGINT',   0,0,
+['int8',     SQL_BIGINT,        20,   $UN,$UN,   $UN,  1,0,2, 0,0,0,   'INT8',   0,0,
              SQL_BIGINT,                                                                   $UN, $UN, $UN ],
 ['date',     SQL_DATE,          10,   q{'},q{'}, $UN,  1,0,2, $UN,0,0, 'DATE',      0,0,
              SQL_DATE,                                                                     $UN, $UN, $UN ],
@@ -1775,7 +1775,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 2.20.1_4 of the DBD::Pg module
+This documents version 2.20.1_6 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
@@ -2600,7 +2600,7 @@ handle level. Examples:
 Alternatively, you can set it at prepare time:
 
   $sth = $dbh->prepare(q{SELECT * FROM mytable WHERE lseg1 ?-| lseg2 AND name = $1},
-    {pg_placeholder_dollaronly = 1});
+    {pg_placeholder_dollaronly => 1});
   $sth->execute('segname');
 
 =head3 B<prepare_cached>
