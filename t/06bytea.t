@@ -28,7 +28,7 @@ if ($pgversion >= 80100) {
 
 my ($sth, $t);
 
-$sth = $dbh->prepare(q{INSERT INTO dbd_pg_test (id,bytetest) VALUES (?,?)});
+$sth = $dbh->prepare(q{INSERT INTO dbd_pg_test (id,bytetest,bytearray,testarray2) VALUES (?,?,'{1,2,3}','{5,6,7}')});
 
 $t='bytea insert test with string containing null and backslashes';
 $sth->bind_param(1, undef, { pg_type => PG_INT4 });
@@ -52,7 +52,8 @@ ok ($sth->execute(404, $binary_out), $t);
 if ($pgversion < 90000) {
     test_outputs(undef);
     SKIP: { skip 'No BYTEA output format setting before 9.0', 5 }
-} else {
+}
+else {
     test_outputs($_) for qw(hex escape);
 }
 

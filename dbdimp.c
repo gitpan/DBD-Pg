@@ -2749,13 +2749,26 @@ static SV * pg_destringify_array(pTHX_ imp_dbh_t *imp_dbh, unsigned char * input
 					av_push(currentav, newSViv(SvIV(sv_2mortal(newSVpvn(string,section_size)))));
 				else if (2 == coltype->svtype)
 					av_push(currentav, newSVnv(SvNV(sv_2mortal(newSVpvn(string,section_size)))));
-				else if (3 == coltype->svtype)
-					av_push(currentav, newSViv('t' == *string ? 1 : 0));
-				else {
-					SV *sv = newSVpvn(string, section_size);
-					if (imp_dbh->pg_utf8_flag) {
-						SvUTF8_on(sv);
+				else if (3 == coltype->svtype) {
+					if (imp_dbh->pg_bool_tf) {
+						av_push(currentav, newSVpv('t' == *string ? "t" : "f", 0));
 					}
+					else
+						av_push(currentav, newSViv('t' == *string ? 1 : 0));
+				}
+				else {
+					// Bytea gets special dequoting
+					if (0 == strncmp(coltype->type_name, "_bytea", 6)) {
+						coltype->dequote(string, &section_size);
+					}
+
+					SV *sv = newSVpvn(string, section_size);
+
+					// Mark as utf8 if needed (but never bytea)
+					if (0 != strncmp(coltype->type_name, "_bytea", 6)
+						&& imp_dbh->pg_utf8_flag)
+						SvUTF8_on(sv);
+
 					av_push(currentav, sv);
 
 				}
