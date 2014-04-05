@@ -405,7 +405,7 @@ static ExecStatusType _sqlstate(pTHX_ imp_dbh_t * imp_dbh, PGresult * result)
 	
 	if (!sqlstate) {
 		/* Do our best to map the status result to a sqlstate code */
-		switch (status) {
+		switch ((int)status) {
 		case PGRES_EMPTY_QUERY:
 		case PGRES_COMMAND_OK:
 		case PGRES_TUPLES_OK:
@@ -1474,11 +1474,21 @@ SV * pg_db_pg_notifies (SV * dbh, imp_dbh_t * imp_dbh)
 	}
 
 	ret=newAV();
-	av_push(ret, newSVpv(notify->relname,0) );
+
+	SV *relnamesv = newSVpv(notify->relname, 0);
+	if (imp_dbh->pg_utf8_flag) {
+		SvUTF8_on(relnamesv);
+	}
+	av_push(ret, relnamesv);
+
 	av_push(ret, newSViv(notify->be_pid) );
-	av_push(ret, newSVpv(notify->extra,0) );
-	/* Think about utf-8 in payloads someday... */
-	
+
+	SV *payloadsv = newSVpv(notify->extra, 0);
+	if (imp_dbh->pg_utf8_flag) {
+		SvUTF8_on(payloadsv);
+	}
+	av_push(ret, payloadsv);
+
 	TRACE_PQFREEMEM;
  	PQfreemem(notify);
 
@@ -1580,7 +1590,9 @@ int dbd_st_prepare (SV * sth, imp_sth_t * imp_sth, char * statement, SV * attrib
 		if (0 == strcasecmp(imp_sth->firstword, "SELECT") ||
 			0 == strcasecmp(imp_sth->firstword, "INSERT") ||
 			0 == strcasecmp(imp_sth->firstword, "UPDATE") ||
-			0 == strcasecmp(imp_sth->firstword, "DELETE")
+			0 == strcasecmp(imp_sth->firstword, "DELETE") ||
+			0 == strcasecmp(imp_sth->firstword, "VALUES") ||
+			0 == strcasecmp(imp_sth->firstword, "WITH")
 			) {
 			imp_sth->is_dml = DBDPG_TRUE;
 		}
@@ -2905,7 +2917,7 @@ int pg_quickexec (SV * dbh, const char * sql, const int asyncflag)
 	imp_dbh->copystate = 0; /* Assume not in copy mode until told otherwise */
 
 	if (TRACE4_slow) TRC(DBILOGFP, "%sGot a status of %d\n", THEADER_slow, status);
-	switch (status) {
+	switch ((int)status) {
 	case PGRES_TUPLES_OK:
 		TRACE_PQNTUPLES;
 		rows = PQntuples(result);
@@ -4822,7 +4834,7 @@ int pg_db_result (SV *h, imp_dbh_t *imp_dbh)
 	while ((result = PQgetResult(imp_dbh->conn)) != NULL) {
 		/* TODO: Better multiple result-set handling */
 		status = _sqlstate(aTHX_ imp_dbh, result);
-		switch (status) {
+		switch ((int)status) {
 		case PGRES_TUPLES_OK:
 			TRACE_PQNTUPLES;
 			rows = PQntuples(result);
