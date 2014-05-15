@@ -1168,7 +1168,7 @@ if ($client_level eq 'error') {
 		skip (q{Cannot test "HandleError" attribute because client_min_messages is set to 'error'}, 2);
 	}
  SKIP: {
-		skip (q{Cannot test "HandleSetErr" attribute because client_min_messages is set to 'error'}, 4);
+		skip (q{Cannot test "HandleSetErr" attribute because client_min_messages is set to 'error'}, 3);
 	}
 }
 else {
@@ -1541,12 +1541,12 @@ $attrib = $dbh->{Active};
 is ($attrib, '', $t);
 
 SKIP: {
-	skip ('Cannot test database handle "AutoInactiveDestroy" on a non-forking system', 8)
+	skip ('Cannot test database handle "AutoInactiveDestroy" on a non-forking system', 9)
 		if $^O =~ /Win/;
 
 	require Test::Simple;
 
-	skip ('Test::Simple version 0.47 or better required for testing of attribute "AutoInactiveDestroy"', 8)
+	skip ('Test::Simple version 0.47 or better required for testing of attribute "AutoInactiveDestroy"', 9)
 		if $Test::Simple::VERSION < 0.47;
 
 	# Test of forking. Hang on to your hats
@@ -1600,7 +1600,7 @@ SKIP: {
 			is ($state, '08000', $t);
 
 			$t=qq{pg_ping gives an error code of -2 after the child has exited ("AutoInactiveDestroy" = $destroy)};
-			is ( $dbh->pg_ping(), -2,$t);
+			is ( $dbh->pg_ping(), -2, $t);
 			ok ($dbh->disconnect(), 'Disconnect from database');
 		}
 	}
