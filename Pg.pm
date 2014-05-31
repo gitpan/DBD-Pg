@@ -1,6 +1,6 @@
 #  -*-cperl-*-
 #
-#  Copyright (c) 2002-2013 Greg Sabino Mullane and others: see the Changes file
+#  Copyright (c) 2002-2014 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
 #  Portions Copyright (c) 1997-2001 Edmund Mergl
 #  Portions Copyright (c) 1994-1997 Tim Bunce
@@ -16,7 +16,7 @@ use 5.008001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('3.2.1');
+	use version; our $VERSION = qv('3.3.0');
 
 	use DBI ();
 	use DynaLoader ();
@@ -867,11 +867,6 @@ use 5.008001;
 		my $dbh = shift;
 
 		## PK: catalog, schema, table, FK: catalog, schema, table, attr
-
-		my $oldname = $dbh->{FetchHashKeyName};
-
-		local $dbh->{FetchHashKeyName} = 'NAME_lc';
-
 		## Each of these may be undef or empty
 		my $pschema = $_[1] || '';
 		my $ptable = $_[2] || '';
@@ -879,249 +874,128 @@ use 5.008001;
 		my $ftable = $_[5] || '';
 		my $args = $_[6];
 
-		## No way to currently specify it, but we are ready when there is
-		my $odbc = 0;
-
 		## Must have at least one named table
-		return undef if !$ptable and !$ftable;
+		return undef if !length($ptable) and !length($ftable);
 
 		## If only the primary table is given, we return only those columns
 		## that are used as foreign keys, even if that means that we return
 		## unique keys but not primary one. We also return all the foreign
 		## tables/columns that are referencing them, of course.
-
-		## The first step is to find the oid of each specific table in the args:
-		## Return undef if no matching relation found
-		my %oid;
-		for ([$ptable, $pschema, 'P'], [$ftable, $fschema, 'F']) {
-			if (length $_->[0]) {
-				my $SQL = "SELECT c.oid AS schema FROM pg_catalog.pg_class c, pg_catalog.pg_namespace n\n".
-					'WHERE c.relnamespace = n.oid AND c.relname = ' . $dbh->quote($_->[0]);
-				if (length $_->[1]) {
-					$SQL .= ' AND n.nspname = ' . $dbh->quote($_->[1]);
+		## If no schema is given, respect search_path by using pg_table_is_visible()
+		my @where;
+		for ([$ptable, $pschema, 'uk'], [$ftable, $fschema, 'fk']) {
+			my ($table, $schema, $type) = @$_;
+			if (length $table) {
+				push @where, "${type}_class.relname = " . $dbh->quote($table);
+				if (length $schema) {
+					push @where, "${type}_ns.nspname = " . $dbh->quote($schema);
 				}
 				else {
-					$SQL .= ' AND pg_catalog.pg_table_is_visible(c.oid)'
-				}
-				my $info = $dbh->selectall_arrayref($SQL);
-				return undef if ! @$info;
-				$oid{$_->[2]} = $info->[0][0];
-			}
-		}
-
-		## We now need information about each constraint we care about.
-		## Foreign table: only 'f' / Primary table: only 'p' or 'u'
-		my $WHERE = $odbc ? q{((contype = 'p'} : q{((contype IN ('p','u')};
-		if (length $ptable) {
-			$WHERE .= " AND conrelid=$oid{'P'}::oid";
-		}
-		else {
-			$WHERE .= " AND conrelid IN (SELECT DISTINCT confrelid FROM pg_catalog.pg_constraint WHERE conrelid=$oid{'F'}::oid)";
-			if (length $pschema) {
-				$WHERE .= ' AND n2.nspname = ' . $dbh->quote($pschema);
-			}
-		}
-
-		$WHERE .= ")\n \t\t\t\tOR \n \t\t\t\t(contype = 'f'";
-		if (length $ftable) {
-			$WHERE .= " AND conrelid=$oid{'F'}::oid";
-			if (length $ptable) {
-				$WHERE .= " AND confrelid=$oid{'P'}::oid";
-			}
-		}
-		else {
-			$WHERE .= " AND confrelid = $oid{'P'}::oid";
-			if (length $fschema) {
-				$WHERE .= ' AND n2.nspname = ' . $dbh->quote($fschema);
-			}
-		}
-		$WHERE .= '))';
-
-		## Grab everything except specific column names:
-		my $fk_sql = qq{
-        SELECT conrelid, confrelid, contype, conkey, confkey,
-            pg_catalog.quote_ident(c.relname) AS t_name, pg_catalog.quote_ident(n2.nspname) AS t_schema,
-            pg_catalog.quote_ident(n.nspname) AS c_schema, pg_catalog.quote_ident(conname) AS c_name,
-            CASE
-                WHEN confupdtype = 'c' THEN 0
-                WHEN confupdtype = 'r' THEN 1
-                WHEN confupdtype = 'n' THEN 2
-                WHEN confupdtype = 'a' THEN 3
-                WHEN confupdtype = 'd' THEN 4
-                ELSE -1
-            END AS update,
-            CASE
-                WHEN confdeltype = 'c' THEN 0
-                WHEN confdeltype = 'r' THEN 1
-                WHEN confdeltype = 'n' THEN 2
-                WHEN confdeltype = 'a' THEN 3
-                WHEN confdeltype = 'd' THEN 4
-                ELSE -1
-            END AS delete,
-            CASE
-                WHEN condeferrable = 'f' THEN 7
-                WHEN condeferred = 't' THEN 6
-                WHEN condeferred = 'f' THEN 5
-                ELSE -1
-            END AS defer
-            FROM pg_catalog.pg_constraint k, pg_catalog.pg_class c, pg_catalog.pg_namespace n, pg_catalog.pg_namespace n2
-            WHERE $WHERE
-                AND k.connamespace = n.oid
-                AND k.conrelid = c.oid
-                AND c.relnamespace = n2.oid
-                ORDER BY conrelid ASC
-                };
-
-		my $sth = $dbh->prepare($fk_sql);
-		$sth->execute();
-
-		## We have to make sure expand_array is on for the items below to work
-		my $oldexpand = $dbh->FETCH('pg_expand_array');
-		$oldexpand or $dbh->STORE('pg_expand_array', 1);
-
-		my $info = $sth->fetchall_arrayref({});
-		$oldexpand or $dbh->STORE('pg_expand_array', 0);
-		return undef if ! defined $info or ! @$info;
-
-		## Return undef if just ptable given but no fk found
-		return undef if ! length $ftable and ! grep { $_->{'contype'} eq 'f'} @$info;
-
-		## Figure out which columns we need information about
-		my %colnum;
-		for my $row (@$info) {
-			for (@{$row->{'conkey'}}) {
-				$colnum{$row->{'conrelid'}}{$_}++;
-			}
-			if ($row->{'contype'} eq 'f') {
-				for (@{$row->{'confkey'}}) {
-					$colnum{$row->{'confrelid'}}{$_}++;
+					push @where, "pg_catalog.pg_table_is_visible(${type}_class.oid)"
 				}
 			}
 		}
-		## Get the information about the columns computed above
+
+		my $WHERE = join ' AND ', @where;
 		my $SQL = qq{
-            SELECT a.attrelid, a.attnum, pg_catalog.quote_ident(a.attname) AS colname, 
-                pg_catalog.quote_ident(t.typname) AS typename
-            FROM pg_catalog.pg_attribute a, pg_catalog.pg_type t
-            WHERE a.atttypid = t.oid
-            AND (\n};
+			SELECT
+				NULL, pg_catalog.quote_ident(uk_ns.nspname), pg_catalog.quote_ident(uk_class.relname), pg_catalog.quote_ident(uk_col.attname),
+				NULL, pg_catalog.quote_ident(fk_ns.nspname), pg_catalog.quote_ident(fk_class.relname), pg_catalog.quote_ident(fk_col.attname),
+				colnum.i,
+				CASE constr.confupdtype
+					WHEN 'c' THEN 0 WHEN 'r' THEN 1 WHEN 'n' THEN 2 WHEN 'a' THEN 3 WHEN 'd' THEN 4 ELSE -1
+				END,
+				CASE constr.confdeltype
+					WHEN 'c' THEN 0 WHEN 'r' THEN 1 WHEN 'n' THEN 2 WHEN 'a' THEN 3 WHEN 'd' THEN 4 ELSE -1
+				END,
+				pg_catalog.quote_ident(constr.conname), pg_catalog.quote_ident(uk_constr.conname),
+				CASE
+					WHEN constr.condeferrable = 'f' THEN 7
+					WHEN constr.condeferred = 't' THEN 6
+					WHEN constr.condeferred = 'f' THEN 5
+					ELSE -1
+				END,
+				CASE coalesce(uk_constr.contype, 'u')
+					WHEN 'u' THEN 'UNIQUE' WHEN 'p' THEN 'PRIMARY'
+				END,
+				pg_catalog.quote_ident(uk_type.typname), pg_catalog.quote_ident(fk_type.typname)
+			FROM pg_catalog.pg_constraint constr
+				JOIN pg_catalog.pg_class uk_class ON constr.confrelid = uk_class.oid
+				JOIN pg_catalog.pg_namespace uk_ns ON uk_class.relnamespace = uk_ns.oid
+				JOIN pg_catalog.pg_class fk_class ON constr.conrelid = fk_class.oid
+				JOIN pg_catalog.pg_namespace fk_ns ON fk_class.relnamespace = fk_ns.oid
+				-- can't do unnest() until 8.4, and would need WITH ORDINALITY to get the array indices,
+				-- wich isn't available until 9.4 at the earliest, so we join against a series table instead
+				JOIN pg_catalog.generate_series(1, pg_catalog.current_setting('max_index_keys')::integer) colnum(i)
+					ON colnum.i <= pg_catalog.array_upper(constr.conkey,1)
+				JOIN pg_catalog.pg_attribute uk_col ON uk_col.attrelid = constr.confrelid AND uk_col.attnum = constr.confkey[colnum.i]
+				JOIN pg_catalog.pg_type uk_type ON uk_col.atttypid = uk_type.oid
+				JOIN pg_catalog.pg_attribute fk_col ON fk_col.attrelid = constr.conrelid AND fk_col.attnum = constr.conkey[colnum.i]
+				JOIN pg_catalog.pg_type fk_type ON fk_col.atttypid = fk_type.oid
 
-		$SQL .= join "\n\t\t\t\tOR\n" => map {
-			my $cols = join ',' => keys %{$colnum{$_}};
-			"\t\t\t\t( a.attrelid = '$_' AND a.attnum IN ($cols) )"
-		} sort keys %colnum;
+				-- We can't match confkey from the fk constraint to conkey of the unique constraint,
+				-- because the unique constraint might not exist or there might be more than one
+				-- matching one. However, there must be at least a unique _index_ on the key
+				-- columns, so we look for that; but we can't find it via pg_index, since there may
+				-- again be more than one matching index.
 
-		$sth = $dbh->prepare(qq{$SQL )});
-		$sth->execute();
-		my $attribs = $sth->fetchall_arrayref({});
+				-- So instead, we look at pg_depend for the dependency that was created by the fk
+				-- constraint. This dependency is of type 'n' (normal) and ties the pg_constraint
+				-- row oid to the pg_class oid for the index relation (a single arbitrary one if
+				-- more than one matching unique index existed at the time the constraint was
+				-- created).  Fortunately, the constraint does not create dependencies on the
+				-- referenced table itself, but on the _columns_ of the referenced table, so the
+				-- index can be distinguished easily.  Then we look for another pg_depend entry,
+				-- this time an 'i' (implementation) dependency from a pg_constraint oid (the unique
+				-- constraint if one exists) to the index oid; but we have to allow for the
+				-- possibility that this one doesn't exist.          - Andrew Gierth (RhodiumToad)
 
-		## Make a lookup hash
-		my %attinfo;
-		for (@$attribs) {
-			$attinfo{"$_->{'attrelid'}"}{"$_->{'attnum'}"} = $_;
-		}
+				JOIN pg_catalog.pg_depend dep ON (
+					dep.classid = 'pg_catalog.pg_constraint'::regclass
+					AND dep.objid = constr.oid
+					AND dep.objsubid = 0
+					AND dep.deptype = 'n'
+					AND dep.refclassid = 'pg_catalog.pg_class'::regclass
+					AND dep.refobjsubid=0
+				)
+				JOIN pg_catalog.pg_class idx ON (
+					idx.oid = dep.refobjid AND idx.relkind='i'
+				)
+				LEFT JOIN pg_catalog.pg_depend dep2	ON (
+					dep2.classid = 'pg_catalog.pg_class'::regclass
+					AND dep2.objid = idx.oid
+					AND dep2.objsubid = 0
+					AND dep2.deptype = 'i'
+					AND dep2.refclassid = 'pg_catalog.pg_constraint'::regclass
+					AND dep2.refobjsubid = 0
+				)
+				LEFT JOIN pg_catalog.pg_constraint uk_constr ON (
+					uk_constr.oid = dep2.refobjid AND uk_constr.contype IN ('p','u')
+				)
+			WHERE $WHERE
+				AND uk_class.relkind = 'r'
+				AND fk_class.relkind = 'r'
+				AND constr.contype = 'f'
+			ORDER BY constr.conname, colnum.i
+		};
+		my $fkinfo = $dbh->selectall_arrayref($SQL);
 
-		## This is an array in case we have identical oid/column combos. Lowest oid wins
-		my %ukey;
-		for my $c (grep { $_->{'contype'} ne 'f' } @$info) {
-			## Munge multi-column keys into sequential order
-			my $multi = join ' ' => sort @{$c->{'conkey'}};
-			push @{$ukey{$c->{'conrelid'}}{$multi}}, $c;
-		}
+		return undef unless $fkinfo && @{$fkinfo};
 
-		## Finally, return as a SQL/CLI structure:
-		my $fkinfo = [];
-		my $x=0;
-		for my $t (sort { $a->{'c_name'} cmp $b->{'c_name'} } grep { $_->{'contype'} eq 'f' } @$info) {
-			## We need to find which constraint row (if any) matches our confrelid-confkey combo
-			## by checking out ukey hash. We sort for proper matching of { 1 2 } vs. { 2 1 }
-			## No match means we have a pure index constraint
-			my $u;
-			my $multi = join ' ' => sort @{$t->{'confkey'}};
-			if (exists $ukey{$t->{'confrelid'}}{$multi}) {
-				$u = $ukey{$t->{'confrelid'}}{$multi}->[0];
-			}
-			else {
-				## Mark this as an index so we can fudge things later on
-				$multi = 'index';
-				## Grab the first one found, modify later on as needed
-				$u = ((values %{$ukey{$t->{'confrelid'}}})[0]||[])->[0];
-				## Bail in case there was no match
-				next if ! ref $u;
-			}
-
-			## ODBC is primary keys only
-			next if $odbc and ($u->{'contype'} ne 'p' or $multi eq 'index');
-
-			my $conkey = $t->{'conkey'};
-			my $confkey = $t->{'confkey'};
-			for (my $y=0; $conkey->[$y]; $y++) {
-				# UK_TABLE_CAT
-				$fkinfo->[$x][0] = undef;
-				# UK_TABLE_SCHEM
-				$fkinfo->[$x][1] = $u->{'t_schema'};
-				# UK_TABLE_NAME
-				$fkinfo->[$x][2] = $u->{'t_name'};
-				# UK_COLUMN_NAME
-				$fkinfo->[$x][3] = $attinfo{$t->{'confrelid'}}{$confkey->[$y]}{'colname'};
-				# FK_TABLE_CAT
-				$fkinfo->[$x][4] = undef;
-				# FK_TABLE_SCHEM
-				$fkinfo->[$x][5] = $t->{'t_schema'};
-				# FK_TABLE_NAME
-				$fkinfo->[$x][6] = $t->{'t_name'};
-				# FK_COLUMN_NAME
-				$fkinfo->[$x][7] = $attinfo{$t->{'conrelid'}}{$conkey->[$y]}{'colname'};
-				# ORDINAL_POSITION
-				$fkinfo->[$x][8] = $y+1;
-				# UPDATE_RULE
-				$fkinfo->[$x][9] = "$t->{'update'}";
-				# DELETE_RULE
-				$fkinfo->[$x][10] = "$t->{'delete'}";
-				# FK_NAME
-				$fkinfo->[$x][11] = $t->{'c_name'};
-				# UK_NAME (may be undef if an index with no named constraint)
-				$fkinfo->[$x][12] = $multi eq 'index' ? undef : $u->{'c_name'};
-				# DEFERRABILITY
-				$fkinfo->[$x][13] = "$t->{'defer'}";
-				# UNIQUE_OR_PRIMARY
-				$fkinfo->[$x][14] = ($u->{'contype'} eq 'p' and $multi ne 'index') ? 'PRIMARY' : 'UNIQUE';
-				# UK_DATA_TYPE
-				$fkinfo->[$x][15] = $attinfo{$t->{'confrelid'}}{$confkey->[$y]}{'typename'};
-				# FK_DATA_TYPE
-				$fkinfo->[$x][16] = $attinfo{$t->{'conrelid'}}{$conkey->[$y]}{'typename'};
-				$x++;
-			} ## End each column in this foreign key
-		} ## End each foreign key
-
-		my @CLI_cols = (qw(
+		my @cols = (qw(
 			UK_TABLE_CAT UK_TABLE_SCHEM UK_TABLE_NAME UK_COLUMN_NAME
 			FK_TABLE_CAT FK_TABLE_SCHEM FK_TABLE_NAME FK_COLUMN_NAME
 			ORDINAL_POSITION UPDATE_RULE DELETE_RULE FK_NAME UK_NAME
 			DEFERABILITY UNIQUE_OR_PRIMARY UK_DATA_TYPE FK_DATA_TYPE
 		));
 
-		my @ODBC_cols = (qw(
-			PKTABLE_CAT PKTABLE_SCHEM PKTABLE_NAME PKCOLUMN_NAME
-			FKTABLE_CAT FKTABLE_SCHEM FKTABLE_NAME FKCOLUMN_NAME
-			KEY_SEQ UPDATE_RULE DELETE_RULE FK_NAME PK_NAME
-			DEFERABILITY UNIQUE_OR_PRIMARY PK_DATA_TYPE FKDATA_TYPE
-		));
-
-		if ($oldname eq 'NAME_lc') {
-			if ($odbc) {
-				for my $col (@ODBC_cols) {
-					$col = lc $col;
-				}
-			}
-			else {
-				for my $col (@CLI_cols) {
-					$col = lc $col;
-				}
+		if ($dbh->{FetchHashKeyName} eq 'NAME_lc') {
+			for my $col (@cols) {
+				$col = lc $col;
 			}
 		}
 
-		return _prepare_from_data('foreign_key_info', $fkinfo, $odbc ? \@ODBC_cols : \@CLI_cols);
+		return _prepare_from_data('foreign_key_info', $fkinfo, \@cols);
 
 	}
 
@@ -1727,7 +1601,7 @@ use 5.008001;
 		return 1;
 	} ## end bind_param_array
 
-	sub private_attribute_info {
+ 	sub private_attribute_info {
 		return {
 				pg_async                  => undef,
 				pg_bound                  => undef,
@@ -1778,7 +1652,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 3.2.1 of the DBD::Pg module
+This documents version 3.3.0 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
@@ -1791,7 +1665,7 @@ This documentation describes driver specific behavior and restrictions. It is
 not supposed to be used as the only reference for the user. In any case
 consult the B<DBI> documentation first!
 
-=for html <a href="http://search.cpan.org/~timb/DBI/DBI.pm">Latest DBI docmentation.</a>
+=for html <a href="http://search.cpan.org/dist/DBI/DBI.pm">Latest DBI docmentation.</a>
 
 =head1 THE DBI CLASS
 
@@ -1952,7 +1826,7 @@ handle. This is a number used by libpq and is one of:
   $str = $h->errstr;
 
 Returns the last error that was reported by Postgres. This message is affected 
-by the L</pg_errorlevel> setting.
+by the L<pg_errorlevel|/pg_errorlevel_(integer)> setting.
 
 =head3 B<state>
 
@@ -2079,7 +1953,7 @@ the database has been disconnected. Also output if trace level is 5 or greater.
 
 =for text See the DBI section on TRACING for more information.
 
-=for html See the <a href="http://search.cpan.org/~timb/DBI/DBI.pm#TRACING">DBI section on TRACING</a> for more information.<br />
+=for html See the <a href="http://search.cpan.org/dist/DBI/DBI.pm#TRACING">DBI section on TRACING</a> for more information.<br />
 
 =head3 B<func>
 
@@ -2121,12 +1995,12 @@ Upon failure it returns C<undef>. This function cannot be used if AutoCommit is 
 
 The old way of calling large objects functions is deprecated: $dbh->func(.., 'lo_);
 
-=item lo_open
+=item pg_lo_open
 
   $lobj_fd = $dbh->pg_lo_open($lobjId, $mode);
 
 Opens an existing large object and returns an object-descriptor for use in
-subsequent C<lo_*> calls. C<$mode> is a bitmask describing read and write
+subsequent C<pg_lo_*> calls. C<$mode> is a bitmask describing read and write
 access to the opened object. It may be one of: 
 
   $dbh->{pg_INV_READ}
@@ -2139,26 +2013,26 @@ Reading from the object will provide the object as written in other committed
 transactions, along with any writes performed by the current transaction.
 Objects opened with C<pg_INV_READ> cannot be written to. Reading from this
 object will provide the stored data at the time of the transaction snapshot
-which was active when C<lo_write> was called.
+which was active when C<pg_lo_write> was called.
 
 Returns C<undef> upon failure. Note that 0 is a perfectly correct (and common)
 object descriptor! This function cannot be used if AutoCommit is enabled.
 
-=item lo_write
+=item pg_lo_write
 
   $nbytes = $dbh->pg_lo_write($lobj_fd, $buffer, $len);
 
 Writes C<$len> bytes of c<$buffer> into the large object C<$lobj_fd>. Returns the number
 of bytes written and C<undef> upon failure. This function cannot be used if AutoCommit is enabled.
 
-=item lo_read
+=item pg_lo_read
 
   $nbytes = $dbh->pg_lo_read($lobj_fd, $buffer, $len);
 
 Reads C<$len> bytes into c<$buffer> from large object C<$lobj_fd>. Returns the number of
 bytes read and C<undef> upon failure. This function cannot be used if AutoCommit is enabled.
 
-=item lo_lseek
+=item pg_lo_lseek
 
   $loc = $dbh->pg_lo_lseek($lobj_fd, $offset, $whence);
 
@@ -2166,53 +2040,53 @@ Changes the current read or write location on the large object
 C<$obj_id>. Currently C<$whence> can only be 0 (which is L_SET). Returns the current
 location and C<undef> upon failure. This function cannot be used if AutoCommit is enabled.
 
-=item lo_tell
+=item pg_lo_tell
 
   $loc = $dbh->pg_lo_tell($lobj_fd);
 
 Returns the current read or write location on the large object C<$lobj_fd> and C<undef> upon failure.
 This function cannot be used if AutoCommit is enabled.
 
-=item lo_truncate
+=item pg_lo_truncate
 
   $loc = $dbh->pg_lo_truncate($lobj_fd, $len);
 
 Truncates the given large object to the new size. Returns C<undef> on failure, and 0 on success.
 This function cannot be used if AutoCommit is enabled.
 
-=item lo_close
+=item pg_lo_close
 
   $lobj_fd = $dbh->pg_lo_close($lobj_fd);
 
 Closes an existing large object. Returns true upon success and false upon failure.
 This function cannot be used if AutoCommit is enabled.
 
-=item lo_unlink
+=item pg_lo_unlink
 
   $ret = $dbh->pg_lo_unlink($lobjId);
 
 Deletes an existing large object. Returns true upon success and false upon failure.
 This function cannot be used if AutoCommit is enabled.
 
-=item lo_import
+=item pg_lo_import
 
   $lobjId = $dbh->pg_lo_import($filename);
 
 Imports a Unix file as a large object and returns the object id of the new
 object or C<undef> upon failure.
 
-=item lo_import_with_oid
+=item pg_lo_import_with_oid
 
   $lobjId = $dbh->pg_lo_import($filename, $OID);
 
-Same as lo_import, but attempts to use the supplied OID as the 
+Same as pg_lo_import, but attempts to use the supplied OID as the 
 large object number. If this number is 0, it falls back to the 
-behavior of lo_import (which assigns the next available OID).
+behavior of pg_lo_import (which assigns the next available OID).
 
 This is only available when DBD::Pg is compiled against a Postgres 
 server version 8.4 or later.
 
-=item lo_export
+=item pg_lo_export
 
   $ret = $dbh->pg_lo_export($lobjId, $filename);
 
@@ -2222,7 +2096,7 @@ Exports a large object into a Unix file. Returns false upon failure, true otherw
 
   $fd = $dbh->func('getfd');
 
-Deprecated, use L<< $dbh->{pg_socket}|/pg_socket >> instead.
+Deprecated, use $dbh->{pg_socket} instead.
 
 =back
 
@@ -2288,7 +2162,7 @@ true for the lifetime of the statement handle.
 =head3 B<TraceLevel> (integer, inherited)
 
 Sets the trace level, similar to the L</trace> method. See the sections on 
-L</trace> and L</parse_trace_flag> for more details.
+L</trace> and L<parse_trace_flag|/parse_trace_flag and parse_trace_flags> for more details.
 
 =head3 B<Active> (boolean, read-only)
 
@@ -2424,15 +2298,15 @@ Queries that do not begin with the word "SELECT", "INSERT",
 
 Deciding whether or not to use prepared statements depends on many factors, 
 but you can force them to be used or not used by using the 
-L</pg_server_prepare> attribute when calling L</prepare>. Setting this to "0" means to never use 
-prepared statements. Setting L</pg_server_prepare> to "1" means that prepared 
+L<pg_server_prepare|/pg_server_prepare_(integer)> attribute when calling L</prepare>. Setting this to "0" means to never use 
+prepared statements. Setting pg_server_prepare to "1" means that prepared 
 statements should be used whenever possible. This is the default when connected 
 to Postgres servers version 8.0 or higher. Servers that are version 7.4 get a special 
 default value of "2", because server-side statements were only partially supported 
 in that version. In this case, it only uses server-side prepares if all 
 parameters are specifically bound.
 
-The L</pg_server_prepare> attribute can also be set at connection time like so:
+The pg_server_prepare attribute can also be set at connection time like so:
 
   $dbh = DBI->connect($DBNAME, $DBUSER, $DBPASS,
                       { AutoCommit => 0,
@@ -2494,11 +2368,11 @@ be provided after the prepare but before the execute.
 
 A server-side prepare may happen before the first L</execute>, but only if the server can
 handle the server-side prepare, and the statement contains no placeholders. It will 
-also be prepared if the L</pg_prepare_now> attribute is passed in and set to a true 
-value. Similarly, the L</pg_prepare_now> attribute can be set to 0 to ensure that
+also be prepared if the L<pg_prepare_now|/pg_prepare_now_(boolean)> attribute is passed in and set to a true 
+value. Similarly, the pg_prepare_now attribute can be set to 0 to ensure that
 the statement is B<not> prepared immediately, although the cases in which you would
 want this are very rare. Finally, you can set the default behavior of all prepare
-statements by setting the L</pg_prepare_now> attribute on the database handle:
+statements by setting the pg_prepare_now attribute on the database handle:
 
   $dbh->{pg_prepare_now} = 1;
 
@@ -2517,7 +2391,7 @@ The following two examples will NOT be prepared right away:
 There are times when you may want to prepare a statement yourself. To do this,
 simply send the C<PREPARE> statement directly to the server (e.g. with
 the L</do> method). Create a statement handle and set the prepared name via
-the L</pg_prepare_name> attribute. The statement handle can be created with a dummy
+the L<pg_prepare_name|/pg_prepare_name_(string)> attribute. The statement handle can be created with a dummy
 statement, as it will not be executed. However, it should have the same
 number of placeholders as your prepared statement. Example:
 
@@ -2536,7 +2410,7 @@ which is the equivalent of:
   SELECT COUNT(*) FROM pg_class WHERE reltuples < 123;
 
 You can force DBD::Pg to send your query directly to the server by adding
-the L</pg_direct> attribute to your prepare call. This is not recommended,
+the L<pg_direct|/pg_direct_(boolean)> attribute to your prepare call. This is not recommended,
 but is added just in case you need it.
 
 =head4 B<Placeholders>
@@ -2593,7 +2467,7 @@ stick to one style within your program.
 If your queries use operators that contain question marks (e.g. some of the native 
 Postgres geometric operators) or array slices (e.g. C<data[100:300]>), you can tell 
 DBD::Pg to ignore any non-dollar sign placeholders by setting the 
-L</pg_placeholder_dollaronly> attribute at either the database handle or the statement 
+L<pg_placeholder_dollaronly|/pg_placeholder_dollaronly_(boolean)> attribute at either the database handle or the statement 
 handle level. Examples:
 
   $dbh->{pg_placeholder_dollaronly} = 1;
@@ -2626,7 +2500,7 @@ Again, you may set it param time as well:
 
 Implemented by DBI, no driver-specific impact. This method is most useful
 when using a server that supports server-side prepares, and you have asked
-the prepare to happen immediately via the L</pg_prepare_now> attribute.
+the prepare to happen immediately via the L<pg_prepare_now|/pg_prepare_now_(boolean)> attribute.
 
 =head3 B<do>
 
@@ -2721,7 +2595,7 @@ false on error. See also the the section on L</Transactions>.
 
 =head3 B<begin_work>
 
-This method turns on transactions until the next call to L</commit> or L</rollback>, if L</AutoCommit> is 
+This method turns on transactions until the next call to L</commit> or L</rollback>, if L<AutoCommit|/AutoCommit_(boolean)> is 
 currently enabled. If it is not enabled, calling begin_work will issue an error. Note that the 
 transaction will not actually begin until the first statement after begin_work is called.
 Example:
@@ -3035,7 +2909,7 @@ causes only information about unique indexes to be returned. The C<$quick> argum
 not used by DBD::Pg. For information on the format of the standard rows returned, please 
 see the DBI documentation.
 
-=for html <a href="http://search.cpan.org/~timb/DBI/DBI.pm#statistics_info">DBI section on statistics_info</a>
+=for html <a href="http://search.cpan.org/dist/DBI/DBI.pm#statistics_info">DBI section on statistics_info</a>
 
 In addition, the following Postgres specific columns are returned:
 
@@ -3351,11 +3225,11 @@ server is version 8.2 or better.
 
 =head3 B<pg_INV_READ> (integer, read-only)
 
-Constant to be used for the mode in L</lo_creat> and L</lo_open>.
+Constant to be used for the mode in L</pg_lo_creat> and L</pg_lo_open>.
 
 =head3 B<pg_INV_WRITE> (integer, read-only)
 
-Constant to be used for the mode in L</lo_creat> and L</lo_open>.
+Constant to be used for the mode in L</pg_lo_creat> and L</pg_lo_open>.
 
 =head3 B<Driver> (handle, read-only)
 
@@ -3588,7 +3462,7 @@ Fetches the next row of data from the statement handle, and returns a reference 
 holding the column values. Any columns that are NULL are returned as undef within the array.
 
 If there are no more rows or if an error occurs, the this method return undef. You should 
-check C<< $sth->err >> afterwards (or use the L</RaiseError> attribute) to discover if the undef returned 
+check C<< $sth->err >> afterwards (or use the L<RaiseError|/RaiseError_(boolean,_inherited)> attribute) to discover if the undef returned 
 was due to an error.
 
 Note that the same array reference is returned for each fetch, so don't store the reference and 
@@ -3611,7 +3485,7 @@ Fetches the next row of data and returns a hashref containing the name of the co
 and the data itself as the values. Any NULL value is returned as an undef value.
 
 If there are no more rows or if an error occurs, the this method return undef. You should 
-check C<< $sth->err >> afterwards (or use the L</RaiseError> attribute) to discover if the undef returned 
+check C<< $sth->err >> afterwards (or use the L<RaiseError|/RaiseError_(boolean,_inherited)> attribute) to discover if the undef returned 
 was due to an error.
 
 The optional C<$name> argument should be either C<NAME>, C<NAME_lc> or C<NAME_uc>, and indicates 
@@ -3626,7 +3500,7 @@ what sort of transformation to make to the keys in the hash.
 Returns a reference to an array of arrays that contains all the remaining rows to be fetched from the 
 statement handle. If there are no more rows, an empty arrayref will be returned. If an error occurs, 
 the data read in so far will be returned. Because of this, you should always check C<< $sth->err >> after 
-calling this method, unless L</RaiseError> has been enabled.
+calling this method, unless L<RaiseError|/RaiseError_(boolean,_inherited)> has been enabled.
 
 If C<$slice> is an array reference, fetchall_arrayref uses the L</fetchrow_arrayref> method to fetch each 
 row as an array ref. If the C<$slice> array is not empty then it is used as a slice to select individual 
@@ -3916,6 +3790,16 @@ Not used by DBD::Pg
 Not used by DBD::Pg. See the note about L</Cursors> elsewhere in this document.
 
 =head1 FURTHER INFORMATION
+
+=head2 Encoding
+
+DBD::Pg has extensive support for a client_encoding of UTF-8, and most 
+things like encoding and decoding should happen automatically. If you are 
+using a different encoding, you will need do the encoding and decoding 
+yourself. For this reason, it is highly recommended to always use a 
+client_encoding of UTF-8. The server_encoding can be anything, and no 
+recommendations are made there, other than avoid SQL_ASCII whenever 
+possible.
 
 =head2 Transactions
 
@@ -4319,7 +4203,7 @@ or by manipulating the schema search path with C<SET search_path>, e.g.
 
 =for text The B<DBI> module.
 
-=for html <a href="http://search.cpan.org/~timb/DBI/DBI.pm">The DBI module</a>
+=for html <a href="http://search.cpan.org/dist/DBI/DBI.pm">The DBI module</a>
 
 =head1 BUGS
 
@@ -4339,8 +4223,8 @@ DBI by Tim Bunce L<http://www.tim.bunce.name>
 The original DBD-Pg was by Edmund Mergl (E.Mergl@bawue.de) and Jeffrey W. Baker
 (jwbaker@acm.org). Major developers include David Wheeler <david@justatheory.com>, Jason
 Stewart <jason@openinformatics.com>, Bruce Momjian <pgman@candle.pha.pa.us>, and 
-Greg Sabino Mullane <greg@turnstep.com>, with help from many others: see the F<Changes>
-file for a complete list.
+Greg Sabino Mullane <greg@turnstep.com>, with help from many others: see the Changes 
+file (L<http://search.cpan.org/dist/DBD-Pg/Changes>) for a complete list.
 
 Parts of this package were originally copied from DBI and DBD-Oracle.
 
@@ -4352,7 +4236,7 @@ Visit the archives at http://grokbase.com/g/perl/dbd-pg
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 1994-2013, Greg Sabino Mullane
+Copyright (C) 1994-2014, Greg Sabino Mullane
 
 This module (DBD::Pg) is free software; you can redistribute it and/or modify it 
 under the same terms as Perl 5.10.0. For more details, see the full text of the 

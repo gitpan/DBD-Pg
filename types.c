@@ -1,6 +1,6 @@
 /*
 
-   Copyright (c) 2003-2013 Greg Sabino Mullane and others: see the Changes file
+   Copyright (c) 2003-2014 Greg Sabino Mullane and others: see the Changes file
    
    You may distribute under the terms of either the GNU General Public
    License or the Artistic License, as specified in the Perl README file.
@@ -175,8 +175,6 @@ static sql_type_info_t pg_types[] = {
 
 sql_type_info_t* pg_type_data(int sql_type)
 {
-	dTHX;
-
 	switch(sql_type) {
 
 		case PG_ABSTIMEARRAY:       return &pg_types[0];
@@ -366,8 +364,6 @@ static sql_type_info_t sql_types[] = {
 
 sql_type_info_t* sql_type_data(int sql_type)
 {
-	dTHX;
-
 	switch(sql_type) {
 		case SQL_BOOLEAN:                      return &sql_types[0];
 		case SQL_CHAR:                         return &sql_types[1];
@@ -642,7 +638,7 @@ open $newfh, '>', "$file.tmp" or die qq{Could not write to "$file.tmp": $!\n};
 
 print $newfh qq{$slashstar
 
-   Copyright (c) 2003-2013 Greg Sabino Mullane and others: see the Changes file
+   Copyright (c) 2003-2014 Greg Sabino Mullane and others: see the Changes file
    
    You may distribute under the terms of either the GNU General Public
    License or the Artistic License, as specified in the Perl README file.
@@ -700,8 +696,6 @@ print $newfh "\};\n\n";
 print $newfh
 "sql_type_info_t* pg_type_data(int sql_type)
 {
-\tdTHX;
-
 \tswitch(sql_type) {
 \n";
 
@@ -728,7 +722,7 @@ for my $name (sort { $a cmp $b } keys %pgtype) {
 }
 print $newfh "\};\n\n";
 
-print $newfh "sql_type_info_t* sql_type_data(int sql_type)\n\{\n\tdTHX;\n\n";
+print $newfh "sql_type_info_t* sql_type_data(int sql_type)\n\{\n";
 
 print $newfh "\tswitch(sql_type) \{\n";
 for (sort { $pos{$a} <=> $pos{$b} } keys %pos) {
