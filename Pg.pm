@@ -16,7 +16,7 @@ use 5.008001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('3.3.0');
+	use version; our $VERSION = qv('3.4.0');
 
 	use DBI ();
 	use DynaLoader ();
@@ -485,7 +485,7 @@ use 5.008001;
                 $schemajoin
             WHERE
                 a.attnum >= 0
-                AND c.relkind IN ('r','v')
+                AND c.relkind IN ('r','v','m')
                 $whereclause
             ORDER BY "TABLE_SCHEM", "TABLE_NAME", "ORDINAL_POSITION"
             !;
@@ -1044,190 +1044,220 @@ use 5.008001;
 					 and (defined $table and $table eq '')
 					 and (defined $type and $type eq '%')
 					) {
-			$tbl_sql = qq{
-                    SELECT
-                       NULL::text AS "TABLE_CAT"
-                     , NULL::text AS "TABLE_SCHEM"
-                     , NULL::text AS "TABLE_NAME"
-                     , 'TABLE'    AS "TABLE_TYPE"
-                     , 'relkind: r' AS "REMARKS" $extracols
-                    UNION
-                    SELECT
-                       NULL::text AS "TABLE_CAT"
-                     , NULL::text AS "TABLE_SCHEM"
-                     , NULL::text AS "TABLE_NAME"
-                     , 'VIEW'     AS "TABLE_TYPE"
-                     , 'relkind: v' AS "REMARKS" $extracols
+			$tbl_sql = q{
+                    SELECT "TABLE_CAT"
+                         , "TABLE_SCHEM"
+                         , "TABLE_NAME"
+                         , "TABLE_TYPE"
+                         , "REMARKS"
+                    FROM
+                      (SELECT NULL::text AS "TABLE_CAT"
+                            , NULL::text AS "TABLE_SCHEM"
+                            , NULL::text AS "TABLE_NAME") dummy_cols
+                    CROSS JOIN
+                      (SELECT 'TABLE'        AS "TABLE_TYPE"
+                            , 'relkind: r'   AS "REMARKS"
+                       UNION
+                       SELECT 'SYSTEM TABLE'
+                            , 'relkind: r; nspname ~ ^pg_(catalog|toast)$'
+                       UNION
+                       SELECT 'VIEW'
+                            , 'relkind: v'
+                       UNION
+                       SELECT 'SYSTEM VIEW'
+                            , 'relkind: v; nspname ~ ^pg_(catalog|toast)$'
+                       UNION
+                       SELECT 'MATERIALIZED VIEW'
+                            , 'relkind: m'
+                       UNION
+                       SELECT 'SYSTEM MATERIALIZED VIEW'
+                            , 'relkind: m; nspname ~ ^pg_(catalog|toast)$'
+                       UNION
+                       SELECT 'LOCAL TEMPORARY'
+                            , 'relkind: r; nspname ~ ^pg_(toast_)?temp') type_info
+                     ORDER BY "TABLE_TYPE" ASC
                 };
-		}
-		else {
-			# Default SQL
-			$extracols = q{,n.nspname AS pg_schema, c.relname AS pg_table};
-			my @search;
-			my $showtablespace = ', quote_ident(t.spcname) AS "pg_tablespace_name", quote_ident(t.spclocation) AS "pg_tablespace_location"';
-			if ($dbh->{private_dbdpg}{version} >= 90200) {
-				$showtablespace = ', quote_ident(t.spcname) AS "pg_tablespace_name", quote_ident(pg_tablespace_location(t.oid)) AS "pg_tablespace_location"';
-			}
+        }
+        else {
+            # Default SQL
+            $extracols = q{,n.nspname AS pg_schema, c.relname AS pg_table};
+            my @search = (q|c.relkind IN ('r', 'v', 'm')|, # No sequences, etc. for now
+                          q|NOT (quote_ident(n.nspname) ~ '^pg_(toast_)?temp_' AND NOT has_schema_privilege(n.nspname, 'USAGE'))|);   # No others' temp objects
+            my $showtablespace = ', quote_ident(t.spcname) AS "pg_tablespace_name", quote_ident(t.spclocation) AS "pg_tablespace_location"';
+            if ($dbh->{private_dbdpg}{version} >= 90200) {
+                $showtablespace = ', quote_ident(t.spcname) AS "pg_tablespace_name", quote_ident(pg_tablespace_location(t.oid)) AS "pg_tablespace_location"';
+            }
 
-			## If the schema or table has an underscore or a %, use a LIKE comparison
-			if (defined $schema and length $schema) {
-					push @search, 'n.nspname ' . ($schema =~ /[_%]/ ? 'LIKE ' : '= ') . $dbh->quote($schema);
-			}
-			if (defined $table and length $table) {
-					push @search, 'c.relname ' . ($table =~ /[_%]/ ? 'LIKE ' : '= ') . $dbh->quote($table);
-			}
-			## All we can see is "table" or "view". Default is both
-			my $typesearch = q{IN ('r','v')};
-			if (defined $type and length $type) {
-				if ($type =~ /\btable\b/i and $type !~ /\bview\b/i) {
-					$typesearch = q{= 'r'};
-				}
-				elsif ($type =~ /\bview\b/i and $type !~ /\btable\b/i) {
-					$typesearch = q{= 'v'};
-				}
-			}
-			push @search, "c.relkind $typesearch";
+            ## If the schema or table has an underscore or a %, use a LIKE comparison
+            if (defined $schema and length $schema) {
+                    push @search, 'n.nspname ' . ($schema =~ /[_%]/ ? 'LIKE ' : '= ') . $dbh->quote($schema);
+            }
+            if (defined $table and length $table) {
+                    push @search, 'c.relname ' . ($table =~ /[_%]/ ? 'LIKE ' : '= ') . $dbh->quote($table);
+            }
 
-			my $TSJOIN = 'pg_catalog.pg_tablespace t ON (t.oid = c.reltablespace)';
-			if ($dbh->{private_dbdpg}{version} < 80000) {
-				$TSJOIN = '(SELECT 0 AS oid, 0 AS spcname, 0 AS spclocation LIMIT 0) AS t ON (t.oid=1)';
-			}
-			my $whereclause = join "\n\t\t\t\t\t AND " => @search;
-			$tbl_sql = qq{
+            my $TSJOIN = 'pg_catalog.pg_tablespace t ON (t.oid = c.reltablespace)';
+            if ($dbh->{private_dbdpg}{version} < 80000) {
+                $TSJOIN = '(SELECT 0 AS oid, 0 AS spcname, 0 AS spclocation LIMIT 0) AS t ON (t.oid=1)';
+            }
+            my $whereclause = join "\n\t\t\t\t\t AND " => @search;
+            $tbl_sql = qq{
                 SELECT NULL::text AS "TABLE_CAT"
                      , quote_ident(n.nspname) AS "TABLE_SCHEM"
                      , quote_ident(c.relname) AS "TABLE_NAME"
-                     , CASE
-                             WHEN c.relkind = 'v' THEN
-                                CASE WHEN quote_ident(n.nspname) ~ '^pg_' THEN 'SYSTEM VIEW' ELSE 'VIEW' END
-                            ELSE
-                                CASE WHEN quote_ident(n.nspname) ~ '^pg_' THEN 'SYSTEM TABLE' ELSE 'TABLE' END
-                        END AS "TABLE_TYPE"
+                       -- any temp table or temp view is LOCAL TEMPORARY for us
+                     , CASE WHEN quote_ident(n.nspname) ~ '^pg_(toast_)?temp_' THEN
+                                 'LOCAL TEMPORARY'
+                            WHEN c.relkind = 'r' THEN
+                                 CASE WHEN quote_ident(n.nspname) ~ '^pg_' THEN
+                                           'SYSTEM TABLE'
+                                      ELSE 'TABLE'
+                                  END
+                            WHEN c.relkind = 'v' THEN
+                                 CASE WHEN quote_ident(n.nspname) ~ '^pg_' THEN
+                                           'SYSTEM VIEW'
+                                      ELSE 'VIEW'
+                                  END
+                            WHEN c.relkind = 'm' THEN
+                                 CASE WHEN quote_ident(n.nspname) ~ '^pg_' THEN
+                                           'SYSTEM MATERIALIZED VIEW'
+                                      ELSE 'MATERIALIZED VIEW'
+                                  END
+                            ELSE 'UNKNOWN'
+                         END AS "TABLE_TYPE"
                      , d.description AS "REMARKS" $showtablespace $extracols
-                FROM pg_catalog.pg_class AS c
-                    LEFT JOIN pg_catalog.pg_description AS d
-                        ON (c.oid = d.objoid AND c.tableoid = d.classoid AND d.objsubid = 0)
-                    LEFT JOIN pg_catalog.pg_namespace n ON (n.oid = c.relnamespace)
-                    LEFT JOIN $TSJOIN
-                WHERE $whereclause
-                ORDER BY "TABLE_TYPE", "TABLE_CAT", "TABLE_SCHEM", "TABLE_NAME"
+                  FROM pg_catalog.pg_class AS c
+                  LEFT JOIN pg_catalog.pg_description AS d
+                       ON (c.oid = d.objoid AND c.tableoid = d.classoid AND d.objsubid = 0)
+                  LEFT JOIN pg_catalog.pg_namespace n ON (n.oid = c.relnamespace)
+                  LEFT JOIN $TSJOIN
+                 WHERE $whereclause
+                 ORDER BY "TABLE_TYPE", "TABLE_CAT", "TABLE_SCHEM", "TABLE_NAME"
                 };
-		}
-		my $sth = $dbh->prepare( $tbl_sql ) or return undef;
-		$sth->execute();
 
-		return $sth;
-	}
+            if (defined($type) and length($type)) {
+                my $type_restrict = join ', ' =>
+                                      map { $dbh->quote($_) unless /^'/ }
+                                        grep {length}
+                                          split(',', $type);
+                $tbl_sql = qq{SELECT * FROM ($tbl_sql) ti WHERE "TABLE_TYPE" IN ($type_restrict)};
+            }
+        }
+        my $sth = $dbh->prepare( $tbl_sql ) or return undef;
+        $sth->execute();
 
-	sub tables {
-			my ($dbh, @args) = @_;
-			my $attr = $args[4];
-			my $sth = $dbh->table_info(@args) or return;
-			my $tables = $sth->fetchall_arrayref() or return;
-			my @tables = map { (! (ref $attr eq 'HASH' and $attr->{pg_noprefix})) ?
-						"$_->[1].$_->[2]" : $_->[2] } @$tables;
-			return @tables;
-	}
+        return $sth;
+    }
 
-	sub table_attributes {
-		my ($dbh, $table) = @_;
+    sub tables {
+            my ($dbh, @args) = @_;
+            my $attr = $args[4];
+            my $sth = $dbh->table_info(@args) or return;
+            my $tables = $sth->fetchall_arrayref() or return;
+            my @tables = map { (! (ref $attr eq 'HASH' and $attr->{pg_noprefix})) ?
+                        "$_->[1].$_->[2]" : $_->[2] } @$tables;
+            return @tables;
+    }
 
-		my $sth = $dbh->column_info(undef,undef,$table,undef);
+    sub table_attributes {
+        my ($dbh, $table) = @_;
 
-		my %convert = (
-			COLUMN_NAME   => 'NAME',
-			DATA_TYPE     => 'TYPE',
-			COLUMN_SIZE   => 'SIZE',
-			NULLABLE      => 'NOTNULL',
-			REMARKS       => 'REMARKS',
-			COLUMN_DEF    => 'DEFAULT',
-			pg_constraint => 'CONSTRAINT',
-		);
+        my $sth = $dbh->column_info(undef,undef,$table,undef);
 
-		my $attrs = $sth->fetchall_arrayref(\%convert);
+        my %convert = (
+            COLUMN_NAME   => 'NAME',
+            DATA_TYPE     => 'TYPE',
+            COLUMN_SIZE   => 'SIZE',
+            NULLABLE      => 'NOTNULL',
+            REMARKS       => 'REMARKS',
+            COLUMN_DEF    => 'DEFAULT',
+            pg_constraint => 'CONSTRAINT',
+        );
 
-		for my $row (@$attrs) {
-			# switch the column names
-			for my $name (keys %$row) {
-				$row->{ $convert{$name} } = $row->{$name};
+        my $attrs = $sth->fetchall_arrayref(\%convert);
 
-				## Keep some original columns
-				delete $row->{$name} unless ($name eq 'REMARKS' or $name eq 'NULLABLE');
+        for my $row (@$attrs) {
+            # switch the column names
+            for my $name (keys %$row) {
+                $row->{ $convert{$name} } = $row->{$name};
 
-			}
-			# Moved check outside of loop as it was inverting the NOTNULL value for
-			# attribute.
-			# NOTNULL inverts the sense of NULLABLE
-			$row->{NOTNULL} = ($row->{NOTNULL} ? 0 : 1);
+                ## Keep some original columns
+                delete $row->{$name} unless ($name eq 'REMARKS' or $name eq 'NULLABLE');
 
-			my @pri_keys = $dbh->primary_key( undef, undef, $table );
-			$row->{PRIMARY_KEY} = scalar(grep { /^$row->{NAME}$/i } @pri_keys) ? 1 : 0;
-		}
+            }
+            # Moved check outside of loop as it was inverting the NOTNULL value for
+            # attribute.
+            # NOTNULL inverts the sense of NULLABLE
+            $row->{NOTNULL} = ($row->{NOTNULL} ? 0 : 1);
 
-		return $attrs;
+            my @pri_keys = $dbh->primary_key( undef, undef, $table );
+            $row->{PRIMARY_KEY} = scalar(grep { /^$row->{NAME}$/i } @pri_keys) ? 1 : 0;
+        }
 
-	}
+        return $attrs;
 
-	sub _calc_col_size {
+    }
 
-		my $mod = shift;
-		my $size = shift;
+    sub _calc_col_size {
 
-
-		if ((defined $size) and ($size > 0)) {
-			return $size;
-		} elsif ($mod > 0xffff) {
-			my $prec = ($mod & 0xffff) - 4;
-			$mod >>= 16;
-			my $dig = $mod;
-			return "$prec,$dig";
-		} elsif ($mod >= 4) {
-			return $mod - 4;
-		} # else {
-			# $rtn = $mod;
-			# $rtn = undef;
-		# }
-
-		return;
-	}
+        my $mod = shift;
+        my $size = shift;
 
 
-	sub type_info_all {
-		my ($dbh) = @_;
+        if ((defined $size) and ($size > 0)) {
+            return $size;
+        } elsif ($mod > 0xffff) {
+            my $prec = ($mod & 0xffff) - 4;
+            $mod >>= 16;
+            my $dig = $mod;
+            return "$prec,$dig";
+        } elsif ($mod >= 4) {
+            return $mod - 4;
+        } # else {
+            # $rtn = $mod;
+            # $rtn = undef;
+        # }
 
-		my $names =
-			{
-			 TYPE_NAME          => 0,
-			 DATA_TYPE          => 1,
-			 COLUMN_SIZE        => 2,
-			 LITERAL_PREFIX     => 3,
-			 LITERAL_SUFFIX     => 4,
-			 CREATE_PARAMS      => 5,
-			 NULLABLE           => 6,
-			 CASE_SENSITIVE     => 7,
-			 SEARCHABLE         => 8,
-			 UNSIGNED_ATTRIBUTE => 9,
-			 FIXED_PREC_SCALE   => 10,
-			 AUTO_UNIQUE_VALUE  => 11,
-			 LOCAL_TYPE_NAME    => 12,
-			 MINIMUM_SCALE      => 13,
-			 MAXIMUM_SCALE      => 14,
-			 SQL_DATA_TYPE      => 15,
-			 SQL_DATETIME_SUB   => 16,
-			 NUM_PREC_RADIX     => 17,
-			 INTERVAL_PRECISION => 18,
-			};
+        return;
+    }
 
-		## This list is derived from dbi_sql.h in DBI, from types.c and types.h, and from the PG docs
 
-		## Aids to make the list more readable:
-		my $GIG = 1073741824;
-		my $PS = 'precision/scale';
-		my $LEN = 'length';
-		my $UN;
-		my $ti =
-			[
-			 $names,
+    sub type_info_all {
+        my ($dbh) = @_;
+
+        my $names =
+            {
+             TYPE_NAME          => 0,
+             DATA_TYPE          => 1,
+             COLUMN_SIZE        => 2,
+             LITERAL_PREFIX     => 3,
+             LITERAL_SUFFIX     => 4,
+             CREATE_PARAMS      => 5,
+             NULLABLE           => 6,
+             CASE_SENSITIVE     => 7,
+             SEARCHABLE         => 8,
+             UNSIGNED_ATTRIBUTE => 9,
+             FIXED_PREC_SCALE   => 10,
+             AUTO_UNIQUE_VALUE  => 11,
+             LOCAL_TYPE_NAME    => 12,
+             MINIMUM_SCALE      => 13,
+             MAXIMUM_SCALE      => 14,
+             SQL_DATA_TYPE      => 15,
+             SQL_DATETIME_SUB   => 16,
+             NUM_PREC_RADIX     => 17,
+             INTERVAL_PRECISION => 18,
+            };
+
+        ## This list is derived from dbi_sql.h in DBI, from types.c and types.h, and from the PG docs
+
+        ## Aids to make the list more readable:
+        my $GIG = 1073741824;
+        my $PS = 'precision/scale';
+        my $LEN = 'length';
+        my $UN;
+        my $ti =
+            [
+             $names,
 # name     sql_type          size   pfx/sfx crt   n/c/s    +-/P/I   local       min max  sub rdx itvl
 
 ['unknown',  SQL_UNKNOWN_TYPE,  0,    $UN,$UN,   $UN,  1,0,0, $UN,0,0, 'UNKNOWN',   $UN,$UN,
@@ -1274,31 +1304,31 @@ use 5.008001;
 ['timestamptz',SQL_TYPE_TIMESTAMP_WITH_TIMEZONE,
                                 29,   q{'},q{'}, $UN,  1,0,2, $UN,0,0, 'TIMESTAMPTZ',0,6,
              SQL_TYPE_TIMESTAMP_WITH_TIMEZONE,                                             $UN, $UN, $UN ],
-		#
-		# intentionally omitted: char, all geometric types, internal types
-	];
-	return $ti;
-	}
+        #
+        # intentionally omitted: char, all geometric types, internal types
+    ];
+    return $ti;
+    }
 
 
-	# Characters that need to be escaped by quote().
-	my %esc = (
-		q{'}  => '\\047', # '\\' . sprintf("%03o", ord("'")), # ISO SQL 2
-		'\\' => '\\134', # '\\' . sprintf("%03o", ord("\\")),
-	);
+    # Characters that need to be escaped by quote().
+    my %esc = (
+        q{'}  => '\\047', # '\\' . sprintf("%03o", ord("'")), # ISO SQL 2
+        '\\' => '\\134', # '\\' . sprintf("%03o", ord("\\")),
+    );
 
-	# Set up lookup for SQL types we don't want to escape.
-	my %no_escape = map { $_ => 1 }
-		DBI::SQL_INTEGER, DBI::SQL_SMALLINT, DBI::SQL_BIGINT, DBI::SQL_DECIMAL,
-		DBI::SQL_FLOAT, DBI::SQL_REAL, DBI::SQL_DOUBLE, DBI::SQL_NUMERIC;
+    # Set up lookup for SQL types we don't want to escape.
+    my %no_escape = map { $_ => 1 }
+        DBI::SQL_INTEGER, DBI::SQL_SMALLINT, DBI::SQL_BIGINT, DBI::SQL_DECIMAL,
+        DBI::SQL_FLOAT, DBI::SQL_REAL, DBI::SQL_DOUBLE, DBI::SQL_NUMERIC;
 
-	sub get_info {
+    sub get_info {
 
-		my ($dbh,$type) = @_;
+        my ($dbh,$type) = @_;
 
-		return undef unless defined $type and length $type;
+        return undef unless defined $type and length $type;
 
-		my %type = (
+        my %type = (
 
 ## Driver information:
 
@@ -1312,7 +1342,7 @@ use 5.008001;
        4 => ['SQL_DRIVER_HENV',                     0                         ], ## not applicable
       76 => ['SQL_DRIVER_HLIB',                     0                         ], ## not applicable
        5 => ['SQL_DRIVER_HSTMT',                    0                         ], ## not applicable
-	   ## Not clear what should go here. Some things suggest 'Pg', others 'Pg.pm'. We'll use DBD::Pg for now
+       ## Not clear what should go here. Some things suggest 'Pg', others 'Pg.pm'. We'll use DBD::Pg for now
        6 => ['SQL_DRIVER_NAME',                     'DBD::Pg'                 ],
       77 => ['SQL_DRIVER_ODBC_VERSION',             '03.00'                   ],
        7 => ['SQL_DRIVER_VER',                      'DBDVERSION'              ], ## magic word
@@ -1480,146 +1510,146 @@ use 5.008001;
      125  => ['SQL_CONVERT_WLONGVARCHAR',           0                          ],
      126  => ['SQL_CONVERT_WVARCHAR',               0                          ],
 
-		); ## end of %type
+        ); ## end of %type
 
-		## Put both numbers and names into a hash
-		my %t;
-		for (keys %type) {
-			$t{$_} = $type{$_}->[1];
-			$t{$type{$_}->[0]} = $type{$_}->[1];
-		}
+        ## Put both numbers and names into a hash
+        my %t;
+        for (keys %type) {
+            $t{$_} = $type{$_}->[1];
+            $t{$type{$_}->[0]} = $type{$_}->[1];
+        }
 
-		return undef unless exists $t{$type};
+        return undef unless exists $t{$type};
 
-		my $ans = $t{$type};
+        my $ans = $t{$type};
 
-		if ($ans eq 'NAMEDATALEN') {
-			return $dbh->selectall_arrayref('SHOW max_identifier_length')->[0][0];
-		}
-		elsif ($ans eq 'ODBCVERSION') {
-			my $version = $dbh->{private_dbdpg}{version};
-			return '00.00.0000' unless $version =~ /^(\d\d?)(\d\d)(\d\d)$/o;
-			return sprintf '%02d.%02d.%.2d00', $1,$2,$3;
-		}
-		elsif ($ans eq 'DBDVERSION') {
-			my $simpleversion = $DBD::Pg::VERSION;
-			$simpleversion =~ s/_/./g;
-			return sprintf '%02d.%02d.%1d%1d%1d%1d', split (/\./, "$simpleversion.0.0.0.0.0.0");
-		}
-		 elsif ($ans eq 'MAXCONNECTIONS') {
-			 return $dbh->selectall_arrayref('SHOW max_connections')->[0][0];
-		 }
-		 elsif ($ans eq 'ENCODING') {
-			 return $dbh->selectall_arrayref('SHOW server_encoding')->[0][0];
-		 }
-		 elsif ($ans eq 'KEYWORDS') {
-			## http://www.postgresql.org/docs/current/static/sql-keywords-appendix.html
-			## Basically, we want ones that are 'reserved' for PostgreSQL but not 'reserved' in SQL:2003
-			## 
-			return join ',' => (qw(ANALYSE ANALYZE ASC DEFERRABLE DESC DO FREEZE ILIKE INITIALLY ISNULL LIMIT NOTNULL OFF OFFSET PLACING RETURNING VERBOSE));
-		 }
-		 elsif ($ans eq 'CURRENTDB') {
-			 return $dbh->selectall_arrayref('SELECT pg_catalog.current_database()')->[0][0];
-		 }
-		 elsif ($ans eq 'READONLY') {
-			 my $SQL = q{SELECT CASE WHEN setting = 'on' THEN 'Y' ELSE 'N' END FROM pg_settings WHERE name = 'transaction_read_only'};
-			 my $info = $dbh->selectall_arrayref($SQL);
-			 return defined $info->[0] ? $info->[0][0] : 'N';
-		 }
-		 elsif ($ans eq 'DEFAULTTXN') {
-			 my $SQL = q{SELECT CASE WHEN setting = 'read committed' THEN 2 ELSE 8 END FROM pg_settings WHERE name = 'default_transaction_isolation'};
-			 my $info = $dbh->selectall_arrayref($SQL);
-			 return defined $info->[0] ? $info->[0][0] : 2;
-		 }
+        if ($ans eq 'NAMEDATALEN') {
+            return $dbh->selectall_arrayref('SHOW max_identifier_length')->[0][0];
+        }
+        elsif ($ans eq 'ODBCVERSION') {
+            my $version = $dbh->{private_dbdpg}{version};
+            return '00.00.0000' unless $version =~ /^(\d\d?)(\d\d)(\d\d)$/o;
+            return sprintf '%02d.%02d.%.2d00', $1,$2,$3;
+        }
+        elsif ($ans eq 'DBDVERSION') {
+            my $simpleversion = $DBD::Pg::VERSION;
+            $simpleversion =~ s/_/./g;
+            return sprintf '%02d.%02d.%1d%1d%1d%1d', split (/\./, "$simpleversion.0.0.0.0.0.0");
+        }
+         elsif ($ans eq 'MAXCONNECTIONS') {
+             return $dbh->selectall_arrayref('SHOW max_connections')->[0][0];
+         }
+         elsif ($ans eq 'ENCODING') {
+             return $dbh->selectall_arrayref('SHOW server_encoding')->[0][0];
+         }
+         elsif ($ans eq 'KEYWORDS') {
+            ## http://www.postgresql.org/docs/current/static/sql-keywords-appendix.html
+            ## Basically, we want ones that are 'reserved' for PostgreSQL but not 'reserved' in SQL:2003
+            ## 
+            return join ',' => (qw(ANALYSE ANALYZE ASC DEFERRABLE DESC DO FREEZE ILIKE INITIALLY ISNULL LIMIT NOTNULL OFF OFFSET PLACING RETURNING VERBOSE));
+         }
+         elsif ($ans eq 'CURRENTDB') {
+             return $dbh->selectall_arrayref('SELECT pg_catalog.current_database()')->[0][0];
+         }
+         elsif ($ans eq 'READONLY') {
+             my $SQL = q{SELECT CASE WHEN setting = 'on' THEN 'Y' ELSE 'N' END FROM pg_settings WHERE name = 'transaction_read_only'};
+             my $info = $dbh->selectall_arrayref($SQL);
+             return defined $info->[0] ? $info->[0][0] : 'N';
+         }
+         elsif ($ans eq 'DEFAULTTXN') {
+             my $SQL = q{SELECT CASE WHEN setting = 'read committed' THEN 2 ELSE 8 END FROM pg_settings WHERE name = 'default_transaction_isolation'};
+             my $info = $dbh->selectall_arrayref($SQL);
+             return defined $info->[0] ? $info->[0][0] : 2;
+         }
 
-		 return $ans;
-	} # end of get_info
+         return $ans;
+    } # end of get_info
 
-	sub private_attribute_info {
-		return {
-				pg_async_status                => undef,
-				pg_bool_tf                     => undef,
-				pg_db                          => undef,
-				pg_default_port                => undef,
-				pg_enable_utf8                 => undef,
-				pg_utf8_flag                   => undef,
-				pg_errorlevel                  => undef,
-				pg_expand_array                => undef,
-				pg_host                        => undef,
-				pg_INV_READ                    => undef,
-				pg_INV_WRITE                   => undef,
-				pg_lib_version                 => undef,
-				pg_options                     => undef,
-				pg_pass                        => undef,
-				pg_pid                         => undef,
-				pg_placeholder_dollaronly      => undef,
-				pg_placeholder_nocolons        => undef,
-				pg_port                        => undef,
-				pg_prepare_now                 => undef,
-				pg_protocol                    => undef,
-				pg_server_prepare              => undef,
-				pg_server_version              => undef,
-				pg_socket                      => undef,
-				pg_standard_conforming_strings => undef,
-				pg_switch_prepared             => undef,
-				pg_user                        => undef,
-		};
-	}
+    sub private_attribute_info {
+        return {
+                pg_async_status                => undef,
+                pg_bool_tf                     => undef,
+                pg_db                          => undef,
+                pg_default_port                => undef,
+                pg_enable_utf8                 => undef,
+                pg_utf8_flag                   => undef,
+                pg_errorlevel                  => undef,
+                pg_expand_array                => undef,
+                pg_host                        => undef,
+                pg_INV_READ                    => undef,
+                pg_INV_WRITE                   => undef,
+                pg_lib_version                 => undef,
+                pg_options                     => undef,
+                pg_pass                        => undef,
+                pg_pid                         => undef,
+                pg_placeholder_dollaronly      => undef,
+                pg_placeholder_nocolons        => undef,
+                pg_port                        => undef,
+                pg_prepare_now                 => undef,
+                pg_protocol                    => undef,
+                pg_server_prepare              => undef,
+                pg_server_version              => undef,
+                pg_socket                      => undef,
+                pg_standard_conforming_strings => undef,
+                pg_switch_prepared             => undef,
+                pg_user                        => undef,
+        };
+    }
 }
 
 
 {
-	package DBD::Pg::st;
+    package DBD::Pg::st;
 
-	sub parse_trace_flag {
-		my ($h, $flag) = @_;
-		return DBD::Pg->parse_trace_flag($flag);
-	}
+    sub parse_trace_flag {
+        my ($h, $flag) = @_;
+        return DBD::Pg->parse_trace_flag($flag);
+    }
 
-	sub bind_param_array {
+    sub bind_param_array {
 
-		## Binds an array of data to a specific placeholder in a statement
-		## The DBI version is broken, so we implement a near-copy here
+        ## Binds an array of data to a specific placeholder in a statement
+        ## The DBI version is broken, so we implement a near-copy here
 
-		my $sth = shift;
-		my ($p_id, $value_array, $attr) = @_;
+        my $sth = shift;
+        my ($p_id, $value_array, $attr) = @_;
 
-		## Bail if the second arg is not undef or an arrayref
-		return $sth->set_err(1, "Value for parameter $p_id must be a scalar or an arrayref, not a ".ref($value_array))
-			if defined $value_array and ref $value_array and ref $value_array ne 'ARRAY';
+        ## Bail if the second arg is not undef or an arrayref
+        return $sth->set_err(1, "Value for parameter $p_id must be a scalar or an arrayref, not a ".ref($value_array))
+            if defined $value_array and ref $value_array and ref $value_array ne 'ARRAY';
 
-		## Bail if the first arg is not a number
-		return $sth->set_err(1, q{Can't use named placeholders for non-driver supported bind_param_array})
-			unless DBI::looks_like_number($p_id); # because we rely on execute(@ary) here
+        ## Bail if the first arg is not a number
+        return $sth->set_err(1, q{Can't use named placeholders for non-driver supported bind_param_array})
+            unless DBI::looks_like_number($p_id); # because we rely on execute(@ary) here
 
-		## Store the list of items in the hash (will be undef or an arrayref)
-		$sth->{ParamArrays}{$p_id} = $value_array;
+        ## Store the list of items in the hash (will be undef or an arrayref)
+        $sth->{ParamArrays}{$p_id} = $value_array;
 
-		## If any attribs were passed in, we need to call bind_param
-		return $sth->bind_param($p_id, '', $attr) if $attr; ## This is the big change so -w does not complain
+        ## If any attribs were passed in, we need to call bind_param
+        return $sth->bind_param($p_id, '', $attr) if $attr; ## This is the big change so -w does not complain
 
-		return 1;
-	} ## end bind_param_array
+        return 1;
+    } ## end bind_param_array
 
- 	sub private_attribute_info {
-		return {
-				pg_async                  => undef,
-				pg_bound                  => undef,
-				pg_current_row            => undef,
-				pg_direct                 => undef,
-				pg_numbound               => undef,
-				pg_cmd_status             => undef,
-				pg_oid_status             => undef,
-				pg_placeholder_dollaronly => undef,
-				pg_placeholder_nocolons   => undef,
-				pg_prepare_name           => undef,
-				pg_prepare_now            => undef,
-				pg_segments               => undef,
-				pg_server_prepare         => undef,
-				pg_size                   => undef,
-				pg_switch_prepared        => undef,
-				pg_type                   => undef,
-		};
+     sub private_attribute_info {
+        return {
+                pg_async                  => undef,
+                pg_bound                  => undef,
+                pg_current_row            => undef,
+                pg_direct                 => undef,
+                pg_numbound               => undef,
+                pg_cmd_status             => undef,
+                pg_oid_status             => undef,
+                pg_placeholder_dollaronly => undef,
+                pg_placeholder_nocolons   => undef,
+                pg_prepare_name           => undef,
+                pg_prepare_now            => undef,
+                pg_segments               => undef,
+                pg_server_prepare         => undef,
+                pg_size                   => undef,
+                pg_switch_prepared        => undef,
+                pg_type                   => undef,
+        };
     }
 
 } ## end st section
@@ -1652,7 +1682,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 3.3.0 of the DBD::Pg module
+This documents version 3.4.0 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
@@ -2751,11 +2781,14 @@ recommended by DBI.
 
   $sth = $dbh->table_info(undef, $schema, $table, $type);
 
-Returns all tables and views visible to the current user. 
-The schema and table arguments will do a C<LIKE> search if a percent sign (C<%>) or an 
-underscore (C<_>) is detected in the argument. The C<$type> argument accepts a value of either 
-"TABLE" or "VIEW" (using both is the default action). Note that a statement handle is returned, 
-and not a direct list of tables. See the examples below for ways to handle this.
+Returns all tables and views visible to the current user.  The schema and table
+arguments will do a C<LIKE> search if a percent sign (C<%>) or an underscore
+(C<_>) is detected in the argument. The C<$type> argument accepts any
+comma-separated combination of "TABLE", "VIEW", "SYSTEM TABLE", "SYSTEM VIEW",
+"MATERIALIZED VIEW", "SYSTEM MATERIALIZED VIEW", or "LOCAL TEMPORARY".  (Using all is the default action.)
+
+Note that a statement handle is returned, and not a direct list of tables. See
+the examples below for ways to handle this.
 
 The following fields are returned:
 
@@ -2765,8 +2798,9 @@ B<TABLE_SCHEM>: The name of the schema that the table or view is in.
 
 B<TABLE_NAME>: The name of the table or view.
 
-B<TABLE_TYPE>: The type of object returned. Will be one of "TABLE", "VIEW", 
-or "SYSTEM TABLE".
+B<TABLE_TYPE>: The type of object returned. Will be one of "TABLE", "VIEW",
+"MATERIALIZED VIEW", "SYSTEM VIEW", "SYSTEM MATERIALIZED VIEW", "SYSTEM TABLE", 
+or "LOCAL TEMPORARY".
 
 The TABLE_SCHEM and TABLE_NAME will be quoted via C<quote_ident()>.
 
@@ -2783,7 +2817,7 @@ B<pg_tablespace_name>: the name of the tablespace the table is in
 
 B<pg_tablespace_location>: the location of the tablespace the table is in
 
-Tables that have not been assigned to a particular tablespace (or views) 
+Tables that have not been assigned to a particular tablespace (or views)
 will return NULL (C<undef>) for both of the above field.
 
 Rows are returned alphabetically, with all tables first, and then all views.
@@ -2929,7 +2963,7 @@ that this is an index expression.
   @names = $dbh->tables( undef, $schema, $table, $type, \%attr );
 
 Supported by this driver as proposed by DBI. This method returns all tables
-and/or views which are visible to the current user: see L</table_info>
+and/or views (including materialized views) which are visible to the current user: see L</table_info>
 for more information about the arguments. The name of the schema appears 
 before the table or view name. This can be turned off by adding in the 
 C<pg_noprefix> attribute:
