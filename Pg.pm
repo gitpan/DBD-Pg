@@ -16,7 +16,7 @@ use 5.008001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('3.4.0');
+	use version; our $VERSION = qv('3.4.1');
 
 	use DBI ();
 	use DynaLoader ();
@@ -1135,7 +1135,7 @@ use 5.008001;
                  ORDER BY "TABLE_TYPE", "TABLE_CAT", "TABLE_SCHEM", "TABLE_NAME"
                 };
 
-            if (defined($type) and length($type)) {
+            if (defined($type) and length($type) and $type ne '%') {
                 my $type_restrict = join ', ' =>
                                       map { $dbh->quote($_) unless /^'/ }
                                         grep {length}
@@ -1682,7 +1682,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 3.4.0 of the DBD::Pg module
+This documents version 3.4.1 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
