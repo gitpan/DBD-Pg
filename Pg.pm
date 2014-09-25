@@ -16,7 +16,7 @@ use 5.008001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('3.4.1');
+	use version; our $VERSION = qv('3.4.2');
 
 	use DBI ();
 	use DynaLoader ();
@@ -1137,7 +1137,7 @@ use 5.008001;
 
             if (defined($type) and length($type) and $type ne '%') {
                 my $type_restrict = join ', ' =>
-                                      map { $dbh->quote($_) unless /^'/ }
+                                      map { /^'/ ? $_ : $dbh->quote($_) }
                                         grep {length}
                                           split(',', $type);
                 $tbl_sql = qq{SELECT * FROM ($tbl_sql) ti WHERE "TABLE_TYPE" IN ($type_restrict)};
@@ -1682,7 +1682,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 3.4.1 of the DBD::Pg module
+This documents version 3.4.2 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
