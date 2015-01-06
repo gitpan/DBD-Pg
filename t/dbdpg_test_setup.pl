@@ -9,6 +9,8 @@ use Cwd;
 use 5.006;
 select(($|=1,select(STDERR),$|=1)[1]);
 
+my $superuser = 1;
+
 my $testfh;
 if (exists $ENV{TEST_OUTPUT}) {
 	my $file = $ENV{TEST_OUTPUT};
@@ -21,6 +23,12 @@ my @matviews =
 	(
 	 'dbd_pg_matview',
      );
+
+my @operators =
+	(
+		'?.integer.integer',
+		'??.text.text',
+    );
 
 my @schemas =
 	(
@@ -97,16 +105,20 @@ version: $version
 
 	## Did we fail last time? Fail this time too, but quicker!
 	if ($testdsn =~ /FAIL!/) {
+		$debug and diag 'Previous failure detected';
 		return $helpconnect, "Previous failure ($error)", undef;
 	}
 
 	## We may want to force an initdb call
 	if (!$helpconnect and $ENV{DBDPG_TESTINITDB}) {
+		$debug and diag 'Jumping to INITDB';
 		goto INITDB;
 	}
 
 	## Got a working DSN? Give it an attempt
 	if ($testdsn and $testuser) {
+
+		$debug and diag "Trying with $testuser and $testdsn";
 
 		## Used by t/01connect.t
 		if ($arg->{dbreplace}) {
@@ -121,6 +133,8 @@ version: $version
 								{RaiseError => 1, PrintError => 0, AutoCommit => 1});
 			1;
 		};
+
+		$debug and diag "Connection failed: $@";
 
 		if ($@ =~ /invalid connection option/ or $@ =~ /dbbarf/) {
 			return $helpconnect, $@, undef;
@@ -221,6 +235,10 @@ version: $version
 		$testuser = 'postgres';
 	}
 
+    # non-ASCII parts of the tests assume UTF8
+    $testdsn =~ s/;?\bclient_encoding=[^;]+//;
+    $testdsn .= ';client_encoding=utf8';
+
 	## From here on out, we don't return directly, but save it first
   GETHANDLE: {
 		eval {
@@ -233,7 +251,7 @@ version: $version
 		if ($@ =~ /postgres/) {
 
 			if ($helpconnect) {
-				$testdsn .= 'dbname=postgres';
+				$testdsn .= ';dbname=postgres';
 				$helpconnect += 2;
 			}
 			$helpconnect += 4;
@@ -536,7 +554,7 @@ version: $version
 		}
 
 		## Attempt to connect to this server
-		$testdsn = "dbi:Pg:dbname=postgres;port=$testport";
+		$testdsn = "dbi:Pg:dbname=postgres;client_encoding=utf8;port=$testport";
 		if ($^O =~ /Win32/) {
 			$testdsn .= ';host=localhost';
 		}
@@ -631,13 +649,16 @@ version: $version
 	$ENV{DBI_DSN} = $testdsn;
 	$ENV{DBI_USER} = $testuser;
 
+	$debug and diag "Got a database handle ($dbh)";
+
 	if ($arg->{quickreturn}) {
+		$debug and diag 'Returning via quickreturn';
 		return $helpconnect, '', $dbh;
 	}
 
 	my $SQL = 'SELECT usesuper FROM pg_user WHERE usename = current_user';
-	my $bga = $dbh->selectall_arrayref($SQL)->[0][0];
-	if ($bga) {
+	$superuser = $dbh->selectall_arrayref($SQL)->[0][0];
+	if ($superuser) {
 		$dbh->do(q{SET LC_MESSAGES = 'C'});
 	}
 
@@ -647,11 +668,13 @@ version: $version
 	}
 	else {
 
+		$debug and diag 'Attempting to cleanup database';
 		cleanup_database($dbh);
 
 		eval {
 			$dbh->do("CREATE SCHEMA $S");
 		};
+		$@ and $debug and diag "Create schema error: $@";
 		if ($@ =~ /Permission denied/ and $helpconnect != 16) {
 			## Okay, this ain't gonna work, let's try initdb
 			goto INITDB;
@@ -698,6 +721,12 @@ return $helpconnect, '', $dbh;
 
 } ## end of connect_database
 
+
+sub is_super {
+
+	return $superuser;
+
+}
 
 sub find_tempdir {
 
@@ -788,6 +817,22 @@ sub relation_exists {
 } ## end of relation_exists
 
 
+sub operator_exists {
+
+	my ($dbh,$opname,$leftarg,$rightarg) = @_;
+
+	my $schema = 'dbd_pg_testschema';
+	my $SQL = 'SELECT 1 FROM pg_operator o, pg_namespace n '.
+		'WHERE oprname=? AND oprleft::regtype::text = ? AND oprright::regtype::text = ?'.
+			' AND o.oprnamespace = n.oid AND n.nspname = ?';
+	my $sth = $dbh->prepare_cached($SQL);
+	my $count = $sth->execute($opname,$leftarg,$rightarg,$schema);
+	$sth->finish();
+	return $count < 1 ? 0 : 1;
+
+} ## end of operator_exists
+
+
 sub cleanup_database {
 
 	## Clear out any testing objects in the current database
@@ -805,6 +850,12 @@ sub cleanup_database {
 		my $schema = ($name =~ s/(.+)\.(.+)/$2/) ? $1 : $S;
 		next if ! relation_exists($dbh,$schema,$name);
 		$dbh->do("DROP MATERIALIZED VIEW $schema.$name");
+	}
+
+	for my $name (@operators) {
+		my ($opname,$leftarg,$rightarg) = split /\./ => $name;
+		next if ! operator_exists($dbh,$opname,$leftarg,$rightarg);
+		$dbh->do("DROP OPERATOR dbd_pg_testschema.$opname($leftarg,$rightarg)");
 	}
 
 	for my $name (@tables) {

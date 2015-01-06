@@ -18,7 +18,7 @@ my ($helpconnect,$connerror,$dbh) = connect_database();
 if (! $dbh) {
 	plan skip_all => 'Connection to database failed, cannot continue testing';
 }
-plan tests => 260;
+plan tests => 259;
 
 isnt ($dbh, undef, 'Connect to database for handle attributes testing');
 
@@ -194,7 +194,6 @@ is ($rows, 1, $t);
 
 ok ($dbh2->disconnect(), 'Disconnect with second database handle');
 
-
 #
 # Test of the database handle attribute "Driver"
 #
@@ -219,6 +218,7 @@ SKIP: {
 	$expected =~ s/(db|database)=/dbname=/;
 	is ($attrib, $expected, $t);
 }
+
 
 #
 # Test of the database handle attribute "RowCacheSize"
@@ -281,7 +281,6 @@ $dbh->{PrintWarn}=1;
 $dbh->rollback();
 
 }
-
 
 #
 # Test of the database handle attributes "pg_INV_WRITE" and "pg_INV_READ"
@@ -401,13 +400,6 @@ SKIP: {
 	$result = $dbh->{pg_standard_conforming_strings};
 	$dbh->do("SET standard_conforming_strings = $oldscs");
 	is ($result, 'off', $t);
-}
-
-## If Encode is available, we will insert some non-ASCII into the test table
-## Since this will fail with client encodings such as BIG5, we force UTF8
-my $old_encoding = $dbh->selectall_arrayref('SHOW client_encoding')->[0][0];
-if ($old_encoding ne 'UTF8') {
-	$dbh->do(q{SET NAMES 'UTF8'});
 }
 
 # Attempt to test whether or not we can get unicode out of the database
@@ -961,20 +953,16 @@ q{SELECT * FROM dbd_pg_test},
 	like ($result, qr/^$expected/, $t);
 }
 
-## From this point forward, it is safe to use the client's native encoding again
-if ($old_encoding ne 'UTF8') {
-	$dbh->do(qq{SET NAMES '$old_encoding'});
-}
-
 #
 # Test of the handle attribute "Active"
 #
+
 
 $t='Database handle attribute "Active" is true while connected';
 $attrib = $dbh->{Active};
 is ($attrib, 1, $t);
 
-$t='Statement handle attribute "Active" is false before SELECT';
+
 $sth = $dbh->prepare('SELECT 123 UNION SELECT 456');
 $attrib = $sth->{Active};
 is ($attrib, '', $t);
@@ -997,6 +985,7 @@ is ($attrib, '', $t);
 #
 # Test of the handle attribute "Executed"
 #
+
 
 my $dbh3 = connect_database({quickreturn => 1});
 $dbh3->{AutoCommit} = 0;
@@ -1043,20 +1032,18 @@ is ($dbh3->{Executed}, '', $t);
 $t='Statement handle attribute "Executed" is true after rollback()';
 is ($sth->{Executed}, 1, $t);
 
-$dbh3->disconnect();
-
 #
 # Test of the handle attribute "Kids"
 #
 
 $t='Database handle attribute "Kids" is set properly';
-$attrib = $dbh->{Kids};
-is ($attrib, 2, $t);
+$attrib = $dbh3->{Kids};
+is ($attrib, 1, $t);
 
 $t='Database handle attribute "Kids" works';
-my $sth2 = $dbh->prepare('SELECT 234');
-$attrib = $dbh->{Kids};
-is ($attrib, 3, $t);
+my $sth2 = $dbh3->prepare('SELECT 234');
+$attrib = $dbh3->{Kids};
+is ($attrib, 2, $t);
 
 $t='Statement handle attribute "Kids" is zero';
 $attrib = $sth2->{Kids};
@@ -1067,26 +1054,33 @@ is ($attrib, 0, $t);
 #
 
 $t='Database handle attribute "ActiveKids" is set properly';
-$attrib = $dbh->{ActiveKids};
+$attrib = $dbh3->{ActiveKids};
 is ($attrib, 0, $t);
 
 $t='Database handle attribute "ActiveKids" works';
-$sth2 = $dbh->prepare('SELECT 234');
+$sth2 = $dbh3->prepare('SELECT 234');
 $sth2->execute();
-$attrib = $dbh->{ActiveKids};
+$attrib = $dbh3->{ActiveKids};
 is ($attrib, 1, $t);
 
 $t='Statement handle attribute "ActiveKids" is zero';
 $attrib = $sth2->{ActiveKids};
 is ($attrib, 0, $t);
+$sth2->finish();
 
 #
 # Test of the handle attribute "CachedKids"
 #
 
 $t='Database handle attribute "CachedKids" is set properly';
-$attrib = $dbh->{CachedKids};
-is (keys %$attrib, 2, $t);
+$attrib = $dbh3->{CachedKids};
+is (keys %$attrib, 0, $t);
+my $sth4 = $dbh3->prepare_cached('select 1');
+$attrib = $dbh3->{CachedKids};
+is (keys %$attrib, 1, $t);
+$sth4->finish();
+
+$dbh3->disconnect();
 
 #
 # Test of the handle attribute "Type"
@@ -1114,17 +1108,17 @@ is_deeply ($attrib, [], $t);
 
 $t='Statement handle attribute "ChildHandles" is an empty list on creation';
 {
-	my $sth4 = $dbh4->prepare('SELECT 1');
-	$attrib = $sth4->{ChildHandles};
+	my $sth5 = $dbh4->prepare('SELECT 1');
+	$attrib = $sth5->{ChildHandles};
 	is_deeply ($attrib, [], $t);
 
 	$t='Database handle attribute "ChildHandles" contains newly created statement handle';
 	$attrib = $dbh4->{ChildHandles};
-	is_deeply ($attrib, [$sth4], $t);
+	is_deeply ($attrib, [$sth5], $t);
 
 	$sth4->finish();
 
-} ## sth4 now out of scope
+} ## sth5 now out of scope
 
 $t='Database handle attribute "ChildHandles" has undef for destroyed statement handle';
 $attrib = $dbh4->{ChildHandles};
@@ -1595,10 +1589,6 @@ SKIP: {
 			$t=qq{Ping fails after the child has exited ("AutoInactiveDestroy" = $destroy)};
 			is ( $dbh->ping(), 0, $t);
 
-			$t='Failed ping returns a SQLSTATE code of 08000';
-			my $state = $dbh->state();
-			is ($state, '08000', $t);
-
 			$t=qq{pg_ping gives an error code of -2 after the child has exited ("AutoInactiveDestroy" = $destroy)};
 			is ( $dbh->pg_ping(), -2, $t);
 			ok ($dbh->disconnect(), 'Disconnect from database');
@@ -1666,10 +1656,6 @@ SKIP: {
 		else {
 			$t=qq{Ping fails after the child has exited ("InactiveDestroy" = $destroy)};
 			is ( $dbh->ping(), 0, $t);
-
-			$t='Failed ping returns a SQLSTATE code of 08000';
-			my $state = $dbh->state();
-			is ($state, '08000', $t);
 
 			$t=qq{pg_ping gives an error code of -2 after the child has exited ("InactiveDestroy" = $destroy)};
 			is ( $dbh->pg_ping(), -2,$t);

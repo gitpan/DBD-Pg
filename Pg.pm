@@ -1,6 +1,6 @@
 #  -*-cperl-*-
 #
-#  Copyright (c) 2002-2014 Greg Sabino Mullane and others: see the Changes file
+#  Copyright (c) 2002-2015 Greg Sabino Mullane and others: see the Changes file
 #  Portions Copyright (c) 2002 Jeffrey W. Baker
 #  Portions Copyright (c) 1997-2001 Edmund Mergl
 #  Portions Copyright (c) 1994-1997 Tim Bunce
@@ -16,7 +16,7 @@ use 5.008001;
 {
 	package DBD::Pg;
 
-	use version; our $VERSION = qv('3.4.2');
+	use version; our $VERSION = qv('3.5.0');
 
 	use DBI ();
 	use DynaLoader ();
@@ -626,7 +626,7 @@ use 5.008001;
                 i.indisunique desc, a.amname, c.relname
         };
 
-		my $indexdef_sql = qq{
+		my $indexdef_sql = q{
             SELECT
                 pg_get_indexdef(indexrelid,x,true)
             FROM
@@ -961,7 +961,7 @@ use 5.008001;
 				JOIN pg_catalog.pg_class idx ON (
 					idx.oid = dep.refobjid AND idx.relkind='i'
 				)
-				LEFT JOIN pg_catalog.pg_depend dep2	ON (
+				LEFT JOIN pg_catalog.pg_depend dep2 ON (
 					dep2.classid = 'pg_catalog.pg_class'::regclass
 					AND dep2.objid = idx.oid
 					AND dep2.objsubid = 0
@@ -1139,7 +1139,7 @@ use 5.008001;
                 my $type_restrict = join ', ' =>
                                       map { /^'/ ? $_ : $dbh->quote($_) }
                                         grep {length}
-                                          split(',', $type);
+                                          split(',', $type); ## no critic
                 $tbl_sql = qq{SELECT * FROM ($tbl_sql) ti WHERE "TABLE_TYPE" IN ($type_restrict)};
             }
         }
@@ -1322,13 +1322,7 @@ use 5.008001;
         DBI::SQL_INTEGER, DBI::SQL_SMALLINT, DBI::SQL_BIGINT, DBI::SQL_DECIMAL,
         DBI::SQL_FLOAT, DBI::SQL_REAL, DBI::SQL_DOUBLE, DBI::SQL_NUMERIC;
 
-    sub get_info {
-
-        my ($dbh,$type) = @_;
-
-        return undef unless defined $type and length $type;
-
-        my %type = (
+    my %get_info_type = (
 
 ## Driver information:
 
@@ -1336,7 +1330,7 @@ use 5.008001;
    10021 => ['SQL_ASYNC_MODE',                      2                         ], ## SQL_AM_STATEMENT
      120 => ['SQL_BATCH_ROW_COUNT',                 2                         ], ## SQL_BRC_EXPLICIT
      121 => ['SQL_BATCH_SUPPORT',                   3                         ], ## 12 SELECT_PROC + ROW_COUNT_PROC
-       2 => ['SQL_DATA_SOURCE_NAME',                "dbi:Pg:$dbh->{Name}"     ],
+       2 => ['SQL_DATA_SOURCE_NAME',                sub { sprintf 'dbi:Pg:%', shift->{Name} } ],
        3 => ['SQL_DRIVER_HDBC',                     0                         ], ## not applicable
      135 => ['SQL_DRIVER_HDESC',                    0                         ], ## not applicable
        4 => ['SQL_DRIVER_HENV',                     0                         ], ## not applicable
@@ -1356,21 +1350,22 @@ use 5.008001;
      150 => ['SQL_KEYSET_CURSOR_ATTRIBUTES1',       0                         ], ## applies to us?
      151 => ['SQL_KEYSET_CURSOR_ATTRIBUTES2',       0                         ], ## see above
    10022 => ['SQL_MAX_ASYNC_CONCURRENT_STATEMENTS', 0                         ], ## unlimited, probably
-       0 => ['SQL_MAX_DRIVER_CONNECTIONS',          'MAXCONNECTIONS'          ], ## magic word
+       0 => ['SQL_MAX_DRIVER_CONNECTIONS',          \'SHOW max_connections'   ],
      152 => ['SQL_ODBC_INTERFACE_CONFORMANCE',      1                         ], ## SQL_OIC_LEVEL_1
       10 => ['SQL_ODBC_VER',                        '03.00.0000'              ],
      153 => ['SQL_PARAM_ARRAY_ROW_COUNTS',          2                         ], ## correct?
      154 => ['SQL_PARAM_ARRAY_SELECTS',             3                         ], ## PAS_NO_SELECT
       11 => ['SQL_ROW_UPDATES',                     'N'                       ],
       14 => ['SQL_SEARCH_PATTERN_ESCAPE',           '\\'                      ],
-      13 => ['SQL_SERVER_NAME',                     'CURRENTDB'               ], ## magic word
+      13 => ['SQL_SERVER_NAME',                     \'SELECT pg_catalog.current_database()' ],
      166 => ['SQL_STANDARD_CLI_CONFORMANCE',        2                         ], ## ??
      167 => ['SQL_STATIC_CURSOR_ATTRIBUTES1',       519                       ], ## ??
      168 => ['SQL_STATIC_CURSOR_ATTRIBUTES2',       5209                      ], ## ??
+    9000 => ['9000',                                1                         ], ## can escape placeholders
 
 ## DBMS Information
 
-      16 => ['SQL_DATABASE_NAME',                   'CURRENTDB'               ], ## magic word
+      16 => ['SQL_DATABASE_NAME',                   \'SELECT pg_catalog.current_database()' ],
       17 => ['SQL_DBMS_NAME',                       'PostgreSQL'              ],
       18 => ['SQL_DBMS_VERSION',                    'ODBCVERSION'             ], ## magic word
 
@@ -1380,7 +1375,7 @@ use 5.008001;
       19 => ['SQL_ACCESSIBLE_TABLES',               'Y'                       ], ## is this really true?
       82 => ['SQL_BOOKMARK_PERSISTENCE',            0                         ],
       42 => ['SQL_CATALOG_TERM',                    ''                        ], ## empty = catalogs are not supported
-   10004 => ['SQL_COLLATION_SEQ',                   'ENCODING'                ], ## magic word
+   10004 => ['SQL_COLLATION_SEQ',                   \'SHOW server_encoding'   ],
       22 => ['SQL_CONCAT_NULL_BEHAVIOR',            0                         ], ## SQL_CB_NULL
       23 => ['SQL_CURSOR_COMMIT_BEHAVIOR',          1                         ], ## SQL_CB_CLOSE
       24 => ['SQL_CURSOR_ROLLBACK_BEHAVIOR',        1                         ], ## SQL_CB_CLOSE
@@ -1398,7 +1393,7 @@ use 5.008001;
       45 => ['SQL_TABLE_TERM',                      'table'                   ],
       46 => ['SQL_TXN_CAPABLE',                     2                         ], ## SQL_TC_ALL
       72 => ['SQL_TXN_ISOLATION_OPTION',            10                        ], ## 2+8
-      47 => ['SQL_USER_NAME',                       $dbh->{CURRENT_USER}      ],
+      47 => ['SQL_USER_NAME',                       sub { shift->{CURRENT_USER} } ],
 
 ## Supported SQL
 
@@ -1509,21 +1504,28 @@ use 5.008001;
      122  => ['SQL_CONVERT_WCHAR',                  0                          ],
      125  => ['SQL_CONVERT_WLONGVARCHAR',           0                          ],
      126  => ['SQL_CONVERT_WVARCHAR',               0                          ],
+    ); ## end of %get_info_type
+    ## Add keys for names into the hash
+    for (keys %get_info_type) {
+        $get_info_type{$get_info_type{$_}->[0]} = $get_info_type{$_};
+    }
 
-        ); ## end of %type
+    sub get_info {
 
-        ## Put both numbers and names into a hash
-        my %t;
-        for (keys %type) {
-            $t{$_} = $type{$_}->[1];
-            $t{$type{$_}->[0]} = $type{$_}->[1];
+        my ($dbh,$type) = @_;
+
+        return undef unless defined $type;
+        return undef unless exists $get_info_type{$type};
+
+        my $ans = $get_info_type{$type}->[1];
+
+        if (ref $ans eq 'CODE') {
+            $ans = $ans->($dbh);
         }
-
-        return undef unless exists $t{$type};
-
-        my $ans = $t{$type};
-
-        if ($ans eq 'NAMEDATALEN') {
+        elsif (ref $ans eq 'SCALAR') { # SQL
+            return $dbh->selectall_arrayref($$ans)->[0][0];
+        }
+        elsif ($ans eq 'NAMEDATALEN') {
             return $dbh->selectall_arrayref('SHOW max_identifier_length')->[0][0];
         }
         elsif ($ans eq 'ODBCVERSION') {
@@ -1536,20 +1538,11 @@ use 5.008001;
             $simpleversion =~ s/_/./g;
             return sprintf '%02d.%02d.%1d%1d%1d%1d', split (/\./, "$simpleversion.0.0.0.0.0.0");
         }
-         elsif ($ans eq 'MAXCONNECTIONS') {
-             return $dbh->selectall_arrayref('SHOW max_connections')->[0][0];
-         }
-         elsif ($ans eq 'ENCODING') {
-             return $dbh->selectall_arrayref('SHOW server_encoding')->[0][0];
-         }
          elsif ($ans eq 'KEYWORDS') {
             ## http://www.postgresql.org/docs/current/static/sql-keywords-appendix.html
             ## Basically, we want ones that are 'reserved' for PostgreSQL but not 'reserved' in SQL:2003
             ## 
             return join ',' => (qw(ANALYSE ANALYZE ASC DEFERRABLE DESC DO FREEZE ILIKE INITIALLY ISNULL LIMIT NOTNULL OFF OFFSET PLACING RETURNING VERBOSE));
-         }
-         elsif ($ans eq 'CURRENTDB') {
-             return $dbh->selectall_arrayref('SELECT pg_catalog.current_database()')->[0][0];
          }
          elsif ($ans eq 'READONLY') {
              my $SQL = q{SELECT CASE WHEN setting = 'on' THEN 'Y' ELSE 'N' END FROM pg_settings WHERE name = 'transaction_read_only'};
@@ -1584,6 +1577,7 @@ use 5.008001;
                 pg_pid                         => undef,
                 pg_placeholder_dollaronly      => undef,
                 pg_placeholder_nocolons        => undef,
+                pg_placeholder_escapes         => undef,
                 pg_port                        => undef,
                 pg_prepare_now                 => undef,
                 pg_protocol                    => undef,
@@ -1682,7 +1676,7 @@ DBD::Pg - PostgreSQL database driver for the DBI module
 
 =head1 VERSION
 
-This documents version 3.4.2 of the DBD::Pg module
+This documents version 3.5.0 of the DBD::Pg module
 
 =head1 DESCRIPTION
 
@@ -2495,8 +2489,12 @@ use different ones for each statement handle you have. This is confusing at best
 stick to one style within your program.
 
 If your queries use operators that contain question marks (e.g. some of the native 
-Postgres geometric operators) or array slices (e.g. C<data[100:300]>), you can tell 
-DBD::Pg to ignore any non-dollar sign placeholders by setting the 
+Postgres geometric operators and JSON operators) or array slices (e.g. C<data[100:300]>), 
+there are methods to instruct DBD::Pg to not treat some symbols as placeholders. First, you 
+may simply add a backslash before the start of a placeholder, and DBD::Pg will strip the 
+backslash and not treat the character as a placeholder. 
+
+You can also tell DBD::Pg to ignore any non-dollar sign placeholders by setting the 
 L<pg_placeholder_dollaronly|/pg_placeholder_dollaronly_(boolean)> attribute at either the database handle or the statement 
 handle level. Examples:
 
@@ -2738,9 +2736,11 @@ server version 9.0 or higher.
 
   $rv = $dbh->ping;
 
-This C<ping> method is used to check the validity of a database handle. The value returned is 
-either 0, indicating that the connection is no longer valid, or a positive integer, indicating 
-the following:
+The C<ping> method determines if there is a working connection to an active 
+database server. It does this by sending a small query to the server, currently 
+B<'DBD::Pg ping test v3.5.0'>. It returns 0 (false) if the connection is not valid, 
+otherwise it returns a positive number (true). The value returned indicates the 
+current state:
 
   Value    Meaning
   --------------------------------------------------
@@ -2766,9 +2766,8 @@ return the following:
   --------------------------------------------------
    -1      There is no connection to the database at all (e.g. after disconnect)
    -2      An unknown transaction status was returned (e.g. after forking)
-   -3      The handle exists, but no data was returned from a test query.
-
-In practice, you should only ever see -1 and -2.
+   -3      The test query failed (PQexec returned null)
+   -4      PQstatus returned a CONNECTION_BAD
 
 =head3 B<get_info>
 
@@ -3125,13 +3124,15 @@ this was the default behavior in versions older than 3.0.0.
 
 DBD::Pg specific attribute. Defaults to false. When true, question marks inside of statements 
 are not treated as L<placeholders|/Placeholders>. Useful for statements that contain unquoted question 
-marks, such as geometric operators.
+marks, such as geometric operators. Note that you may also simply escape question marks with 
+a backslash to prevent them from being treated as placeholders.
 
 =head3 B<pg_placeholder_nocolons> (boolean)
 
 DBD::Pg specific attribute. Defaults to false. When true, colons inside of statements
 are not treated as L<placeholders|/Placeholders>. Useful for statements that contain an
-array slice.
+array slice. You may also place a backslash directly before the colon to prevent it from 
+being treated as a placeholder.
 
 =head3 B<pg_enable_utf8> (integer)
 
@@ -3796,15 +3797,17 @@ Setting pg_switch_prepared to 0 will force DBD::Pg to always use PQexecParams.
 
 =head3 B<pg_placeholder_dollaronly> (boolean)
 
-DBD::Pg specific attribute. Defaults to off. When true, question marks inside of the query 
+DBD::Pg specific attribute. Defaults to false. When true, question marks inside of the query 
 being prepared are not treated as placeholders. Useful for statements that contain unquoted question 
-marks, such as geometric operators.
+marks, such as geometric operators. Note that you may also simply escape question marks with 
+a backslash to prevent them from being treated as placeholders.
 
 =head3 B<pg_placeholder_nocolons> (boolean)
 
-DBD::Pg specific attribute. Defaults to off. When true, colons inside of statements
+DBD::Pg specific attribute. Defaults to false. When true, colons inside of statements
 are not treated as L<placeholders|/Placeholders>. Useful for statements that contain an
-array slice.
+array slice. You may also place a backslash directly before the colon to prevent it from 
+being treated as a placeholder.
 
 =head3 B<pg_async> (integer)
 
@@ -4270,7 +4273,7 @@ Visit the archives at http://grokbase.com/g/perl/dbd-pg
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 1994-2014, Greg Sabino Mullane
+Copyright (C) 1994-2015, Greg Sabino Mullane
 
 This module (DBD::Pg) is free software; you can redistribute it and/or modify it 
 under the same terms as Perl 5.10.0. For more details, see the full text of the 

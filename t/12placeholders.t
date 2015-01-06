@@ -17,7 +17,7 @@ my $dbh = connect_database();
 if (! $dbh) {
 	plan skip_all => 'Connection to database failed, cannot continue testing';
 }
-plan tests => 251;
+plan tests => 256;
 
 my $t='Connect to database for placeholder testing';
 isnt ($dbh, undef, $t);
@@ -168,12 +168,6 @@ $sth->finish();
 is ($count, 1, $t);
 
 $sth->finish();
-
-## Force client encoding, as we cannot use backslashes in client-only encodings
-my $old_encoding = $dbh->selectall_arrayref('SHOW client_encoding')->[0][0];
-if ($old_encoding ne 'UTF8') {
-	$dbh->do(q{SET NAMES 'UTF8'});
-}
 
 $t='Prepare with backslashes inside quotes works';
 $SQL = q{SELECT setting FROM pg_settings WHERE name = 'backslash_quote'};
@@ -414,7 +408,7 @@ for my $line (split /\n\n+/ => $testdata) {
 	$dbh->do('DELETE FROM dbd_pg_test_geom');
 	eval { $qresult = $dbh->quote($input, {pg_type => $typemap{$type}}); };
 	if ($@) {
-		if ($quoted !~ /ERROR: (.+)/) {
+		if ($quoted !~ /ERROR: (.+)/) { ## no critic
 			fail ("$t error: $@");
 		}
 		else {
@@ -428,7 +422,7 @@ for my $line (split /\n\n+/ => $testdata) {
 
 	eval { $dbh->do("EXECUTE geotest('$input')"); };
 	if ($@) {
-		if ($rows !~ /ERROR: (.+)/) {
+		if ($rows !~ /ERROR: .+/) {
 			fail ("$t error: $@");
 		}
 		else {
@@ -440,7 +434,7 @@ for my $line (split /\n\n+/ => $testdata) {
 
 	eval { $sth->execute($input); };
 	if ($@) {
-		if ($rows !~ /ERROR: (.+)/) {
+		if ($rows !~ /ERROR: .+/) {
 			fail ($t);
 		}
 		else {
@@ -661,13 +655,19 @@ for my $char (qw{0 9 A Z a z}) { ## six letters
 	is ($@, q{}, $t);
 }
 
-for my $ident (qq{\x{5317}}, qq{abc\x{5317}}, qq{_cde\x{5317}}) { ## hi-bit chars
-	eval {
-		$sth = $dbh->prepare(qq{SELECT \$$ident\$ 123 \$$ident\$});
-		$sth->execute();
-		$sth->finish();
-	};
-	is ($@, q{}, $t);
+SKIP: {
+	my $server_encoding = $dbh->selectrow_array('SHOW server_encoding');
+	skip "Cannot test non-ascii dollar quotes with server_encoding='$server_encoding' (need UTF8 or SQL_ASCII)", 3,
+		unless $server_encoding =~ /\A(?:UTF8|SQL_ASCII)\z/;
+
+	for my $ident (qq{\x{5317}}, qq{abc\x{5317}}, qq{_cde\x{5317}}) { ## hi-bit chars
+		eval {
+			$sth = $dbh->prepare(qq{SELECT \$$ident\$ 123 \$$ident\$});
+			$sth->execute();
+			$sth->finish();
+		};
+		is ($@, q{}, $t);
+	}
 }
 
 }
@@ -841,10 +841,68 @@ while (my ($name,$res) = each %booltest) {
 	}
 }
 
+## Test of placeholder escaping. Enabled by default, so let's jump right in
+$t = q{Basic placeholder escaping works via backslash-question mark for \?};
+
+## But first, we need some operators
+$dbh->do('create operator ? (leftarg=int,rightarg=int,procedure=int4eq)');
+$dbh->commit();
+$dbh->do('create operator ?? (leftarg=text,rightarg=text,procedure=texteq)');
+$dbh->commit();
+
+$SQL = qq{SELECT count(*) FROM dbd_pg_test WHERE id \\? ?}; ## no critic
+$sth = $dbh->prepare($SQL);
+eval {
+	$count = $sth->execute(123);
+};
+is($@, '', $t);
+$sth->finish();
+
+$t = q{Basic placeholder escaping works via backslash-question mark for \?\?};
+$SQL = qq{SELECT count(*) FROM dbd_pg_test WHERE pname \\?\\? ?}; ## no critic
+$sth = $dbh->prepare($SQL);
+eval {
+	$count = $sth->execute('foobar');
+};
+is($@, '', $t);
+$sth->finish();
+
+## This is an emergency hatch only. Hopefully will never be used in the wild!
+$dbh->{pg_placeholder_escaped} = 0;
+$t = q{Basic placeholder escaping fails when pg_placeholder_escaped is set to false};
+$SQL = qq{SELECT count(*) FROM dbd_pg_test WHERE pname \\?\\? ?}; ## no critic
+$sth = $dbh->prepare($SQL);
+eval {
+	$count = $sth->execute('foobar');
+};
+like($@, qr{execute}, $t);
+$sth->finish();
+
+## The space before the colon is significant here
+$SQL = qq{SELECT testarray [1 :5] FROM dbd_pg_test WHERE pname = :foo};
+$sth = $dbh->prepare($SQL);
+eval {
+	$sth->bind_param(':foo', 'abc');
+	$count = $sth->execute();
+};
+like($@, qr{execute}, $t);
+$sth->finish();
+
+$t = q{Placeholder escaping works for colons};
+$dbh->{pg_placeholder_escaped} = 1;
+$SQL = qq{SELECT testarray [1 \\:5] FROM dbd_pg_test WHERE pname = :foo};
+$sth = $dbh->prepare($SQL);
+eval {
+	$sth->bind_param(':foo', 'abc');
+	$count = $sth->execute();
+};
+is($@, '', $t);
+$sth->finish();
+
+
 ## Begin custom type testing
 
 $dbh->rollback();
 
 cleanup_database($dbh,'test');
 $dbh->disconnect();
-

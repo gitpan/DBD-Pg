@@ -1,5 +1,5 @@
 /*
-    Copyright (c) 2000-2014 Greg Sabino Mullane and others: see the Changes file
+    Copyright (c) 2000-2015 Greg Sabino Mullane and others: see the Changes file
 	Portions Copyright (c) 1997-2000 Edmund Mergl
 	Portions Copyright (c) 1994-1997 Tim Bunce
 	
@@ -37,6 +37,7 @@ struct imp_dbh_st {
 	bool    done_begin;        /* have we done a begin? (e.g. are we in a transaction?) */
 	bool    dollaronly;        /* only consider $1, $2 ... as valid placeholders */
 	bool    nocolons;          /* do not consider :1, :2 ... as valid placeholders */
+	bool    ph_escaped;        /* allow backslash to escape placeholders */
 	bool    expand_array;      /* transform arrays from the db into Perl arrays? Default is 1 */
 	bool    txn_read_only;     /* are we in read-only mode? Set with $dbh->{ReadOnly} */
 

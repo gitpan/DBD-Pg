@@ -1,6 +1,6 @@
 /*
 
-  Copyright (c) 2002-2014 Greg Sabino Mullane and others: see the Changes file
+  Copyright (c) 2002-2015 Greg Sabino Mullane and others: see the Changes file
   Portions Copyright (c) 2002 Jeffrey W. Baker
   Portions Copyright (c) 1997-2000 Edmund Mergl
   Portions Copyright (c) 1994-1997 Tim Bunce
@@ -237,6 +237,7 @@ int dbd_db_login6 (SV * dbh, imp_dbh_t * imp_dbh, char * dbname, char * uid, cha
 	imp_dbh->done_begin        = DBDPG_FALSE;
 	imp_dbh->dollaronly        = DBDPG_FALSE;
 	imp_dbh->nocolons          = DBDPG_FALSE;
+	imp_dbh->ph_escaped        = DBDPG_TRUE;
 	imp_dbh->expand_array      = DBDPG_TRUE;
 	imp_dbh->txn_read_only     = DBDPG_FALSE;
 	imp_dbh->pid_number        = getpid();
@@ -455,6 +456,7 @@ int dbd_db_ping (SV * dbh)
 	D_imp_dbh(dbh);
 	PGTransactionStatusType tstatus;
 	ExecStatusType          status;
+	PGresult              * result;
 
 	if (TSTART_slow) TRC(DBILOGFP, "%sBegin dbd_db_ping\n", THEADER_slow);
 
@@ -464,7 +466,6 @@ int dbd_db_ping (SV * dbh)
 	}
 
 	tstatus = pg_db_txn_status(aTHX_ imp_dbh);
-
 	if (TRACE5_slow) TRC(DBILOGFP, "%sdbd_db_ping txn_status is %d\n", THEADER_slow, tstatus);
 
 	if (tstatus >= 4) { /* Unknown, so we err on the side of "bad" */
@@ -472,25 +473,34 @@ int dbd_db_ping (SV * dbh)
 		return -2;
 	}
 
-	if (tstatus != 0) {/* 2=active, 3=intrans, 4=inerror */
-		if (TEND_slow) TRC(DBILOGFP, "%sEnd dbd_pg_ping (result: %d)\n", THEADER_slow, 1+tstatus);
+	/* No matter what state we are in, send an empty query to the backend */
+	result = PQexec(imp_dbh->conn, "/* DBD::Pg ping test v3.5.0 */");
+	if (NULL == result) {
+		/* Something very bad, usually indicating the backend is gone */
+		return -3;
+	}
+	status = PQresultStatus(result);
+	PQclear(result);
+
+	/* We expect to see an empty query most times */
+	if (PGRES_EMPTY_QUERY == status) {
+		if (TEND_slow) TRC(DBILOGFP, "%sEnd dbd_pg_ping (PGRES_EMPTY_QUERY)\n", THEADER_slow);
 		return 1+tstatus;
+		/* 0=idle 1=active 2=intrans 3=inerror 4=unknown */
 	}
 
-	/* Even though it may be reported as normal, we have to make sure by issuing a command */
-
-	status = _result(aTHX_ imp_dbh, "SELECT 'DBD::Pg ping test'");
-
-	if (PGRES_TUPLES_OK == status) {
-		if (TEND_slow) TRC(DBILOGFP, "%sEnd dbd_pg_ping (result: 1 PGRES_TUPLES_OK)\n", THEADER_slow);
-		return 1;
+	/* As a safety measure, check PQstatus as well */
+	if (CONNECTION_BAD == PQstatus(imp_dbh->conn)) {
+		if (TEND_slow) TRC(DBILOGFP, "%sEnd dbd_pg_ping (PQstatus returned CONNECTION_BAD)\n", THEADER_slow);
+		return -4;
 	}
 
-	if (TEND_slow) TRC(DBILOGFP, "%sEnd dbd_pg_ping (result: -3)\n", THEADER_slow);
-	return -3;
+	if (TEND_slow) TRC(DBILOGFP, "%sEnd dbd_pg_ping\n", THEADER_slow);
+
+	return 1+tstatus;
 
 } /* end of dbd_db_ping */
-
+ 
 
 /* ================================================================== */
 static PGTransactionStatusType pg_db_txn_status (pTHX_ imp_dbh_t * imp_dbh)
@@ -958,6 +968,14 @@ int dbd_db_STORE_attrib (SV * dbh, imp_dbh_t * imp_dbh, SV * keysv, SV * valuesv
 				imp_dbh->switch_prepared = (unsigned)SvIV(valuesv);
 				retval = 1;
 			}
+		}
+		break;
+
+	case 22: /* pg_placeholder_escaped */
+
+		if (strEQ("pg_placeholder_escaped", key)) {
+			imp_dbh->ph_escaped = newval ? DBDPG_TRUE : DBDPG_FALSE;
+			retval = 1;
 		}
 		break;
 
@@ -1724,7 +1742,7 @@ static void pg_st_split_statement (pTHX_ imp_sth_t * imp_sth, int version, char 
 
 	if (TSTART_slow) TRC(DBILOGFP, "%sBegin pg_st_split_statement\n", THEADER_slow);
 	if (TRACE6_slow) TRC(DBILOGFP, "%spg_st_split_statement: (%s)\n", THEADER_slow, statement);
-	
+
 	/*
 	  If the pg_direct flag is set (or the string has no length), we do not split at all,
 	  but simply put everything verbatim into a single segment and return.
@@ -1967,6 +1985,25 @@ static void pg_st_split_statement (pTHX_ imp_sth_t * imp_sth, int version, char 
 		
 		/* All we care about at this point is placeholder characters and end of string */
 		if ('?' != ch && '$' != ch && ':' != ch && 0!=ch) {
+			continue;
+		}
+
+		/*
+		  If this placeholder is escaped, we rewrite the string to remove the
+		  backslash, and move on as if there is no placeholder.
+		  The use of $dbh->{pg_placeholder_escaped} = 0 is left as an emergency measure.
+		  It will probably be removed at some point.
+		*/
+		if ('\\' == oldch && imp_dbh->ph_escaped) {
+			/* copy the placeholder-like character but ignore the backslash */
+			unsigned char *p = statement-2;
+			while(*p++) {
+				*(p-1) = *p;
+			}
+			/* We need to adjust these items because we just rewrote 'statement'! */
+			statement--;
+			currpos--;
+			ch = *statement;
 			continue;
 		}
 
@@ -3648,7 +3685,7 @@ AV * dbd_st_fetch (SV * sth, imp_sth_t * imp_sth)
 			if (type_info
 				&& 0 == strncmp(type_info->arrayout, "array", 5)
 				&& imp_dbh->expand_array) {
-				sv_setsv(sv, pg_destringify_array(aTHX_ imp_dbh, value, type_info));
+				sv_setsv(sv, sv_2mortal(pg_destringify_array(aTHX_ imp_dbh, value, type_info)));
 			}
 			else {
 				if (type_info) {

@@ -26,7 +26,7 @@ my $dbh = connect_database();
 if (! $dbh) {
 	plan skip_all => 'Connection to database failed, cannot continue testing';
 }
-plan tests => 547;
+plan tests => 559;
 
 isnt ($dbh, undef, 'Connect to database for database handle method testing');
 
@@ -444,6 +444,10 @@ my %get_info = (
   SQL_IDENTIFIER_QUOTE_CHAR  => 29,
   SQL_CATALOG_NAME_SEPARATOR => 41,
   SQL_USER_NAME              => 47,
+  # this also tests the dynamic attributes that run SQL
+  SQL_COLLATION_SEQ          => 10004,
+  SQL_DATABASE_NAME          => 16,
+  SQL_SERVER_NAME            => 13,
 );
 
 for (keys %get_info) {
@@ -459,6 +463,11 @@ for (keys %get_info) {
 	is ($back, $forth, $t);
 }
 
+# Make sure SQL_MAX_COLUMN_NAME_LEN looks normal
+$t='DB handle method "get_info" returns a valid looking SQL_MAX_COLUMN_NAME_LEN string}';
+my $namedatalen = $dbh->get_info('SQL_MAX_COLUMN_NAME_LEN');
+cmp_ok ($namedatalen, '>=', 63, $t);
+
 # Make sure odbcversion looks normal
 $t='DB handle method "get_info" returns a valid looking ODBCVERSION string}';
 my $odbcversion = $dbh->get_info(18);
@@ -466,7 +475,7 @@ like ($odbcversion, qr{^([1-9]\d|\d[1-9])\.\d\d\.\d\d00$}, $t);
 
 # Testing max connections is good as this info is dynamic
 $t='DB handle method "get_info" returns a number for SQL_MAX_DRIVER_CONNECTIONS';
-my $maxcon = $dbh->get_info(0);
+my $maxcon = $dbh->get_info('SQL_MAX_DRIVER_CONNECTIONS');
 like ($maxcon, qr{^\d+$}, $t);
 
 $t='DB handle method "get_info" returns correct string for SQL_DATA_SOURCE_READ_ONLY when "on"';
@@ -494,7 +503,7 @@ $number = $sth->rows();
 ok ($number, $t);
 
 $t=q{DB handle method "table_info" works when called with a 'TABLE' last argument};
-$sth = $dbh->table_info( '', '', '', "'TABLE'");
+$sth = $dbh->table_info( '', '', '', q{'TABLE'});
 
 # Check required minimum fields
 $t='DB handle method "table_info" returns fields required by DBI';
@@ -598,7 +607,7 @@ my %surprises = map { $_->[0] => 1 }
                     @{ $sth->fetchall_arrayref([3]) };
 
 is_deeply([keys %surprises], [], $t)
-  or diag("Objects of unexpected type(s) found: "
+  or diag('Objects of unexpected type(s) found: '
           . join(', ', sort keys %surprises));
 
 } # END test listing table types
@@ -1541,251 +1550,259 @@ $dbh->rollback();
 
 SKIP: {
 
-	eval {
-		require File::Temp;
-	};
-	$@ and skip ('Must have File::Temp to test pg_lo_import* and pg_lo_export', 8);
+	my $super = is_super();
 
-	$t='DB handle method "pg_lo_import" works';
-	my ($fh,$filename) = File::Temp::tmpnam();
-	print {$fh} "abc\ndef";
-	close $fh or warn 'Failed to close temporary file';
-	$handle = $dbh->pg_lo_import($filename);
-	my $objid = $handle;
-	ok ($handle, $t);
+	$super or skip ('Cannot run largeobject tests unless run as Postgres superuser', 38);
 
-	$t='DB handle method "pg_lo_import" inserts correct data';
-	$SQL = "SELECT data FROM pg_largeobject where loid = $handle";
-	$info = $dbh->selectall_arrayref($SQL)->[0][0];
-	is_deeply ($info, "abc\ndef", $t);
-	$dbh->commit();
 
   SKIP: {
-		if ($pglibversion < 80400) {
-			skip ('Cannot test pg_lo_import_with_oid unless compiled against 8.4 or better server', 5);
-		}
-		if ($pgversion < 80100) {
-			skip ('Cannot test pg_lo_import_with_oid against old versions of Postgres', 5);
-		}
 
-		$t='DB handle method "pg_lo_import_with_oid" works with high number';
-		my $highnumber = 345167;
-		$dbh->pg_lo_unlink($highnumber);
+		eval {
+			require File::Temp;
+		};
+		$@ and skip ('Must have File::Temp to test pg_lo_import* and pg_lo_export', 8);
+
+		$t='DB handle method "pg_lo_import" works';
+		my ($fh,$filename) = File::Temp::tmpnam();
+		print {$fh} "abc\ndef";
+		close $fh or warn 'Failed to close temporary file';
+		$handle = $dbh->pg_lo_import($filename);
+		my $objid = $handle;
+		ok ($handle, $t);
+
+		$t='DB handle method "pg_lo_import" inserts correct data';
+		$SQL = "SELECT data FROM pg_largeobject where loid = $handle";
+		$info = $dbh->selectall_arrayref($SQL)->[0][0];
+		is_deeply ($info, "abc\ndef", $t);
 		$dbh->commit();
-		my $thandle;
+
 	  SKIP: {
+			if ($pglibversion < 80400) {
+				skip ('Cannot test pg_lo_import_with_oid unless compiled against 8.4 or better server', 5);
+			}
+			if ($pgversion < 80100) {
+				skip ('Cannot test pg_lo_import_with_oid against old versions of Postgres', 5);
+			}
 
-			skip ('Known bug: pg_log_import_with_oid throws an error. See RT #90448', 3);
+			$t='DB handle method "pg_lo_import_with_oid" works with high number';
+			my $highnumber = 345167;
+			$dbh->pg_lo_unlink($highnumber);
+			$dbh->commit();
+			my $thandle;
+		  SKIP: {
 
-			$thandle = $dbh->pg_lo_import_with_oid($filename, $highnumber);
-			is ($thandle, $highnumber, $t);
+				skip ('Known bug: pg_log_import_with_oid throws an error. See RT #90448', 3);
+
+				$thandle = $dbh->pg_lo_import_with_oid($filename, $highnumber);
+				is ($thandle, $highnumber, $t);
+				ok ($thandle, $t);
+
+				$t='DB handle method "pg_lo_import_with_oid" inserts correct data';
+				$SQL = "SELECT data FROM pg_largeobject where loid = $thandle";
+				$info = $dbh->selectall_arrayref($SQL)->[0][0];
+				is_deeply ($info, "abc\ndef", $t);
+			}
+
+			$t='DB handle method "pg_lo_import_with_oid" fails when given already used number';
+			eval {
+				$thandle = $dbh->pg_lo_import_with_oid($filename, $objid);
+			};
+			is ($thandle, undef, $t);
+			$dbh->rollback();
+
+			$t='DB handle method "pg_lo_import_with_oid" falls back to lo_import when number is 0';
+			eval {
+				$thandle = $dbh->pg_lo_import_with_oid($filename, 0);
+			};
 			ok ($thandle, $t);
-
-			$t='DB handle method "pg_lo_import_with_oid" inserts correct data';
-			$SQL = "SELECT data FROM pg_largeobject where loid = $thandle";
-			$info = $dbh->selectall_arrayref($SQL)->[0][0];
-			is_deeply ($info, "abc\ndef", $t);
+			$dbh->rollback();
 		}
 
-		$t='DB handle method "pg_lo_import_with_oid" fails when given already used number';
-		eval {
-			$thandle = $dbh->pg_lo_import_with_oid($filename, $objid);
-		};
-		is ($thandle, undef, $t);
-		$dbh->rollback();
+		unlink $filename;
 
-		$t='DB handle method "pg_lo_import_with_oid" falls back to lo_import when number is 0';
-		eval {
-			$thandle = $dbh->pg_lo_import_with_oid($filename, 0);
-		};
-		ok ($thandle, $t);
-		$dbh->rollback();
+		$t='DB handle method "pg_lo_open" works after "pg_lo_insert"';
+		$handle = $dbh->pg_lo_open($handle, $R);
+		like ($handle, qr/^\d+$/o, $t);
+
+		$t='DB handle method "pg_lo_read" returns correct data after "pg_lo_import"';
+		$data = '';
+		$result = $dbh->pg_lo_read($handle, $data, 100);
+		is ($result, 7, $t);
+		is ($data, "abc\ndef", $t);
+
+		$t='DB handle method "pg_lo_export" works';
+		($fh,$filename) = File::Temp::tmpnam();
+		$result = $dbh->pg_lo_export($objid, $filename);
+		ok (-e $filename, $t);
+		seek($fh,0,1);
+		seek($fh,0,0);
+		$result = read $fh, $data, 10;
+		is ($result, 7, $t);
+		is ($data, "abc\ndef", $t);
+		close $fh or warn 'Could not close tempfile';
+		unlink $filename;
+		$dbh->pg_lo_unlink($objid);
 	}
 
-	unlink $filename;
+	## Same pg_lo_* tests, but with AutoCommit on
 
-	$t='DB handle method "pg_lo_open" works after "pg_lo_insert"';
-	$handle = $dbh->pg_lo_open($handle, $R);
-	like ($handle, qr/^\d+$/o, $t);
+	$dbh->{AutoCommit}=1;
 
-	$t='DB handle method "pg_lo_read" returns correct data after "pg_lo_import"';
-	$data = '';
-	$result = $dbh->pg_lo_read($handle, $data, 100);
-	is ($result, 7, $t);
-	is ($data, "abc\ndef", $t);
-
-	$t='DB handle method "pg_lo_export" works';
-	($fh,$filename) = File::Temp::tmpnam();
-	$result = $dbh->pg_lo_export($objid, $filename);
-	ok (-e $filename, $t);
-	seek($fh,0,1);
-	seek($fh,0,0);
-	$result = read $fh, $data, 10;
-	is ($result, 7, $t);
-	is ($data, "abc\ndef", $t);
-	close $fh or warn 'Could not close tempfile';
-	unlink $filename;
-	$dbh->pg_lo_unlink($objid);
-}
-
-## Same pg_lo_* tests, but with AutoCommit on
-
-$dbh->{AutoCommit}=1;
-
-$t='DB handle method "pg_lo_creat" fails when AutoCommit on';
-eval {
-	$dbh->pg_lo_creat($W);
-};
-like ($@, qr{pg_lo_creat when AutoCommit is on}, $t);
-
-$t='DB handle method "pg_lo_open" fails with AutoCommit on';
-eval {
-	$dbh->pg_lo_open($object, $W);
-};
-like ($@, qr{pg_lo_open when AutoCommit is on}, $t);
-
-$t='DB handle method "pg_lo_read" fails with AutoCommit on';
-eval {
-	$dbh->pg_lo_read($object, $data, 0);
-};
-like ($@, qr{pg_lo_read when AutoCommit is on}, $t);
-
-$t='DB handle method "pg_lo_lseek" fails with AutoCommit on';
-eval {
-	$dbh->pg_lo_lseek($handle, 0, 0);
-};
-like ($@, qr{pg_lo_lseek when AutoCommit is on}, $t);
-
-$t='DB handle method "pg_lo_write" fails with AutoCommit on';
-$buf = 'tangelo mulberry passionfruit raspberry plantain' x 500;
-eval {
-	$dbh->pg_lo_write($handle, $buf, length($buf));
-};
-like ($@, qr{pg_lo_write when AutoCommit is on}, $t);
-
-$t='DB handle method "pg_lo_close" fails with AutoCommit on';
-eval {
-	$dbh->pg_lo_close($handle);
-};
-like ($@, qr{pg_lo_close when AutoCommit is on}, $t);
-
-$t='DB handle method "pg_lo_tell" fails with AutoCommit on';
-eval {
-	$dbh->pg_lo_tell($handle);
-};
-like ($@, qr{pg_lo_tell when AutoCommit is on}, $t);
-
-$t='DB handle method "pg_lo_unlink" fails with AutoCommit on';
-eval {
-	$dbh->pg_lo_unlink($object);
-};
-like ($@, qr{pg_lo_unlink when AutoCommit is on}, $t);
-
-
-SKIP: {
-
+	$t='DB handle method "pg_lo_creat" fails when AutoCommit on';
 	eval {
-		require File::Temp;
+		$dbh->pg_lo_creat($W);
 	};
-	$@ and skip ('Must have File::Temp to test pg_lo_import and pg_lo_export', 5);
+	like ($@, qr{pg_lo_creat when AutoCommit is on}, $t);
 
-	$t='DB handle method "pg_lo_import" works (AutoCommit on)';
-	my ($fh,$filename) = File::Temp::tmpnam();
-	print {$fh} "abc\ndef";
-	close $fh or warn 'Failed to close temporary file';
-	$handle = $dbh->pg_lo_import($filename);
-	ok ($handle, $t);
+	$t='DB handle method "pg_lo_open" fails with AutoCommit on';
+	eval {
+		$dbh->pg_lo_open($object, $W);
+	};
+	like ($@, qr{pg_lo_open when AutoCommit is on}, $t);
 
-	$t='DB handle method "pg_lo_import" inserts correct data (AutoCommit on, begin_work not called)';
-	$SQL = 'SELECT data FROM pg_largeobject where loid = ?';
-	$sth = $dbh->prepare($SQL);
-	$sth->execute($handle);
-	$info = $sth->fetchall_arrayref()->[0][0];
-	is_deeply ($info, "abc\ndef", $t);
+	$t='DB handle method "pg_lo_read" fails with AutoCommit on';
+	eval {
+		$dbh->pg_lo_read($object, $data, 0);
+	};
+	like ($@, qr{pg_lo_read when AutoCommit is on}, $t);
 
-	# cleanup last lo
+	$t='DB handle method "pg_lo_lseek" fails with AutoCommit on';
+	eval {
+		$dbh->pg_lo_lseek($handle, 0, 0);
+	};
+	like ($@, qr{pg_lo_lseek when AutoCommit is on}, $t);
+
+	$t='DB handle method "pg_lo_write" fails with AutoCommit on';
+	$buf = 'tangelo mulberry passionfruit raspberry plantain' x 500;
+	eval {
+		$dbh->pg_lo_write($handle, $buf, length($buf));
+	};
+	like ($@, qr{pg_lo_write when AutoCommit is on}, $t);
+
+	$t='DB handle method "pg_lo_close" fails with AutoCommit on';
+	eval {
+		$dbh->pg_lo_close($handle);
+	};
+	like ($@, qr{pg_lo_close when AutoCommit is on}, $t);
+
+	$t='DB handle method "pg_lo_tell" fails with AutoCommit on';
+	eval {
+		$dbh->pg_lo_tell($handle);
+	};
+	like ($@, qr{pg_lo_tell when AutoCommit is on}, $t);
+
+	$t='DB handle method "pg_lo_unlink" fails with AutoCommit on';
+	eval {
+		$dbh->pg_lo_unlink($object);
+	};
+	like ($@, qr{pg_lo_unlink when AutoCommit is on}, $t);
+
+
+  SKIP: {
+
+		eval {
+			require File::Temp;
+		};
+		$@ and skip ('Must have File::Temp to test pg_lo_import and pg_lo_export', 5);
+
+		$t='DB handle method "pg_lo_import" works (AutoCommit on)';
+		my ($fh,$filename) = File::Temp::tmpnam();
+		print {$fh} "abc\ndef";
+		close $fh or warn 'Failed to close temporary file';
+		$handle = $dbh->pg_lo_import($filename);
+		ok ($handle, $t);
+
+		$t='DB handle method "pg_lo_import" inserts correct data (AutoCommit on, begin_work not called)';
+		$SQL = 'SELECT data FROM pg_largeobject where loid = ?';
+		$sth = $dbh->prepare($SQL);
+		$sth->execute($handle);
+		$info = $sth->fetchall_arrayref()->[0][0];
+		is_deeply ($info, "abc\ndef", $t);
+
+		# cleanup last lo
+		$dbh->{AutoCommit} = 0;
+		$dbh->pg_lo_unlink($handle);
+		$dbh->{AutoCommit} = 1;
+
+		$t='DB handle method "pg_lo_import" works (AutoCommit on, begin_work called, no command)';
+		$dbh->begin_work();
+		$handle = $dbh->pg_lo_import($filename);
+		ok ($handle, $t);
+		$sth->execute($handle);
+		$info = $sth->fetchall_arrayref()->[0][0];
+		is_deeply ($info, "abc\ndef", $t);
+		$dbh->rollback();
+
+		$t='DB handle method "pg_lo_import" works (AutoCommit on, begin_work called, no command, rollback)';
+		$dbh->begin_work();
+		$handle = $dbh->pg_lo_import($filename);
+		ok ($handle, $t);
+		$dbh->rollback();
+		$sth->execute($handle);
+		$info = $sth->fetchall_arrayref()->[0][0];
+		is_deeply ($info, undef, $t);
+
+		$t='DB handle method "pg_lo_import" works (AutoCommit on, begin_work called, second command)';
+		$dbh->begin_work();
+		$dbh->do('SELECT 123');
+		$handle = $dbh->pg_lo_import($filename);
+		ok ($handle, $t);
+		$sth->execute($handle);
+		$info = $sth->fetchall_arrayref()->[0][0];
+		is_deeply ($info, "abc\ndef", $t);
+		$dbh->rollback();
+
+		$t='DB handle method "pg_lo_import" works (AutoCommit on, begin_work called, second command, rollback)';
+		$dbh->begin_work();
+		$dbh->do('SELECT 123');
+		$handle = $dbh->pg_lo_import($filename);
+		ok ($handle, $t);
+		$dbh->rollback();
+		$sth->execute($handle);
+		$info = $sth->fetchall_arrayref()->[0][0];
+		is_deeply ($info, undef, $t);
+
+		$t='DB handle method "pg_lo_import" works (AutoCommit not on, no command)';
+		$dbh->{AutoCommit} = 0;
+		$dbh->commit();
+		$handle = $dbh->pg_lo_import($filename);
+		ok ($handle, $t);
+		$sth->execute($handle);
+		$info = $sth->fetchall_arrayref()->[0][0];
+		is_deeply ($info, "abc\ndef", $t);
+
+		$t='DB handle method "pg_lo_import" works (AutoCommit not on, second command)';
+		$dbh->rollback();
+		$dbh->do('SELECT 123');
+		$handle = $dbh->pg_lo_import($filename);
+		ok ($handle, $t);
+		$sth->execute($handle);
+		$info = $sth->fetchall_arrayref()->[0][0];
+		is_deeply ($info, "abc\ndef", $t);
+
+		unlink $filename;
+		$dbh->{AutoCommit} = 1;
+
+		my $objid = $handle;
+		$t='DB handle method "pg_lo_export" works (AutoCommit on)';
+		($fh,$filename) = File::Temp::tmpnam();
+		$result = $dbh->pg_lo_export($objid, $filename);
+		ok (-e $filename, $t);
+		seek($fh,0,1);
+		seek($fh,0,0);
+		$result = read $fh, $data, 10;
+		is ($result, 7, $t);
+		is ($data, "abc\ndef", $t);
+		close $fh or warn 'Could not close tempfile';
+		unlink $filename;
+
+		# cleanup last lo
+		$dbh->{AutoCommit} = 0;
+		$dbh->pg_lo_unlink($handle);
+		$dbh->{AutoCommit} = 1;
+	}
 	$dbh->{AutoCommit} = 0;
-	$dbh->pg_lo_unlink($handle);
-	$dbh->{AutoCommit} = 1;
-
-	$t='DB handle method "pg_lo_import" works (AutoCommit on, begin_work called, no command)';
-	$dbh->begin_work();
-	$handle = $dbh->pg_lo_import($filename);
-	ok ($handle, $t);
-	$sth->execute($handle);
-	$info = $sth->fetchall_arrayref()->[0][0];
-	is_deeply ($info, "abc\ndef", $t);
-	$dbh->rollback();
-
-	$t='DB handle method "pg_lo_import" works (AutoCommit on, begin_work called, no command, rollback)';
-	$dbh->begin_work();
-	$handle = $dbh->pg_lo_import($filename);
-	ok ($handle, $t);
-	$dbh->rollback();
-	$sth->execute($handle);
-	$info = $sth->fetchall_arrayref()->[0][0];
-	is_deeply ($info, undef, $t);
-
-	$t='DB handle method "pg_lo_import" works (AutoCommit on, begin_work called, second command)';
-	$dbh->begin_work();
-	$dbh->do('SELECT 123');
-	$handle = $dbh->pg_lo_import($filename);
-	ok ($handle, $t);
-	$sth->execute($handle);
-	$info = $sth->fetchall_arrayref()->[0][0];
-	is_deeply ($info, "abc\ndef", $t);
-	$dbh->rollback();
-
-	$t='DB handle method "pg_lo_import" works (AutoCommit on, begin_work called, second command, rollback)';
-	$dbh->begin_work();
-	$dbh->do('SELECT 123');
-	$handle = $dbh->pg_lo_import($filename);
-	ok ($handle, $t);
-	$dbh->rollback();
-	$sth->execute($handle);
-	$info = $sth->fetchall_arrayref()->[0][0];
-	is_deeply ($info, undef, $t);
-
-	$t='DB handle method "pg_lo_import" works (AutoCommit not on, no command)';
-	$dbh->{AutoCommit} = 0;
-	$dbh->commit();
-	$handle = $dbh->pg_lo_import($filename);
-	ok ($handle, $t);
-	$sth->execute($handle);
-	$info = $sth->fetchall_arrayref()->[0][0];
-	is_deeply ($info, "abc\ndef", $t);
-
-	$t='DB handle method "pg_lo_import" works (AutoCommit not on, second command)';
-	$dbh->rollback();
-	$dbh->do('SELECT 123');
-	$handle = $dbh->pg_lo_import($filename);
-	ok ($handle, $t);
-	$sth->execute($handle);
-	$info = $sth->fetchall_arrayref()->[0][0];
-	is_deeply ($info, "abc\ndef", $t);
-
-	unlink $filename;
-	$dbh->{AutoCommit} = 1;
-
-	my $objid = $handle;
-	$t='DB handle method "pg_lo_export" works (AutoCommit on)';
-	($fh,$filename) = File::Temp::tmpnam();
-	$result = $dbh->pg_lo_export($objid, $filename);
-	ok (-e $filename, $t);
-	seek($fh,0,1);
-	seek($fh,0,0);
-	$result = read $fh, $data, 10;
-	is ($result, 7, $t);
-	is ($data, "abc\ndef", $t);
-	close $fh or warn 'Could not close tempfile';
-	unlink $filename;
-
-	# cleanup last lo
-	$dbh->{AutoCommit} = 0;
-	$dbh->pg_lo_unlink($handle);
-	$dbh->{AutoCommit} = 1;
 }
-$dbh->{AutoCommit} = 0;
 
 #
 # Test of the "pg_notifies" database handle method
@@ -1876,85 +1893,74 @@ is ($@, q{}, $t);
 $dbh2->disconnect();
 
 #
-# Test of the "ping" database handle method
+# Test of the "ping" and "pg_ping" database handle methods
 #
 
-$t='DB handle method "ping" returns 1 on an idle connection';
-is ($dbh->ping(), 1, $t);
+my $mtvar; ## This is an implicit test of getcopydata: please leave this var undefined
 
-$t='DB handle method "ping" returns 3 for a good connection inside a transaction';
-$dbh->do('SELECT 123');
-$result = 3;
-is ($result, $dbh->ping(), $t);
+for my $type (qw/ ping pg_ping /) {
 
-$t='DB handle method "ping" returns 1 on an idle connection';
-$dbh->commit();
-is ($dbh->ping(), 1, $t);
+	$t=qq{DB handle method "$type" returns 1 on an idle connection};
+	$dbh->commit();
+	is ($dbh->$type(), 1, $t);
 
-my $mtvar; ## This is an implicit test of getline: please leave this var undefined
+	$t=qq{DB handle method "$type" returns 2 when in COPY IN state};
+	$dbh->do('COPY dbd_pg_test(id,pname) TO STDOUT');
+	$dbh->pg_getcopydata($mtvar);
+	is ($dbh->$type(), 2, $t);
+	## the ping messes up the copy state, so all we can do is rollback
+	$dbh->rollback();
 
-$t='DB handle method "ping" returns 2 when in COPY IN state';
-$dbh->do('COPY dbd_pg_test(id,pname) TO STDOUT');
-{
-	local $SIG{__WARN__} = sub {};
-	$dbh->pg_getline($mtvar,100);
+	$t=qq{DB handle method "$type" returns 2 when in COPY IN state};
+	$dbh->do('COPY dbd_pg_test(id,pname) FROM STDIN');
+	$dbh->pg_putcopydata("123\tfoobar\n");
+	is ($dbh->$type(), 2, $t);
+	$dbh->rollback();
+
+	$t=qq{DB handle method "$type" returns 3 for a good connection inside a transaction};
+	$dbh->do('SELECT 123');
+	is ($dbh->$type(), 3, $t);
+
+	$t=qq{DB handle method "$type" returns a 4 when inside a failed transaction};
+	eval {
+		$dbh->do('DBD::Pg creating an invalid command for testing');
+	};
+	is ($dbh->$type(), 4, $t);
+	$dbh->rollback();
+
+	my $val = $type eq 'ping' ? 0 : -1;
+	$t=qq{DB handle method "type" fails (returns $val) on a disconnected handle};
+	$dbh->disconnect();
+	is ($dbh->$type(), $val, $t);
+
+	$t='Able to reconnect to the database after disconnect';
+	$dbh = connect_database({nosetup => 1});
+	isnt ($dbh, undef, $t);
+
+	$val = $type eq 'ping' ? 0 : -3;
+	$t=qq{DB handle method "$type" returns $val after a lost network connection (outside transaction)};
+	socket_fail($dbh);
+	is ($dbh->$type(), $val, $t);
+
+	## Reconnect, and try the same thing but inside a transaction
+	$val = $type eq 'ping' ? 0 : -3;
+	$t=qq{DB handle method "$type" returns $val after a lost network connection (inside transaction)};
+	$dbh = connect_database({nosetup => 1});
+	$dbh->do(q{SELECT 'DBD::Pg testing'});
+	socket_fail($dbh);
+	is ($dbh->$type(), $val, $t);
+
+	$type eq 'ping' and $dbh = connect_database({nosetup => 1});
 }
-is ($dbh->ping(), 2, $t);
-1 while $dbh->pg_getline($mtvar,1000);
 
-$t='DB handle method "ping" returns 3 for a good connection inside a transaction';
-$dbh->do('SELECT 123');
-is ($dbh->ping(), 3, $t);
+exit;
 
-$t='DB handle method "ping" returns a 4 when inside a failed transaction';
-eval {
-	$dbh->do('DBD::Pg creating an invalid command for testing');
-};
-is ($dbh->ping(), 4, $t);
+sub socket_fail {
+	my $ldbh = shift;
+	$ldbh->{InactiveDestroy} = 1;
+	my $fd = $ldbh->{pg_socket} or die 'Could not determine socket';
+	open(DBH_PG_FH, '<&='.$fd) or die "Could not open socket: $!"; ## no critic
+	close DBH_PG_FH or die "Could not close socket: $!";
+	return;
+}
 
-$t='DB handle method "ping" fails (returns 0) on a disconnected handle';
-$dbh->disconnect();
-is ($dbh->ping(), 0, $t);
-
-$t='Able to reconnect to the database after disconnect';
-$dbh = connect_database({nosetup => 1});
-isnt ($dbh, undef, $t);
-
-#
-# Test of the "pg_ping" database handle method
-#
-
-$t='DB handle method "pg_ping" returns 1 on an idle connection';
-is ($dbh->pg_ping(), 1, $t);
-
-$t='DB handle method "pg_ping" returns 3 for a good connection inside a transaction';
-$dbh->do('SELECT 123');
-is ($dbh->pg_ping(), 3, $t);
-
-$t='DB handle method "pg_ping" returns 1 on an idle connection';
-$dbh->commit();
-is ($dbh->pg_ping(), 1, $t);
-
-$t='DB handle method "pg_ping" returns 2 when in COPY IN state';
-$dbh->do('COPY dbd_pg_test(id,pname) TO STDOUT');
-$dbh->pg_getline($mtvar,100);
-is ($dbh->pg_ping(), 2, $t);
-
-$t='DB handle method "pg_ping" returns 2 immediately after COPY IN state';
-1 while $dbh->pg_getline($mtvar,1000);
-is ($dbh->pg_ping(), 2, $t);
-
-$t='DB handle method "pg_ping" returns 3 for a good connection inside a transaction';
-$dbh->do('SELECT 123');
-is ($dbh->pg_ping(), 3, $t);
-
-$t='DB handle method "pg_ping" returns a 4 when inside a failed transaction';
-eval {
-	$dbh->do('DBD::Pg creating an invalid command for testing');
-};
-is ($dbh->pg_ping(), 4, $t);
-
-$t='DB handle method "pg_ping" fails (returns 0) on a disconnected handle';
-cleanup_database($dbh,'test');
-$dbh->disconnect();
-is ($dbh->pg_ping(), -1, $t);
